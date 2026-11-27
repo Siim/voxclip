@@ -391,19 +391,30 @@ public struct EditPlan: Codable, Sendable, Equatable {
     }
     public private(set) var fadeParts: [FadePart]
     public private(set) var partSeams: [Int64]
+    private(set) var recordingRegions: [MediaInterval]
+    var recordingSeams: [Int64] {
+        guard !recordingRegions.isEmpty else { return [] }
+        return recordingSeamSamples(Array(kept.indices), regions: recordingRegions, source: { kept[$0].startSample }, output: { fadeParts[$0].outputStart })
+    }
+    var captionSeams: [Int64] { recordingRegions.isEmpty ? partSeams : Array(Set(partSeams + recordingSeams)).sorted() }
     private var sourceIndex: [SourceMapEntry]
 
     /// Creates an explicit value without I/O or generated identifiers.
     public init(sampleRate: Double, totalSamples: Int64, cuts: [MediaInterval] = [], kept: [MediaInterval] = [], partSeams: [Int64] = []) {
+        self.init(sampleRate: sampleRate, totalSamples: totalSamples, cuts: cuts, kept: kept, partSeams: partSeams, recordingRegions: [])
+    }
+
+    init(sampleRate: Double, totalSamples: Int64, cuts: [MediaInterval], kept: [MediaInterval], partSeams: [Int64], recordingRegions: [MediaInterval]) {
         self.sampleRate = sampleRate
         self.totalSamples = totalSamples
         self.cuts = cuts
         self.kept = kept
-        let parts = Self.makeFadeParts(kept: kept, totalSamples: totalSamples, sampleRate: sampleRate)
+        let parts = Self.makeFadeParts(kept: kept, totalSamples: totalSamples, sampleRate: sampleRate, regions: recordingRegions)
         self.outputSamples = kept.reduce(0) { $0 + $1.count }
         self.joins = Self.makeJoins(parts: parts, outputSamples: self.outputSamples)
         self.fadeParts = parts
         self.partSeams = partSeams
+        self.recordingRegions = recordingRegions
         self.sourceIndex = Self.makeSourceIndex(kept, parts: parts)
     }
 
@@ -416,7 +427,7 @@ public struct EditPlan: Codable, Sendable, Equatable {
     }
 
     private mutating func rebuildDerivedValues() {
-        fadeParts = Self.makeFadeParts(kept: kept, totalSamples: totalSamples, sampleRate: sampleRate)
+        fadeParts = Self.makeFadeParts(kept: kept, totalSamples: totalSamples, sampleRate: sampleRate, regions: recordingRegions)
         outputSamples = kept.reduce(0) { $0 + $1.count }
         joins = Self.makeJoins(parts: fadeParts, outputSamples: outputSamples)
         sourceIndex = Self.makeSourceIndex(kept, parts: fadeParts)
@@ -435,6 +446,7 @@ public struct EditPlan: Codable, Sendable, Equatable {
         case outputSamples
         case joins
         case partSeams
+        case recordingRegions
     }
 
     public init(from decoder: any Decoder) throws {
@@ -443,7 +455,8 @@ public struct EditPlan: Codable, Sendable, Equatable {
                   totalSamples: try values.decode(Int64.self, forKey: .totalSamples),
                   cuts: try values.decodeIfPresent([MediaInterval].self, forKey: .cuts) ?? [],
                   kept: try values.decodeIfPresent([MediaInterval].self, forKey: .kept) ?? [],
-                  partSeams: try values.decodeIfPresent([Int64].self, forKey: .partSeams) ?? [])
+                  partSeams: try values.decodeIfPresent([Int64].self, forKey: .partSeams) ?? [],
+                  recordingRegions: try values.decodeIfPresent([MediaInterval].self, forKey: .recordingRegions) ?? [])
         _ = try values.decode(Int64.self, forKey: .outputSamples)
         _ = try values.decodeIfPresent([Join].self, forKey: .joins)
     }
@@ -457,6 +470,7 @@ public struct EditPlan: Codable, Sendable, Equatable {
         try values.encode(self.outputSamples, forKey: .outputSamples)
         try values.encode(self.joins, forKey: .joins)
         if !partSeams.isEmpty { try values.encode(partSeams, forKey: .partSeams) }
+        if !recordingRegions.isEmpty { try values.encode(recordingRegions, forKey: .recordingRegions) }
     }
 
     public var duration: Double { sampleRate > 0 ? Double(outputSamples) / sampleRate : 0 }
@@ -467,7 +481,8 @@ public struct EditPlan: Codable, Sendable, Equatable {
         if let activeClip, activeClip.parts != nil {
             return try buildStoryPlan(snapshot, clip: activeClip, duration: duration, sampleRate: sampleRate)
         }
-        return try buildEditPlan(buildSegments(snapshot, activeClip: activeClip), duration: duration, sampleRate: sampleRate, pauseKeepSeconds: snapshot.pauseKeepSeconds)
+        return try buildScopedEditPlan(buildSegments(snapshot, activeClip: activeClip), state: snapshot, activeClip: activeClip,
+                                       duration: duration, rate: sampleRate)
     }
     public func mapTime(_ source: Double) -> Double {
         mapTime(source, end: false)

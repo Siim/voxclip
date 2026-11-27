@@ -37,7 +37,7 @@ public enum RenderCallerInputs {
               totalSamples.isFinite, totalSamples >= 0, totalSamples <= 9_007_199_254_740_991 else {
             throw ContextDemoError.invalidNarration
         }
-        guard let transcript = project.transcript else {
+        guard var state = try EditState(project: project) else {
             guard clip == nil, project.edits.cutWordIds.isEmpty, project.edits.cutPauseIds.isEmpty else {
                 throw VoiceLabProjectError.invalidScope
             }
@@ -45,13 +45,8 @@ public enum RenderCallerInputs {
             return EditPlan(sampleRate: rate, totalSamples: total,
                 kept: total > 0 ? [MediaInterval(startSample: 0, endSample: total)] : [])
         }
-        let edits = project.edits
-        let state = EditState(transcript: transcript,
-            pauses: try detectPauses(transcript.words, thresholdSeconds: edits.pauseThresholdSeconds),
-            pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds,
-            cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds),
-            corrections: edits.corrections, clips: edits.clips, activeClipId: clipID)
-        return try EditPlan.build(transcript: transcript, editState: state, activeClip: clip,
+        state.activeClipId = clipID
+        return try EditPlan.build(transcript: state.transcript, editState: state, activeClip: clip,
             duration: source.durationSeconds, sampleRate: rate)
     }
 

@@ -37,7 +37,7 @@ internal static class EditingSession
             var range = scope[0];
             // The clip's opening lead-in (ADR-R48 part 2) opens it earlier, inside the pause before its first word.
             var leadIn = state.Clips.FirstOrDefault(clip => clip.Id == state.ActiveClipId)?.LeadInSeconds;
-            var times = EditingAlgorithms.ClipTimes(words, range.Start, range.End, leadIn);
+            var times = EditingPlanner.ScopedClipTimes(state, range.Start, range.End, leadIn);
             if (times.Start > 0) segments.Add(new("clip-head", EditSegmentKind.Range, null, null, 0, times.Start, true));
             var tailEnd = Math.Max(times.End, words[^1].End) + 3600;
             if (tailEnd > times.End) segments.Add(new("clip-tail", EditSegmentKind.Range, null, null, times.End, tailEnd, true));

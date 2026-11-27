@@ -21,14 +21,16 @@ public struct VoiceLabOutputPlan: Sendable, Equatable {
     public internal(set) var captions: [CaptionWord]
     public let scope: VoiceLabOutputScope
     public let partSeams: [Int64]
+    private(set) var recordingSeams: [Int64]
     private let sourceIndex: [VoiceLabOutputPiece]
     public var videoCuts: [String: [VoiceLabVideoCut]] = [:]
 
     init(sampleRate: Double, totalSourceSamples: Int64, pieces: [VoiceLabOutputPiece], captions: [CaptionWord],
-         scope: VoiceLabOutputScope, partSeams: [Int64] = []) {
+         scope: VoiceLabOutputScope, partSeams: [Int64] = [], recordingRegions: [MediaInterval] = []) {
         self.sampleRate = sampleRate; self.totalSourceSamples = totalSourceSamples
         self.pieces = pieces; self.captions = captions; self.scope = scope; self.partSeams = partSeams
         self.sourceIndex = pieces.sorted { $0.sourceStartSample < $1.sourceStartSample }
+        self.recordingSeams = recordingSeamSamples(pieces, regions: recordingRegions, source: \.sourceStartSample, output: \.outputStartSample)
     }
     public var outputSamples: Int64 { pieces.last?.outputEndSample ?? 0 }
     public var duration: Double { Double(outputSamples) / sampleRate }
@@ -111,18 +113,15 @@ public enum VoiceLabOutputPlanner {
     static func build(_ project: Project, scope: VoiceLabOutputScope,
                       placing windows: [(VoiceLabWindow, String)], partOverride: ClipRange? = nil) throws -> VoiceLabOutputPlan {
         try VoiceLabProject.validate(project)
-        guard let transcript = project.transcript else { throw VoiceLabProjectError.invalidScope }
+        guard let state = try EditState(project: project) else { throw VoiceLabProjectError.invalidScope }
+        let transcript = state.transcript
         let duration = project.media.source.durationSeconds
-        let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
-        let total = Int64(max(0, EditingPrimitives.jsRound(duration * rate)))
+        let rate = Double(state.projectClock?.sampleRate ?? project.media.source.audio?.sampleRate ?? 48_000)
+        let total = state.projectClock.map { Int64($0.totalSamples) } ?? Int64(max(0, EditingPrimitives.jsRound(duration * rate)))
+        let regions = state.projectClock?.sampleRegions ?? []
         // Words, a clip's range and the take's end meet a replace range on the source sample grid (§10.1).
         let grid = VoiceLabSampleGrid(rate: rate)
         let edits = project.edits
-        let pauses = try detectPauses(transcript.words, thresholdSeconds: edits.pauseThresholdSeconds)
-        let state = EditState(transcript: transcript, pauses: pauses, pauseThresholdSeconds: edits.pauseThresholdSeconds,
-                              pauseKeepSeconds: edits.pauseKeepSeconds, cutWordIds: Set(edits.cutWordIds),
-                              cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections, clips: edits.clips,
-                              activeClipId: nil)
         let activeClip: ClipRange?
         let clipRange: TimeRange?
         switch scope {
@@ -133,11 +132,11 @@ public enum VoiceLabOutputPlanner {
                 guard windows.isEmpty, StoryClips.valid(clip, words: transcript.words) else { throw VoiceLabProjectError.invalidScope }
                 try StoryClips.validatePlacement(clip, project: project, words: transcript.words)
                 let plans = try clip.singlePartClips().map { try build(project, scope: scope, placing: [], partOverride: $0) }
-                return try concatenate(plans, scope: scope, rate: rate, total: total)
+                return try concatenate(plans, scope: scope, rate: rate, total: total, regions: regions)
             }
             guard let indices = clipIndices(clip, words: transcript.words) else { throw VoiceLabProjectError.invalidScope }
             activeClip = clip
-            clipRange = try clipTimes(transcript.words, clip: clip, startIndex: indices.lowerBound, endIndex: indices.upperBound)
+            clipRange = try scopedClipTimes(state, bounds: indices, leadIn: clip.leadInSeconds)
         }
         let enabled = project.voiceLab.segments.filter { segment in
             guard segment.enabled else { return false }
@@ -174,7 +173,7 @@ public enum VoiceLabOutputPlanner {
         let segments = try buildSegments(state, activeClip: activeClip).filter { item in
             !(item.kind == .word || item.kind == .pause) || !inside(item.start, item.end)
         }
-        let base = try buildEditPlan(segments, duration: duration, sampleRate: rate, pauseKeepSeconds: edits.pauseKeepSeconds)
+        let base = try buildScopedEditPlan(segments, state: state, activeClip: activeClip, duration: duration, rate: rate)
         let synthRanges = replacements.map { segment in
             (segment, MediaInterval(startSample: Int64(EditingPrimitives.jsRound(segment.start * rate)),
                                     endSample: Int64(EditingPrimitives.jsRound(segment.end * rate))))
@@ -219,7 +218,7 @@ public enum VoiceLabOutputPlanner {
             }
             try append(.source, position, interval.endSample, interval.endSample - position)
         }
-        var plan = VoiceLabOutputPlan(sampleRate: rate, totalSourceSamples: total, pieces: pieces, captions: [], scope: scope)
+        var plan = VoiceLabOutputPlan(sampleRate: rate, totalSourceSamples: total, pieces: pieces, captions: [], scope: scope, recordingRegions: regions)
         for segment in enabled {
             if segment.candidates.indices.contains(segment.selectedCandidateIndex),
                let video = segment.candidates[segment.selectedCandidateIndex].recipe?.video,
@@ -227,8 +226,8 @@ public enum VoiceLabOutputPlanner {
         }
         if !windows.isEmpty { return plan }
         if enabled.isEmpty {
-            return VoiceLabOutputPlan(sampleRate: rate, totalSourceSamples: total, pieces: pieces,
-                                      captions: captionCopy(segments, plan: base), scope: scope)
+            plan.captions = captionCopy(segments, plan: base)
+            return plan
         }
         var captions: [CaptionWord] = []
         for word in transcript.words where word.kind == .word {
@@ -250,11 +249,14 @@ public enum VoiceLabOutputPlanner {
             }
         }
         captions.sort { $0.start == $1.start ? $0.id < $1.id : $0.start < $1.start }
+        for seam in plan.recordingSeams {
+            if let index = captions.firstIndex(where: { grid.sample($0.start) >= Double(seam) }) { captions[index].startsPart = true }
+        }
         plan.captions = captions
         return plan
     }
 
-    private static func concatenate(_ plans: [VoiceLabOutputPlan], scope: VoiceLabOutputScope, rate: Double, total: Int64) throws -> VoiceLabOutputPlan {
+    private static func concatenate(_ plans: [VoiceLabOutputPlan], scope: VoiceLabOutputScope, rate: Double, total: Int64, regions: [MediaInterval]) throws -> VoiceLabOutputPlan {
         var pieces: [VoiceLabOutputPiece] = [], captions: [CaptionWord] = [], seams: [Int64] = [], offset: Int64 = 0
         var cuts: [String: [VoiceLabVideoCut]] = [:]
         for plan in plans where !plan.pieces.isEmpty {
@@ -273,7 +275,7 @@ public enum VoiceLabOutputPlanner {
         guard zip(sorted, sorted.dropFirst()).allSatisfy({ $0.sourceEndSample <= $1.sourceStartSample }) else {
             throw VoiceLabProjectError.invalidRange
         }
-        var result = VoiceLabOutputPlan(sampleRate: rate, totalSourceSamples: total, pieces: pieces, captions: captions, scope: scope, partSeams: seams)
+        var result = VoiceLabOutputPlan(sampleRate: rate, totalSourceSamples: total, pieces: pieces, captions: captions, scope: scope, partSeams: seams, recordingRegions: regions)
         result.videoCuts = cuts
         return result
     }

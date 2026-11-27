@@ -20,6 +20,9 @@ public struct ProjectClock: Sendable, Equatable {
 
     public var words: [TimedWord] { transcript?.words ?? [] }
     public var totalSamples: Int { regions.last?.endSample ?? 0 }
+    var sampleRegions: [MediaInterval] {
+        regions.map { MediaInterval(startSample: Int64($0.offsetSamples), endSample: Int64($0.endSample)) }
+    }
     public var guardGaps: [Range<Int>] {
         zip(regions, regions.dropFirst()).map { $0.endSample..<$1.offsetSamples }
     }

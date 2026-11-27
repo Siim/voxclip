@@ -33,6 +33,7 @@ public sealed class ProjectClock
     public IReadOnlyList<TimedWord> Words => Transcript?.Words ?? [];
     /// <summary>Exclusive clock end, including internal guard gaps.</summary>
     public long TotalSamples => Regions[^1].EndSample;
+    internal IReadOnlyList<MediaInterval> SampleRegions => Regions.Select(region => new MediaInterval(region.OffsetSamples, region.EndSample)).ToArray();
     /// <summary>Half-open intervals that have no source media.</summary>
     public IEnumerable<(long Start, long End)> GuardGaps => Regions.Zip(Regions.Skip(1), (before, after) => (before.EndSample, after.OffsetSamples));
     private readonly IReadOnlyDictionary<string, int>? regionByWord;
