@@ -97,9 +97,9 @@ enum CLIWorkflow {
     }
 
     static func renderRequest(project: Project, source: URL, plan: EditPlan, style: CaptionStyle?, output: OutputSpec,
-                              voiceLab: VoiceLabRenderInput?, dataRoot: URL, aspectName: String) throws -> RenderRequest {
+                              voiceLab: VoiceLabRenderInput?, dataRoot: URL, aspectName: String? = nil) throws -> RenderRequest {
         try RenderCallerInputs.prepare(RenderRequest(sourceURL: source, plan: plan, style: style,
-            placement: project.captions.positionByAspect[aspectName] ?? project.captions.position,
+            placement: project.captions.positionByAspect[aspectName ?? project.export.aspect.rawValue] ?? project.captions.position,
             output: output, voiceLab: voiceLab), project: project, clipID: project.edits.activeClipId,
             dataRoot: dataRoot.resolvingSymlinksInPath(), shared: try? SharedResources.locate(),
             resolveFootageURL: { JSONProjectStore.footageURL($0, beside: source) }, isCancelled: { Task.isCancelled })
