@@ -2061,6 +2061,7 @@ member VoxClip.App.Pages.EditorPage :: field private harnessRewrites
 member VoxClip.App.Pages.EditorPage :: field private harnessSubmitted
 member VoxClip.App.Pages.EditorPage :: field private harnessTimelineIndex
 member VoxClip.App.Pages.EditorPage :: field private harnessTimer
+member VoxClip.App.Pages.EditorPage :: field private keepingHarnessRecording
 member VoxClip.App.Pages.EditorPage :: field private leave
 member VoxClip.App.Pages.EditorPage :: field private lifetime
 member VoxClip.App.Pages.EditorPage :: field private loadedSnapshot
@@ -2255,7 +2256,7 @@ member VoxClip.App.Pages.EditorPage :: method private RequestWaveform()
 member VoxClip.App.Pages.EditorPage :: method private RestoreClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private RestoreSelectionClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private RetireRewrite()
-member VoxClip.App.Pages.EditorPage :: method private ReviewHarness(bool)
+member VoxClip.App.Pages.EditorPage :: method private ReviewHarnessAsync(bool)
 member VoxClip.App.Pages.EditorPage :: method private RewriteAsAsync(VoxClip.App.ViewModels.RewriteAsRequest)
 member VoxClip.App.Pages.EditorPage :: method private RewriteClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private RightPaneSizeChanged(object,Microsoft.UI.Xaml.SizeChangedEventArgs)
@@ -3961,7 +3962,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal EndUndoGroup()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ExportStatus(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal KeepHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal KeepHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset>&)
-member VoxClip.App.ViewModels.EditorViewModel :: method internal KeepHarnessTimeline(VoxClip.Core.Services.Project.HarnessProposal,string,string,int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation>&)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal KeepHarnessTimeline(VoxClip.Core.Services.Project.HarnessProposal,string,string,int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Asset>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation>&,VoxClip.Core.Domain.Transcript.Transcript)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MakeClipsOfParts(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MakeItFrameSource(System.Collections.Generic.IReadOnlyList`1<string>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MakeItPostable(string,bool)
@@ -3971,6 +3972,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal MoveCaptionAnch
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MoveCaptionPosition(int)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MovePart(string,int)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal PartDropIndex(string,string,bool)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal PrepareHarnessRecordingAsync(VoxClip.Core.Services.Project.HarnessProposal,string,int,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal PresentedWord(int)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal PreviewCutRange()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ProjectWithLocalOperations(VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>)
