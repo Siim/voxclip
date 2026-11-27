@@ -55,6 +55,9 @@ const tokenPairs = [
   ['ui', 'accent.text', ['timeline.clipBand', 'timeline.track'], 'Mac playhead line in the active clip band'],
   ['text', 'accent.text', 'bg.surface', 'Mac 9 pt clip numbers on the timeline strip'],
   ['ui', 'timeline.waveform', ['timeline.keptBackground', 'timeline.track'], 'waveform bars on the kept-speech bed'],
+  ...Array.from({ length: 6 }, (_, index) => `recording.${index + 1}`)
+    .flatMap(foreground => ['bg.surface', 'timeline.lane', 'timeline.audioPiece']
+      .map(background => ['ui', foreground, background, 'recording chips, timeline regions, and waveform cores'])),
   ['ui', 'timeline.playhead', ['timeline.keptBackground', 'timeline.track']],
   ['ui', 'timeline.playhead', 'bg.sunken'],
   ['ui', 'timeline.clipBracket', 'bg.sunken'],
