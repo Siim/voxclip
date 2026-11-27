@@ -1049,7 +1049,7 @@ Both Cores replay `shared/fixtures/recordings/take-match-cases.json`. Regenerate
 
 ### 13.5 Recording shortcuts
 
-Build `TakeMatch` from the project clock in region order. Each region contributes its own words, with the clock's word IDs and local timings. **Start from recording** keeps the whole recording except takes flagged `restart` or `falseStart`, which split the kept runs into parts. It selects the new clip in the same edit and reports the new part IDs and omitted takes. The title uses the first seven kept words, as in Make Clip.
+Build `TakeMatch` from the project clock in region order. Each region contributes its own words, with the clock's word IDs and local timings. **Start from recording** keeps the whole recording except takes flagged `restart` or `falseStart`, which split the kept runs into parts. It selects the new clip in the same edit and reports the new part IDs and omitted takes. The title uses the first seven kept words, as in Make Clip. Show omitted lines in recording order beside their nearest kept parts, including before the first kept part. **Put Back** restores each line in place in one undo step.
 
 **Use version** replaces only the current take's range with the aligned span for the chosen recording. When there is a split, the first slice keeps the original ID; the later slices get new IDs. All slices inherit the part's reframe. **Add part** inserts a range after a word in the clip (splitting that part when needed), or appends if no word is supplied. Put Back uses Add part. `placement` returns the end of the preceding beat's version in the clip, or no word when the beat is absent.
 
