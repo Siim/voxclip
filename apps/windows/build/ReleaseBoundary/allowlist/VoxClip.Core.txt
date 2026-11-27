@@ -739,9 +739,14 @@ literal "-p"
 literal "-plan-fx-"
 literal "-story"
 literal "-zoom-"
+literal "/audio"
 literal "/cancel"
+literal "/kind"
+literal "/parts"
 literal "/payloads"
+literal "/reframe"
 literal "/status"
+literal "/video"
 literal "/with-timestamps"
 literal "ANTHROPIC_API_KEY"
 literal "ANTHROPIC_AUTH_TOKEN"
@@ -18880,16 +18885,19 @@ member VoxClip.Core.Services.Project.ProjectStore :: method public SaveAsync(Vox
 member VoxClip.Core.Services.Project.ProjectValidation :: field private Hash
 member VoxClip.Core.Services.Project.ProjectValidation :: field private Id
 member VoxClip.Core.Services.Project.ProjectValidation :: field private Slug
+member VoxClip.Core.Services.Project.ProjectValidation :: method internal Validate(System.Text.Json.JsonElement,bool)
 member VoxClip.Core.Services.Project.ProjectValidation :: method internal Validate(string,bool)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Array(System.Text.Json.JsonElement,System.Action`1<System.Text.Json.JsonElement>)
+member VoxClip.Core.Services.Project.ProjectValidation :: method private Array(System.Text.Json.JsonElement,string,System.Action`2<System.Text.Json.JsonElement,string>)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Boolean(System.Text.Json.JsonElement)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Choice(System.Text.Json.JsonElement,string[])
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Dictionary(System.Text.Json.JsonElement,System.Action`1<string>,System.Action`1<System.Text.Json.JsonElement>)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Nullable(System.Text.Json.JsonElement,System.Action`1<System.Text.Json.JsonElement>)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Number(System.Text.Json.JsonElement,double,double,bool)
-member VoxClip.Core.Services.Project.ProjectValidation :: method private Object(System.Text.Json.JsonElement,string,string)
+member VoxClip.Core.Services.Project.ProjectValidation :: method private Object(System.Text.Json.JsonElement,string,string,string)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Pattern(string,string)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Position(System.Text.Json.JsonElement)
+member VoxClip.Core.Services.Project.ProjectValidation :: method private Problem(string,string)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private RejectDuplicateKeys(System.Text.Json.JsonElement)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private RenderRecipe(System.Text.Json.JsonElement)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private Require(bool)
