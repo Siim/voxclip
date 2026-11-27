@@ -409,6 +409,8 @@ attribute VoxClip.Core.Domain.Editing.ClipRange :: property LeadInSeconds @ Syst
 attribute VoxClip.Core.Domain.Editing.ClipRange :: property Parts @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Editing.ClipRange :: property PlayParts @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Editing.EditPlan :: property PartSeams @ System.Text.Json.Serialization.JsonIgnoreAttribute()
+attribute VoxClip.Core.Domain.Editing.EditPlan :: property RecordingRegions @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.EditPlan :: property RecordingRegions @ System.Text.Json.Serialization.JsonIncludeAttribute()
 attribute VoxClip.Core.Domain.Editing.EditSegmentKind :: field public Pause @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("pause")
 attribute VoxClip.Core.Domain.Editing.EditSegmentKind :: field public Range @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("range")
 attribute VoxClip.Core.Domain.Editing.EditSegmentKind :: field public Word @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("word")
@@ -6173,12 +6175,17 @@ member VoxClip.Core.Domain.Editing.EditPlan :: field private gainParts
 member VoxClip.Core.Domain.Editing.EditPlan :: field private joins
 member VoxClip.Core.Domain.Editing.EditPlan :: field private kept
 member VoxClip.Core.Domain.Editing.EditPlan :: field private outputSamples
+member VoxClip.Core.Domain.Editing.EditPlan :: field private recordingRegions
 member VoxClip.Core.Domain.Editing.EditPlan :: field private sampleRate
 member VoxClip.Core.Domain.Editing.EditPlan :: field private sourceIndex
 member VoxClip.Core.Domain.Editing.EditPlan :: field private totalSamples
 member VoxClip.Core.Domain.Editing.EditPlan :: method internal MapTime(double,bool)
+member VoxClip.Core.Domain.Editing.EditPlan :: method internal get_CaptionSeams()
+member VoxClip.Core.Domain.Editing.EditPlan :: method internal get_RecordingRegions()
+member VoxClip.Core.Domain.Editing.EditPlan :: method internal get_RecordingSeams()
+member VoxClip.Core.Domain.Editing.EditPlan :: method internal set_RecordingRegions(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
 member VoxClip.Core.Domain.Editing.EditPlan :: method private .ctor(VoxClip.Core.Domain.Editing.EditPlan)
-member VoxClip.Core.Domain.Editing.EditPlan :: method private BuildGainParts(double,long,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
+member VoxClip.Core.Domain.Editing.EditPlan :: method private BuildGainParts(double,long,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
 member VoxClip.Core.Domain.Editing.EditPlan :: method private NormalizeJoins(double,long,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.Join>)
 member VoxClip.Core.Domain.Editing.EditPlan :: method private NormalizeOutputSamples(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>,long)
 member VoxClip.Core.Domain.Editing.EditPlan :: method private PrintMembers(System.Text.StringBuilder)
@@ -6405,10 +6412,14 @@ member VoxClip.Core.Domain.Editing.EditingLimits :: method internal ValidLength(
 member VoxClip.Core.Domain.Editing.EditingMath :: method internal ClampSample(double,double,long)
 member VoxClip.Core.Domain.Editing.EditingMath :: method internal Round(double)
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal Build(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditSegment>,double,double,double)
-member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal BuildJoins(double,long,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
+member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal BuildJoins(double,long,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
+member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal BuildScopedPlan(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditSegment>,VoxClip.Core.Domain.Editing.EditState,double,double)
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal BuildStoryPlan(VoxClip.Core.Domain.Editing.EditState,VoxClip.Core.Domain.Editing.ClipRange,double,double)
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal CutRange(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditSegment>,int,double,double)
+member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal Fades(double,long,VoxClip.Core.Domain.Editing.MediaInterval,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal FindSource`1(System.Collections.Generic.IReadOnlyList`1<!!0>,long,System.Func`2<!!0,long>)
+member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal RecordingSeams`1(System.Collections.Generic.IEnumerable`1<!!0>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>,System.Func`2<!!0,long>,System.Func`2<!!0,long>)
+member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal ScopedClipTimes(VoxClip.Core.Domain.Editing.EditState,int,int,System.Nullable`1<double>)
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal ShiftCaptions(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.CaptionWord>,long,double,bool)
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal SinglePartClips(VoxClip.Core.Domain.Editing.ClipRange)
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal SourceIndex(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
@@ -6416,6 +6427,8 @@ member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal StoryCaptio
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method internal Valid(VoxClip.Core.Domain.Editing.EditSegment)
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method private Complement(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Editing.MediaInterval>,long)
 member VoxClip.Core.Domain.Editing.EditingPlanner :: method private CutRange(VoxClip.Core.Domain.Editing.EditSegment,int,VoxClip.Core.Domain.Editing.EditingPlanner+SpeechLookup,double,double)
+member VoxClip.Core.Domain.Editing.EditingPlanner :: method private LocalClipTimes(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,int,int,System.Nullable`1<double>,VoxClip.Core.Domain.Editing.ProjectClock)
+member VoxClip.Core.Domain.Editing.EditingPlanner :: method private RecordingLocalTime(double,VoxClip.Core.Domain.Editing.ProjectClock+Region,double)
 member VoxClip.Core.Domain.Editing.EditingPlanner+SpeechLookup :: field internal EarlierEnds
 member VoxClip.Core.Domain.Editing.EditingPlanner+SpeechLookup :: field internal Positions
 member VoxClip.Core.Domain.Editing.EditingPlanner+SpeechLookup :: field internal Words
@@ -6538,6 +6551,7 @@ member VoxClip.Core.Domain.Editing.Pause :: method public set_Start(double)
 member VoxClip.Core.Domain.Editing.ProjectClock :: field private regionByWord
 member VoxClip.Core.Domain.Editing.ProjectClock :: method internal PrefixNumber(string)
 member VoxClip.Core.Domain.Editing.ProjectClock :: method internal Validate(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Editing.ProjectClock :: method internal get_SampleRegions()
 member VoxClip.Core.Domain.Editing.ProjectClock :: method private .ctor(int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.ProjectClock+Region>,VoxClip.Core.Domain.Transcript.Transcript,System.Collections.Generic.IReadOnlyDictionary`2<string,int>)
 member VoxClip.Core.Domain.Editing.ProjectClock :: method private Label(VoxClip.Core.Domain.Shared.MediaReference)
 member VoxClip.Core.Domain.Editing.ProjectClock :: method private Require(bool,string)
@@ -7502,12 +7516,14 @@ member VoxClip.Core.Domain.Editing.TimelinePieceKind :: field public Ai
 member VoxClip.Core.Domain.Editing.TimelinePieceKind :: field public Kept
 member VoxClip.Core.Domain.Editing.TimelinePieceKind :: field public value__
 member VoxClip.Core.Domain.Editing.TimelinePieces :: field private partSeams
+member VoxClip.Core.Domain.Editing.TimelinePieces :: field private recordingSeams
 member VoxClip.Core.Domain.Editing.TimelinePieces :: field private sourcePieces
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public .ctor(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Editing.TimelinePiece>)
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public .ctor(VoxClip.Core.Domain.VoiceLab.RenderTimeline)
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public Gaps(VoxClip.Core.Domain.Shared.TimeRange,double)
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public Indices(VoxClip.Core.Domain.Shared.TimeRange,VoxClip.Core.Domain.Editing.TimelineAxis)
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public IsPartSeam(int)
+member VoxClip.Core.Domain.Editing.TimelinePieces :: method public IsRecordingSeam(int)
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public IsSeam(int)
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public OnAxis(VoxClip.Core.Domain.Editing.TimelineAxis)
 member VoxClip.Core.Domain.Editing.TimelinePieces :: method public get_EditedDuration()
@@ -13899,6 +13915,8 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPieceKind :: field public valu
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: field private pieces
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: field private sourceIndex
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method internal MapTime(double,bool)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method internal get_RecordingSeams()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method internal set_RecordingSeams(System.Collections.Generic.IReadOnlyList`1<long>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method private get_EqualityContract()
@@ -13932,7 +13950,8 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public set_Scop
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public set_TotalSourceSamples(long)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public set_VideoCuts(System.Collections.Generic.IReadOnlyDictionary`2<string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabVideoCut>>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner :: method internal Build(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,string,VoxClip.Core.Domain.Editing.ClipRange)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner :: method private Concatenate(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan>,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,double,long)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner :: method private Concatenate(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan>,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,double,long,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner :: method private RecordingSeams(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPiece>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.MediaInterval>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner :: method public Build(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner+Replacement :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner+Replacement)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlanner+Replacement :: method private PrintMembers(System.Text.StringBuilder)
