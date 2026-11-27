@@ -75,7 +75,9 @@ extension InlineTranscription {
             let foundOnDraft = draftFind != nil && draftFind == model.findTask
             model.replaceTranscript(transcript, preserveFind: foundOnDraft)
             // A video of the owner teaches their voice's guard, on this Mac and free (ADR-R41).
-            model.app.voiceLabSession.learnFromTranscribed(model.project, media: model.sourceURL)
+            if model.recordingTranscriptRecipient == nil {
+                model.app.voiceLabSession.learnFromTranscribed(model.project, media: model.sourceURL)
+            }
             // On drop: a free transcription goes straight on to Find Clips when the AI is free too (design.md §6.7); in
             // Claude mode a newly opened video goes on after any transcription, then Claude makes its clips (§6.6).
             if (startedOnImport && request.cost == nil) || model.claudeModeWaitsForTranscript {
@@ -282,6 +284,7 @@ extension EditorModel {
         return findTask != previous
     }
     func replaceTranscript(_ transcript: Transcript, preserveFind: Bool = false) {
+        if let recordingTranscriptRecipient { recordingTranscriptRecipient(transcript); return }
         let source = project.media.source, previous = project.transcript
         guard closeRewrite(returnFocus: false, onDiscard: { [weak self] in
             guard let self, project.media.source == source, project.transcript == previous else { return }

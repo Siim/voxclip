@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import VoxClipCore
 
 @MainActor struct RecordingSwitcher: View {
@@ -10,21 +11,41 @@ import VoxClipCore
                 if let clip = editor.activeClip, editor.storyRecordingRegions.count > 1 {
                     chip(.playOrder) { Text("\(editor.scopeName(clip.id)) · play order") }
                 }
-                ForEach(Array(editor.recordingRegions.enumerated()), id: \.element.key) { index, region in
-                    chip(.recording(region.key)) {
-                        HStack(spacing: 5) {
-                            RecordingLabel(region: region)
-                            Text("· \(storyTakeTime(Double(region.durationSamples) / Double(editor.recordingClock?.sampleRate ?? 48_000)))")
-                            Text("· Transcribed").foregroundStyle(.secondary)
+                if editor.hasSeveralRecordings || editor.pendingRecording != nil {
+                    ForEach(Array(editor.recordingRegions.enumerated()), id: \.element.key) { index, region in
+                        chip(.recording(region.key)) {
+                            HStack(spacing: 5) {
+                                RecordingLabel(region: region)
+                                Text("· \(storyTakeTime(Double(region.durationSamples) / Double(editor.recordingClock?.sampleRate ?? 48_000)))")
+                                Text("· Transcribed").foregroundStyle(.secondary)
+                            }
+                        }
+                        .accessibilityLabel("Recording \(region.label), \(index + 1) of \(editor.recordingRegions.count), transcribed")
+                    }
+                }
+                if editor.hasSeveralRecordings { chip(.all) { Text("All") } }
+                if let pending = editor.pendingRecording {
+                    Text("\(pending.label) · \(pending.state)").font(.system(size: 11))
+                    if pending.transcriber.isRunning {
+                        Button("Cancel") { pending.transcriber.cancel() }
+                    } else if !pending.transcriber.isVisible {
+                        Button(pending.transcriber.paid ? "Transcribe with ElevenLabs" : "Transcribe on this Mac") {
+                            Task { await pending.transcriber.open() }
                         }
                     }
-                    .accessibilityLabel("Recording \(region.label), \(index + 1) of \(editor.recordingRegions.count), transcribed")
                 }
-                chip(.all) { Text("All") }
+                if editor.recordingImportTask != nil && editor.pendingRecording == nil { Text("Reading recording…").font(.system(size: 11)) }
+                AddRecordingMenu(editor: editor)
             }
             .padding(.horizontal, 12).padding(.vertical, 6)
         }
         .scrollIndicators(.hidden)
+        .dropDestination(for: URL.self) { urls, _ in
+            guard editor.addRecordingReason == nil, let url = urls.first, url.isFileURL,
+                  let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType, type.conforms(to: .movie) else { return false }
+            editor.addRecording(at: url)
+            return true
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Transcript recordings")
     }

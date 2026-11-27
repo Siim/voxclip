@@ -155,14 +155,17 @@ extension EditorModel {
         }
     }
 
-    @discardableResult func applyRecordingEdit(_ edit: RecordingEdit, message: String? = nil) -> Bool {
+    @discardableResult func applyRecordingEdit(_ edit: RecordingEdit, preparing base: Project? = nil, message: String? = nil) -> Bool {
         guard capabilities.edit else { return false }
         storyPartError = nil
-        switch RecordingEdits.apply(edit, project: project) {
+        switch RecordingEdits.apply(edit, project: base ?? project) {
         case .success(let outcome):
             guard let step = outcome.undoStep else { return false }
-            replace(step.after, name: step.name)
-            if let announcement = outcome.announcement ?? message { announce(announcement) }
+            let copy = step.after.edits.activeClipId != project.edits.activeClipId
+            replace(step.after, name: step.name, restoresRecordingScope: copy)
+            if copy, case .swapTake = edit, let title = activeClip?.title {
+                announce("Made \(title) to keep the lip sync")
+            } else if let announcement = outcome.announcement ?? message { announce(announcement) }
             return true
         case .failure(let refusal):
             storyPartError = refusal.message

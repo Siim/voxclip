@@ -137,17 +137,32 @@ import VoxClipCore
     @FocusState private var findFocused: Bool
     var body: some View {
         VStack(spacing: 0) {
-            if model.hasSeveralRecordings { RecordingSwitcher(editor: model) }
+            RecordingSwitcher(editor: model)
+            if let pending = model.pendingRecording {
+                if pending.transcriber.isVisible && !pending.transcriber.isRunning {
+                    InlineTranscriptionView(transcription: pending.transcriber)
+                }
+                if !pending.transcriber.isRunning {
+                    Button("Don't add \(pending.label)") { model.cancelRecordingImport() }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                }
+            }
+            if let reason = model.recordingImportError { InlineNotice(text: reason) }
             if let region = model.partPickRecording, let clip = model.activeClip {
                 RecordingPartPicker(editor: model, clip: clip, region: region)
             }
             // The scope bar's "Rewrite as" strip (design.md §6.3.1), always under the clip bar's field while Rewrite can run.
             if model.showsScopeToneStrip { ScopeToneStrip(model: model) }
-            if let reason = model.storyRewriteReason(), let clip = model.activeClip {
+            if let reason = model.storyRewriteReason(), model.activeClip != nil || model.recordingVoiceRegion() != nil {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(reason).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
-                    StoryPartClipButtons(model: model, clip: clip, includesAll: false)
+                    if let region = model.recordingVoiceRegion() {
+                        Button("Open \(region.label)") { model.openRecordingOnItsOwn(region) }
+                            .disabled(model.recordingIsMissing(region.key))
+                    } else if let clip = model.activeClip {
+                        StoryPartClipButtons(model: model, clip: clip, includesAll: false)
+                    }
                 }.font(VCType.small.font()).padding(.horizontal, 12).padding(.vertical, 4)
             }
             ConnectorConfirmationView(confirmation: model.sendConfirmation, model: model)

@@ -8,6 +8,9 @@ struct StoryTimelineLayout: Equatable {
         let display: Range<Double>
         let edited: Range<Double>?
         let firstWordTime: Double
+        var recording: ProjectClock.Region? = nil
+        var localTime: Double? = nil
+        var alternateRecordingShade = false
         var offset: Double { take.lowerBound - display.lowerBound }
     }
 
@@ -16,33 +19,58 @@ struct StoryTimelineLayout: Equatable {
         let range: Range<Double>
         let time: Double
         let jump: String?
+        var recording: ProjectClock.Region? = nil
+        var alternateRecordingShade = false
+        var crossRecording = false
+        var restartOut = false
 
-        var label: String { "\(position + 1) · \(storyTakeTime(time))" }
-        var seamLabel: String? { jump.map { "\($0) \(storyTakeTime(time))" } }
+        var label: String { "\(recording?.label ?? String(position + 1)) · \(storyTakeTime(time))" }
+        var seamLabel: String? {
+            guard let jump else { return nil }
+            if crossRecording, let recording { return "→ \(recording.label) \(storyTakeTime(time))" }
+            return "\(jump) \(storyTakeTime(time))" + (restartOut ? " · restart out" : "")
+        }
+        var gainLabel: String? {
+            guard let gain = recording?.gainDb, gain != 0 else { return nil }
+            return "\(gain < 0 ? "−" : "+")\(toFixed1(abs(gain))) dB"
+        }
     }
 
     let parts: [Part]
-    var length: Double { parts.last?.display.upperBound ?? 0 }
+    private let clockLength: Double?
+    var usesRecordingClock: Bool { clockLength != nil }
+    var length: Double { clockLength ?? parts.last?.display.upperBound ?? 0 }
 
     @MainActor init?(model: EditorModel) {
         guard let clip = model.activeClip, clip.parts != nil, let ranges = model.scopePartBounds else { return nil }
-        let words = model.words, duration = model.sourceDuration
+        let words = model.words, duration = model.recordingTimelineDuration
+        let clock = model.hasSeveralRecordings ? model.recordingClock : nil
+        let colored = model.storyRecordingRegions.count > 1
+        let rate = Double(clock?.sampleRate ?? 48_000)
+        clockLength = clock.map { Double($0.totalSamples) / Double($0.sampleRate) }
         let pieces = model.timelinePieces
         var next = 0.0
+        var previous: ProjectClock.Region?
+        var alternate = false
         parts = ranges.enumerated().compactMap { position, bounds in
+            let region = clock?.region(of: words[bounds.lowerBound].id)
+            let offset = Double(region?.offsetSamples ?? 0) / rate
             guard let times = try? clipTimes(words, startIndex: bounds.lowerBound, endIndex: bounds.upperBound,
                                              leadIn: position == 0 ? clip.leadInSeconds : nil) else { return nil }
-            let end = min(duration, times.end)
-            guard end > times.start else { return nil }
-            let take = times.start..<end
-            let display = next..<(next + end - times.start)
+            let start = max(offset, times.start), end = min(region.map { Double($0.endSample) / rate } ?? duration, times.end)
+            guard end > start else { return nil }
+            let take = start..<end
+            let display = clock == nil ? next..<(next + end - start) : take
             next = display.upperBound
+            alternate = colored && region != nil && previous == region && !alternate
+            previous = region
             let kept = pieces.pieces(on: .source)[pieces.indices(overlapping: take, on: .source)].filter { piece in
                 let tolerance = 1 / (model.renderTimeline?.sampleRate ?? 48_000)
                 return piece.source.upperBound - take.lowerBound > tolerance && take.upperBound - piece.source.lowerBound > tolerance
             }
             let edited = kept.first.flatMap { first in kept.last.map { first.edited.lowerBound..<$0.edited.upperBound } }
-            return Part(position: position, take: take, display: display, edited: edited, firstWordTime: words[bounds.lowerBound].start)
+            return Part(position: position, take: take, display: display, edited: edited, firstWordTime: words[bounds.lowerBound].start,
+                recording: colored ? region : nil, localTime: region.map { _ in words[bounds.lowerBound].start - offset }, alternateRecordingShade: alternate)
         }
     }
 
@@ -51,29 +79,35 @@ struct StoryTimelineLayout: Equatable {
         return parts.compactMap { part in
             guard let range = axis == .source ? part.display : part.edited else { return nil }
             let jump: String?
+            let cross = previous?.recording != nil && previous?.recording != part.recording
             if let previous {
                 if axis == .edited, let index = pieces.pieces.firstIndex(where: { $0.edited.lowerBound == range.lowerBound }), pieces.isPartSeam(at: index) {
                     jump = pieces.isBackwardPartSeam(at: index) ? "↶" : "↷"
                 } else { jump = part.take.lowerBound < previous.take.upperBound ? "↶" : "↷" }
             } else { jump = nil }
             previous = part
-            return Marker(position: part.position, range: range, time: part.firstWordTime, jump: jump)
+            return Marker(position: part.position, range: range, time: part.localTime ?? part.firstWordTime,
+                jump: axis == .source && usesRecordingClock ? nil : jump, recording: part.recording,
+                alternateRecordingShade: part.alternateRecordingShade, crossRecording: cross)
         }
     }
 
     func sourceTime(_ time: Double) -> Double {
+        if usesRecordingClock { return time.clamped(to: 0...length) }
         guard let part = parts.first(where: { time < $0.display.upperBound }) ?? parts.last else { return time }
         return (time + part.offset).clamped(to: part.take.lowerBound...part.take.upperBound)
     }
 
     func time(forSource time: Double) -> Double {
+        if usesRecordingClock { return time.clamped(to: 0...length) }
         let part = parts.first { $0.take.contains(time) } ?? parts.min { distance(time, $0.take) < distance(time, $1.take) }
         guard let part else { return time }
         return (time - part.offset).clamped(to: part.display.lowerBound...part.display.upperBound)
     }
 
     func offset(at time: Double) -> Double {
-        (parts.first { $0.display.contains(time) } ?? parts.last)?.offset ?? 0
+        if usesRecordingClock { return 0 }
+        return (parts.first { $0.display.contains(time) } ?? parts.last)?.offset ?? 0
     }
 
     func ranges(forSource range: Range<Double>) -> [Range<Double>] {

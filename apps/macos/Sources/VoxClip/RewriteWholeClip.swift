@@ -34,6 +34,7 @@ extension RewriteSession {
     }
 
     var wholeClipUnavailable: String? {
+        if let reason = editor.recordingVoiceReason(for: rewriteScope) { return reason }
         if let story = editor.storyClip(for: rewriteScope), let parts = story.parts {
             return StoryClipPresentation.lipSyncReason(partCount: parts.count)
         }

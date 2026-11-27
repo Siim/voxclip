@@ -563,6 +563,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored private var mediaCheck = 0
     /// The video's check answered without finding it: Locate… shows and the editor only reads.
     var mediaMissing: Bool { mediaChecked && !mediaResolved }
+    func markRecordingMediaReady() { mediaResolved = true; mediaChecked = true }
     /// The project has a transcript. Unlike `project`, views observe it, so a transcript
     /// that arrives or is undone redraws the transcript column.
     private(set) var transcribed = false
@@ -743,6 +744,14 @@ struct EditorRenderSnapshot {
     private(set) var recordingClock: ProjectClock?
     var recordingTranscriptChoice: RecordingTranscriptChoice?
     var partPickKey: String?
+    var pendingRecording: PendingSpokenRecording?
+    var recordingImportTask: Task<Void, Never>?
+    var recordingImportError: String?
+    @ObservationIgnored var recordingTranscriptRecipient: ((Transcript) -> Void)?
+    @ObservationIgnored var recordingMatchesClock: ProjectClock?
+    @ObservationIgnored var recordingMatches: TakeMatch.Result?
+    @ObservationIgnored var recordingAuditionTask: Task<Void, Never>?
+    @ObservationIgnored var recordingAuditionEnd: Double?
     var words: [TimedWord] { recordingClock?.words ?? project.transcript?.words ?? [] }
     var activeClip: ClipRange? { project.edits.clips.first { $0.id == project.edits.activeClipId } }
     var sortedClips: [ClipRange] {
@@ -841,6 +850,7 @@ struct EditorRenderSnapshot {
                 switch event {
                 case .time(let edited, let source):
                     playhead = edited; sourceTime = source
+                    if let stop = recordingAuditionEnd, edited >= stop { stopRecordingAudition() }
                     if let stop = previewStop, source >= stop { preview.pause(); previewStop = nil }
                     if let stop = storyPartPlaybackEnd, edited >= stop { preview.pause(); storyPartPlaybackEnd = nil }
                 case .playing(let playing): isPlaying = playing
@@ -874,6 +884,8 @@ struct EditorRenderSnapshot {
         if mediaUsable { await updatePreview(load: true); await transcription.openOnImport() }
     }
     func close() {
+        stopRecordingAudition(restore: false)
+        cancelRecordingImport()
         resetTimelineEditor()
         motionCueEditing = nil
         musicPanel.reset()
@@ -1076,7 +1088,7 @@ struct EditorRenderSnapshot {
         let total = Int64(max(0, duration) * 48_000)
         return EditPlan(sampleRate: 48_000, totalSamples: total, cuts: [], kept: total > 0 ? [MediaInterval(startSample: 0, endSample: total)] : [])
     }
-    func replace(_ newProject: Project, name: String, restoringSnapshot: Bool = false) {
+    func replace(_ newProject: Project, name: String, restoringSnapshot: Bool = false, restoresRecordingScope: Bool = false) {
         // A Versions-browser version is read-only.
         guard capabilities.writable, capabilities.media || name == "Locate media" || onlyCaptionPositionChanged(newProject) else { return }
         // The title follows the document's name, not the edit history (design §2), so
@@ -1085,7 +1097,7 @@ struct EditorRenderSnapshot {
         newProject.title = project.title
         // Undo and Redo never switch tabs (impl-plan §3.3): a restored snapshot keeps the
         // current scope while it still has that clip, else Full Take.
-        if restoringSnapshot { newProject.edits.activeClipId = scopeKept(in: newProject) }
+        if restoringSnapshot, !restoresRecordingScope { newProject.edits.activeClipId = scopeKept(in: newProject) }
         guard newProject != project else { return }
         preview.pause(); isPlaying = false
         let previous = project
@@ -1098,7 +1110,9 @@ struct EditorRenderSnapshot {
             if group.base == nil { group.base = previous }
         } else {
             if !restoringSnapshot, let group = undoGroup { flush(group) }
-            undoManager?.registerUndo(withTarget: self) { model in model.replace(previous, name: name, restoringSnapshot: true) }
+            undoManager?.registerUndo(withTarget: self) { model in
+                model.replace(previous, name: name, restoringSnapshot: true, restoresRecordingScope: restoresRecordingScope)
+            }
             undoManager?.setActionName(name)
             #if DEBUG
             undoSteps += 1
@@ -1124,6 +1138,7 @@ struct EditorRenderSnapshot {
     }
     /// Updates the preview a moment after a project change, after checking a changed video first.
     func schedulePreviewUpdate(mediaChanged: Bool) {
+        stopRecordingAudition(restore: false)
         updateTask?.cancel()
         updateTask = Task { [weak self] in
             guard let self else { return }
@@ -1137,6 +1152,7 @@ struct EditorRenderSnapshot {
             } catch is CancellationError {} catch { previewError = await app.safeError(error, context: .preview) }
         }
     }
+    func cancelPendingPreviewUpdate() { updateTask?.cancel() }
     #if DEBUG
     func waitForPendingPreviewForAudit() async { await updateTask?.value }
     func markMediaCheckedForAudit() { mediaChecked = true }
@@ -1627,6 +1643,7 @@ struct EditorRenderSnapshot {
         }
     }
     func transport(_ key: String, shift: Bool = false) {
+        if recordingAuditionTask != nil { stopRecordingAudition(); return }
         storyPartPlaybackEnd = nil
         if [" ", "l", "p"].contains(key.lowercased()) { rewrite?.takePlan?.stopAudition() }
         // Saving an open correction pauses (`apply`), so Space and L toggle from the state before the save.

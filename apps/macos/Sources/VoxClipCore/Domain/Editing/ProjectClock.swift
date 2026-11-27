@@ -155,7 +155,7 @@ public struct ProjectClock: Sendable, Equatable {
         return Int(exactly: EditingPrimitives.jsRound(seconds * Double(rate)))
     }
 
-    private static func label(_ reference: MediaReference) -> String {
+    public static func label(_ reference: MediaReference) -> String {
         let path = reference.absolutePath.replacingOccurrences(of: "\\", with: "/")
         let url = URL(fileURLWithPath: path)
         let stem = url.deletingPathExtension().lastPathComponent

@@ -205,6 +205,7 @@ import VoxClipMedia
         }
         pendingAlignment = nil
         startedOnImport = false
+        if model.recordingTranscriptRecipient != nil { remember = false }
         revision += 1
         let request = revision
         downloadBaseline = nil
@@ -228,7 +229,7 @@ import VoxClipMedia
         guard request == revision, !Task.isCancelled else { return }
         if automatic && preferred != "ask" && !again && !paid && readiness == .ready && (language != "auto" || engine == "local") {
             startApprovedRun()
-            startedOnImport = activeRun != nil
+            startedOnImport = activeRun != nil && model.recordingTranscriptRecipient == nil
         }
     }
     func startLocalForRecordingFolder() async -> Bool {

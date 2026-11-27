@@ -77,11 +77,11 @@ extension EditorModel {
         return storyRecordingRegions.first.map { .recording($0.key) } ?? .all
     }
 
-    func chooseRecordingTranscript(_ choice: RecordingTranscriptChoice, scrollTo wordID: String? = nil) {
+    func chooseRecordingTranscript(_ choice: RecordingTranscriptChoice, scrollTo wordID: String? = nil, announceChange: Bool = true) {
         recordingTranscriptChoice = choice
         outlineScrollWordID = wordID
         scopeScrollRevision += 1
-        if case .recording(let key) = choice, let index = recordingRegions.firstIndex(where: { $0.key == key }) {
+        if announceChange, case .recording(let key) = choice, let index = recordingRegions.firstIndex(where: { $0.key == key }) {
             announce("Showing recording \(recordingRegions[index].label), \(index + 1) of \(recordingRegions.count)")
         }
     }

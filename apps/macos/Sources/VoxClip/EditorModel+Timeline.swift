@@ -29,7 +29,12 @@ extension EditorModel {
     }
 
     /// How long the axis runs: the scope's output on Edited, the take on Source.
-    func timelineLength(on axis: TimelineAxis) -> Double { axis == .edited ? duration : storyTimeline?.length ?? sourceDuration }
+    var recordingTimelineDuration: Double {
+        guard hasSeveralRecordings, let clock = recordingClock else { return sourceDuration }
+        return Double(clock.totalSamples) / Double(clock.sampleRate)
+    }
+
+    func timelineLength(on axis: TimelineAxis) -> Double { axis == .edited ? duration : storyTimeline?.length ?? recordingTimelineDuration }
 
     func timelineDisplayRange(on axis: TimelineAxis) -> ClosedRange<Double> {
         if storyTimeline != nil { return 0...max(0, timelineLength(on: axis)) }
@@ -38,7 +43,8 @@ extension EditorModel {
     }
 
     var timelineOverviewRange: ClosedRange<Double> {
-        focusesClip && storyTimeline == nil ? scopeSourceRange ?? 0...max(0, sourceDuration) : 0...max(0, sourceDuration)
+        let full = 0...max(0, recordingTimelineDuration)
+        return focusesClip && storyTimeline == nil && !hasSeveralRecordings ? scopeSourceRange ?? full : full
     }
 
     /// The playhead slider's spoken value (design §5.2), on the axis the timeline shows.
@@ -55,7 +61,7 @@ extension EditorModel {
             if axis == .source { return storyTimeline.sourceTime(time) }
             return renderTimeline?.sourceTime(time.clamped(to: 0...max(0, duration))) ?? storyTimeline.sourceTime(time)
         }
-        guard axis == .edited else { return time.clamped(to: 0...max(0, sourceDuration)) }
+        guard axis == .edited else { return time.clamped(to: 0...max(0, recordingTimelineDuration)) }
         if time <= 0 { return scopeBounds.map { words[$0.lowerBound].start } ?? 0 }
         if time >= duration { return scopeBounds.map { words[$0.upperBound].end } ?? sourceDuration }
         let mapped: Double = renderTimeline?.sourceTime(time) ?? time
@@ -91,7 +97,7 @@ extension EditorModel {
     /// or in the whole take on Full Take, that no piece plays: cut words, and the cut part of
     /// a cut pause (the planner keeps a little of it, so one can end just inside Out).
     func timelineRemovedRanges(_ pieces: TimelinePieces) -> [Range<Double>] {
-        pieces.gaps(within: scopeSourceRange.map { $0.lowerBound..<$0.upperBound } ?? 0..<max(0, sourceDuration))
+        pieces.gaps(within: scopeSourceRange.map { $0.lowerBound..<$0.upperBound } ?? 0..<max(0, recordingTimelineDuration))
     }
 
     /// The scope's kept words in take time, in order: A1's stand-in when there is no

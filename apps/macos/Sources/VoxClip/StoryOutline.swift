@@ -114,23 +114,44 @@ import VoxClipCore
             }
             if editor.hasSeveralRecordings {
                 ForEach(editor.recordingRegions, id: \.key) { region in
+                    let missing = editor.recordingMissingReason(region)
+                    let removal = region.prefix.isEmpty ? nil : editor.removeRecordingReason(region)
                     HStack(spacing: 4) {
                         Button { editor.pickPart(from: region) } label: { Label("Add a part from \(region.label)", systemImage: "plus") }
-                            .disabled(!editor.capabilities.edit)
+                            .disabled(!editor.capabilities.edit || missing != nil)
                         Menu {
                             Button("Use whole recording as a part") {
                                 guard let clip = editor.activeClip,
                                       let first = editor.words.first(where: { editor.recordingClock?.region(of: $0.id) == region }),
                                       let last = editor.words.last(where: { editor.recordingClock?.region(of: $0.id) == region }) else { return }
                                 editor.addRecordingPart(ClipPart(id: UUID().uuidString.lowercased(), startWordId: first.id, endWordId: last.id), to: clip)
-                            }.disabled(!editor.capabilities.edit)
+                            }.disabled(!editor.capabilities.edit || missing != nil)
                             Button("Show in transcript") { editor.chooseRecordingTranscript(.recording(region.key)) }
+                            if !region.prefix.isEmpty {
+                                Button("Remove recording \(region.label)") { editor.applyRecordingEdit(.removeSpokenSource(key: region.key)) }
+                                    .disabled(removal != nil)
+                            }
                         } label: { Image(systemName: "ellipsis") }
                         .menuStyle(.borderlessButton).fixedSize()
                         .accessibilityLabel("Options for recording \(region.label)")
                     }
+                    if let missing {
+                        Text(missing).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Button("Locate…") { editor.locateRecording(region) }
+                    }
+                    if let removal {
+                        Text(removal).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
+            if let pending = editor.pendingRecording, !pending.transcriber.isRunning {
+                Button("Add a part from \(pending.label)") {}.disabled(true)
+                Text("\(pending.label) isn't transcribed yet.").font(.system(size: 11)).foregroundStyle(.secondary)
+                Button(pending.transcriber.paid ? "Transcribe with ElevenLabs" : "Transcribe on this Mac") {
+                    Task { await pending.transcriber.open() }
+                }
+            }
+            AddRecordingMenu(editor: editor)
         }
         .padding(.vertical, 4)
     }

@@ -44,7 +44,8 @@ import VoxClipCore
 
     var body: some View {
         let price = estimates
-        let reason = StoryClipPresentation.lipSyncReason(partCount: clip.playParts.count)
+        let recordingReason = model.recordingVoiceReason(for: .clip(clip.id))
+        let reason = recordingReason ?? StoryClipPresentation.lipSyncReason(partCount: clip.playParts.count)
         let priceLine = price.flatMap { estimate -> String? in
             guard let voice = estimate.voice.usd, let lipsync = estimate.lipsync.usd else { return nil }
             return "voice \(VoiceLabCostPresentation.format(voice)) + lip sync \(VoiceLabCostPresentation.format(lipsync))"
@@ -52,13 +53,18 @@ import VoxClipCore
         let actionTitle = price.flatMap { $0.usd }.map { "Revoice Whole Clip · \(VoiceLabCostPresentation.format($0))" } ?? "Revoice Whole Clip"
         VStack(alignment: .leading, spacing: 12) {
             Text("How should it sound?").font(VCType.callout.font(.semibold)).accessibilityAddTraits(.isHeader)
-            option("Only the changed phrases", detail: "your recording stays", reason: StoryClipPresentation.rewriteReason)
+            option("Only the changed phrases", detail: "your recording stays", reason: recordingReason ?? StoryClipPresentation.rewriteReason)
             option("The whole clip in your voice, lip-synced", detail: priceLine, reason: reason)
             StoryPartClipButtons(model: model, clip: clip)
             Button(actionTitle) {}.disabled(true).accessibilityHint(reason)
                 .columnLayoutEvidence("voice.story.revoice", text: actionTitle)
-            Text("Not available on a story clip yet. Phrases you already revoiced still play in their parts.")
-                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if let recordingReason, let region = model.recordingVoiceRegion(for: .clip(clip.id)) {
+                Text(recordingReason).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Button("Open \(region.label)") { model.openRecordingOnItsOwn(region) }.disabled(model.recordingIsMissing(region.key))
+            } else {
+                Text("Not available on a story clip yet. Phrases you already revoiced still play in their parts.")
+                    .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
         }
         .font(VCType.small.font())
         .frame(maxWidth: .infinity, alignment: .leading)

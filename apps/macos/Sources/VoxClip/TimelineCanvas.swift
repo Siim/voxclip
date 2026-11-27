@@ -114,6 +114,9 @@ struct TimelineContent: Equatable {
     var clips: [TimelineOverviewClip] = []
     var story: StoryTimelineLayout?
     var partMarkers: [StoryTimelineLayout.Marker] = []
+    var recordingRegions: [ProjectClock.Region] = []
+    var recordingGaps: [Range<Double>] = []
+    var recordingRate = 48_000.0
     /// The scope's pieces and the take's waveform, for A1, and on Source the cut ranges in it.
     var pieces = TimelinePieces([])
     var waveform: WaveformData?
@@ -156,9 +159,12 @@ struct TimelineContent: Equatable {
     var trackLanes: [TimelineLane] { [captions, effects, pictures, motion, video, audio, sounds, music] }
     var connectedLanes: [TimelineConnectedLane] { [effects, pictures, motion, sounds, music] }
     func header(_ lane: TimelineItemLane) -> TrackHeaderView { headers[lane.index] }
+    private var overviewExtraHeight: CGFloat { CGFloat(content.recordingRegions.count) * TimelineOverviewLane.recordingRowHeight }
+    var rulerRow: TimelineMetrics.Row { .init(y: TimelineMetrics.ruler.y + overviewExtraHeight, height: TimelineMetrics.ruler.height) }
     var trackRows: [TimelineMetrics.Row] {
         let counts = content.itemLayout?.rowCounts ?? [:]
         return TimelineMetrics.rows(trackHeight, counts: counts.filter { $0.key != .video && $0.key != .voice })
+            .map { .init(y: $0.y + overviewExtraHeight, height: $0.height) }
     }
     let horizontalScroller = TimelineScroller()
     let verticalScroller = TimelineScroller()
@@ -278,21 +284,23 @@ struct TimelineContent: Equatable {
 
     private func layoutLanes() {
         let width = bounds.width
-        overview.frame = NSRect(x: 0, y: TimelineMetrics.overview.y, width: width, height: TimelineMetrics.overview.height)
-        ruler.frame = NSRect(x: 0, y: TimelineMetrics.ruler.y, width: width, height: TimelineMetrics.ruler.height)
-        bed.frame = NSRect(x: 0, y: TimelineMetrics.ruler.maxY, width: width, height: max(0, bounds.height - TimelineMetrics.ruler.maxY))
+        overview.frame = NSRect(x: 0, y: TimelineMetrics.overview.y, width: width, height: TimelineMetrics.overview.height + overviewExtraHeight)
+        ruler.frame = NSRect(x: 0, y: rulerRow.y, width: width, height: rulerRow.height)
+        bed.frame = NSRect(x: 0, y: rulerRow.maxY, width: width, height: max(0, bounds.height - rulerRow.maxY))
         let rows = trackRows
-        let trackRoom = max(0, bounds.height - TimelineMetrics.ruler.maxY - 10)
-        trackClip.frame = NSRect(x: 0, y: TimelineMetrics.ruler.maxY, width: width, height: trackRoom)
+        let trackRoom = max(0, bounds.height - rulerRow.maxY - 10)
+        trackClip.frame = NSRect(x: 0, y: rulerRow.maxY, width: width, height: trackRoom)
         verticalOffset = verticalOffset.clamped(to: 0...verticalMaximum)
         for (index, lane) in trackLanes.enumerated() {
             let row = rows[index]
-            lane.frame = NSRect(x: 0, y: row.y - TimelineMetrics.ruler.maxY - verticalOffset, width: width, height: row.height)
+            lane.frame = NSRect(x: 0, y: row.y - rulerRow.maxY - verticalOffset, width: width, height: row.height)
             headers[index].frame = NSRect(x: 0, y: lane.frame.minY, width: headerWidth - 1, height: row.height)
         }
         for lane in [overview, ruler, bed] + trackLanes { lane.headerWidth = headerWidth }
         overlay.headerWidth = headerWidth
-        overlay.line.frame.size.height = max(0, min(trackClip.frame.maxY, rows.last!.maxY - verticalOffset) - TimelineMetrics.ruler.maxY + 1)
+        overlay.head.frame.origin.y = rulerRow.y + 11
+        overlay.line.frame.origin.y = rulerRow.maxY - 1
+        overlay.line.frame.size.height = max(0, min(trackClip.frame.maxY, rows.last!.maxY - verticalOffset) - rulerRow.maxY + 1)
         overlay.frame = bounds
         itemOverlay.frame = bounds
         if abs(viewport.width - laneWidth) > 0.5 {
@@ -317,7 +325,7 @@ struct TimelineContent: Equatable {
         var next = TimelineContent()
         next.axis = axis
         next.length = model.timelineLength(on: axis)
-        next.takeLength = model.sourceDuration
+        next.takeLength = model.recordingTimelineDuration
         next.displayRange = model.timelineDisplayRange(on: axis)
         next.overviewRange = model.timelineOverviewRange
         next.showsSurroundingContext = !model.focusesClip
@@ -330,6 +338,11 @@ struct TimelineContent: Equatable {
         next.pieces = model.timelinePieces
         next.story = model.storyTimeline
         next.partMarkers = next.story?.markers(on: axis, pieces: next.pieces) ?? []
+        if model.hasSeveralRecordings, let clock = model.recordingClock {
+            next.recordingRegions = clock.regions
+            next.recordingRate = Double(clock.sampleRate)
+            next.recordingGaps = clock.guardGaps.map { Double($0.lowerBound) / next.recordingRate..<Double($0.upperBound) / next.recordingRate }
+        }
         next.waveform = model.waveform
         next.removed = axis == .source ? model.timelineRemovedRanges(next.pieces) : []
         next.words = next.waveform == nil ? model.timelineKeptWords : []
@@ -360,7 +373,7 @@ struct TimelineContent: Equatable {
                 next.musicGraphics = model.timelineMusicGraphics(track: track, plan: plan, staged: contour)
             }
         }
-        if axis == .source, let story = next.story { next.useStorySource(story) }
+        if axis == .source, let story = next.story, !story.usesRecordingClock { next.useStorySource(story) }
         video.setSource(model.timelineFilmstripSource)
         video.mediaName = model.timelineMediaName
         let previous = content
@@ -384,7 +397,9 @@ struct TimelineContent: Equatable {
         } else if next.displayRange != previous.displayRange, !next.showsSurroundingContext {
             viewport = fitted ? fittedViewport(for: next) : viewport.panned(by: 0, within: next.displayRange)
         }
-        if next.itemLayout?.rowCounts != previous.itemLayout?.rowCounts { layoutLanes() } else { apply() }
+        if next.itemLayout?.rowCounts != previous.itemLayout?.rowCounts || next.recordingRegions.count != previous.recordingRegions.count {
+            layoutLanes()
+        } else { apply() }
     }
     /// The first content has been taken, so later ones keep the viewport unless the scope changes.
     private var rendered = false
@@ -422,7 +437,7 @@ struct TimelineContent: Equatable {
         let overviewX = overview.x(playheadSource)
         overlay.movePlayhead(laneX: viewport.x(playheadTime), overviewX: overviewX)
         let x = headerWidth + viewport.x(playheadTime).clamped(to: 0...laneWidth)
-        playheadElement.setAccessibilityFrameInParentSpace(NSRect(x: x - 5, y: TimelineMetrics.ruler.y, width: 10, height: max(22, trackClip.frame.maxY - TimelineMetrics.ruler.y)))
+        playheadElement.setAccessibilityFrameInParentSpace(NSRect(x: x - 5, y: rulerRow.y, width: 10, height: max(22, trackClip.frame.maxY - rulerRow.y)))
         overlay.placeOverviewLabels(overview.labels(playheadX: overviewX), top: TimelineMetrics.overview.y)
     }
 
@@ -448,27 +463,31 @@ struct TimelineContent: Equatable {
         let windowUpper = window.upperBound.clamped(to: overviewRange)
         overview.state = TimelineOverviewLane.State(clips: content.clips, takeLength: content.takeLength,
                                                     sourceRange: overviewRange, window: windowLower...max(windowLower, windowUpper),
-                                                    takeLabel: durationLabel(overviewRange.upperBound - overviewRange.lowerBound))
+                                                    takeLabel: durationLabel(overviewRange.upperBound - overviewRange.lowerBound),
+                                                    recordings: content.recordingRegions, parts: content.story?.parts ?? [], rate: content.recordingRate)
         ruler.state = TimelineRulerLane.State(viewport: viewport, inOut: shownInOut, selection: content.selection, changes: content.changes,
-                                             trimHint: interaction.trimHint, partMarkers: content.partMarkers, storySource: content.axis == .source ? content.story : nil)
+                                             trimHint: interaction.trimHint, partMarkers: content.partMarkers, storySource: content.axis == .source ? content.story : nil,
+                                             recordings: content.recordingRegions, recordingGaps: content.recordingGaps, recordingRate: content.recordingRate)
         bed.state = TimelineTrackBed.State(width: Double(bounds.width))
         // On Source A1 dims outside the In/Out the ruler shows, the dragged edge included.
         audio.state = TimelineAudioLane.State(viewport: viewport, pieces: content.pieces, waveform: content.waveform, removed: content.removed,
                                               words: content.words, inOut: content.axis == .source ? shownInOut : nil,
                                               clip: content.axis == .source ? content.inOut : nil, takeLength: content.takeLength,
                                               showsSurroundingContext: content.showsSurroundingContext, partMarkers: content.partMarkers,
-                                              storySource: content.axis == .source ? content.story : nil)
+                                              storySource: content.axis == .source ? content.story : nil,
+                                              recordings: content.recordingRegions, recordingGaps: content.recordingGaps, recordingRate: content.recordingRate)
         video.state = VideoLane.State(viewport: viewport, pieces: content.pieces, inOut: content.axis == .source ? shownInOut : nil,
                                       clip: content.axis == .source ? content.inOut : nil, takeLength: content.takeLength,
                                       showsSurroundingContext: content.showsSurroundingContext, partMarkers: content.partMarkers,
-                                      storySource: content.axis == .source ? content.story : nil)
+                                      storySource: content.axis == .source ? content.story : nil,
+                                      recordings: content.recordingRegions, recordingGaps: content.recordingGaps, recordingRate: content.recordingRate)
         video.requestFrames()
         captions.state = CaptionLane.State(viewport: viewport, cues: content.cues, inOut: content.axis == .source ? shownInOut : nil)
         updateTimelineItems()
         updateScrollers()
         updateEdgeCursors()
         onZoom?(zoomValue)
-        let top = TimelineMetrics.ruler.maxY
+        let top = rulerRow.maxY
         overlay.showWash(content.selection.map { range in
             let lower = viewport.x(range.lowerBound), upper = viewport.x(range.upperBound)
             return NSRect(x: lower, y: top, width: max(0, upper - lower), height: max(0, min(trackClip.frame.maxY, trackRows.last!.maxY - verticalOffset) - top))
@@ -485,7 +504,7 @@ struct TimelineContent: Equatable {
     private func updateEdgeCursors() {
         let rulerRects: [NSRect] = content.inOut.flatMap { edges in
             guard model.capabilities.edit, content.story == nil else { return nil }
-            let lane = NSRect(x: headerWidth, y: TimelineMetrics.ruler.y, width: laneWidth, height: TimelineMetrics.ruler.height)
+            let lane = NSRect(x: headerWidth, y: rulerRow.y, width: laneWidth, height: rulerRow.height)
             return [edges.lowerBound, edges.upperBound].map { time in
                 NSRect(x: headerWidth + viewport.x(time) - TimelineMetrics.trimReach, y: lane.minY,
                        width: 2 * TimelineMetrics.trimReach, height: lane.height).intersection(lane)
@@ -516,7 +535,7 @@ struct TimelineContent: Equatable {
     func auditViewport(_ next: TimelineViewport) { fitted = false; viewport = next; apply() }
     #endif
     var verticalMaximum: Double {
-        max(0, Double(trackRows.last!.maxY - TimelineMetrics.ruler.maxY) - trackClip.bounds.height)
+        max(0, Double(trackRows.last!.maxY - rulerRow.maxY) - trackClip.bounds.height)
     }
     func fitClip() {
         interaction.cancel()
@@ -530,8 +549,8 @@ struct TimelineContent: Equatable {
             viewport = viewport.showing(time).panned(by: 0, within: content.displayRange)
         }
         let available = trackClip.frame.height
-        let lower = top - TimelineMetrics.ruler.maxY
-        let upper = bottom - TimelineMetrics.ruler.maxY - available
+        let lower = top - rulerRow.maxY
+        let upper = bottom - rulerRow.maxY - available
         verticalOffset = min(lower, max(upper, verticalOffset)).clamped(to: 0...verticalMaximum)
         layoutLanes()
     }
@@ -569,7 +588,7 @@ struct TimelineContent: Equatable {
         let visible = viewport.width / viewport.ptPerSecond
         horizontalScroller.frame = NSRect(x: headerWidth + 4, y: bounds.height - 8, width: max(0, bounds.width - headerWidth - 12), height: 8)
         horizontalScroller.update(portion: visible / total, fraction: (viewport.origin - content.displayRange.lowerBound + 1) / max(1e-9, total - visible))
-        verticalScroller.frame = NSRect(x: bounds.width - 8, y: TimelineMetrics.ruler.maxY, width: 8, height: trackClip.bounds.height)
+        verticalScroller.frame = NSRect(x: bounds.width - 8, y: rulerRow.maxY, width: 8, height: trackClip.bounds.height)
         verticalScroller.update(portion: trackClip.bounds.height / max(1, trackClip.bounds.height + verticalMaximum), fraction: verticalOffset / max(1, verticalMaximum))
     }
     override func magnify(with event: NSEvent) {
@@ -637,8 +656,8 @@ struct TimelineContent: Equatable {
     private func layoutAccessibility() {
         let inOut = shownInOut
         let playheadX = headerWidth + viewport.x(playheadTime).clamped(to: 0...laneWidth)
-        playheadElement.setAccessibilityFrameInParentSpace(NSRect(x: playheadX - 5, y: TimelineMetrics.ruler.y, width: 10, height: max(22, trackClip.frame.maxY - TimelineMetrics.ruler.y)))
-        let laneRuler = NSRect(x: headerWidth, y: TimelineMetrics.ruler.y, width: laneWidth, height: TimelineMetrics.ruler.height)
+        playheadElement.setAccessibilityFrameInParentSpace(NSRect(x: playheadX - 5, y: rulerRow.y, width: 10, height: max(22, trackClip.frame.maxY - rulerRow.y)))
+        let laneRuler = NSRect(x: headerWidth, y: rulerRow.y, width: laneWidth, height: rulerRow.height)
         let selection = content.selection.map { NSRect(x: headerWidth + viewport.x($0.lowerBound), y: laneRuler.minY, width: max(1, viewport.x($0.upperBound) - viewport.x($0.lowerBound)), height: laneRuler.height).intersection(laneRuler) } ?? laneRuler
         selectionElement.setAccessibilityFrameInParentSpace(selection.isNull ? laneRuler : selection)
         if let inOut, let number = model.activeClip.flatMap({ model.clipNumber($0.id) }) {
@@ -646,7 +665,7 @@ struct TimelineContent: Equatable {
             outElement.setAccessibilityLabel("Clip \(number) end")
             for (element, time) in [(inElement, inOut.lowerBound), (outElement, inOut.upperBound)] {
                 let x = headerWidth + viewport.x(time)
-                element.setAccessibilityFrameInParentSpace(NSRect(x: x - 5, y: TimelineMetrics.ruler.y, width: 10, height: TimelineMetrics.ruler.height))
+                element.setAccessibilityFrameInParentSpace(NSRect(x: x - 5, y: rulerRow.y, width: 10, height: rulerRow.height))
             }
         }
     }
@@ -751,9 +770,10 @@ final class TimelineSliderElement: NSAccessibilityElement {
             let left = headerWidth + viewport.x(part.range.lowerBound)
             let right = headerWidth + viewport.x(part.range.upperBound)
             guard right > headerWidth, left < bounds.width else { continue }
-            let color = StoryClipPresentation.nsColor(part.position)
+            let color = part.recording.map { RecordingPresentation.nsColor($0, alternate: part.alternateRecordingShade) }
+                ?? StoryClipPresentation.nsColor(part.position)
             if tint {
-                context.setFillColor(color.withAlphaComponent(0.16).cgColor)
+                context.setFillColor(color.withAlphaComponent(part.alternateRecordingShade ? 0.10 : 0.16).cgColor)
                 context.fill(CGRect(x: left, y: 0, width: right - left, height: bounds.height))
                 context.setFillColor(color.cgColor)
                 context.fill(CGRect(x: left, y: 0, width: right - left, height: 2))
@@ -768,6 +788,10 @@ final class TimelineSliderElement: NSAccessibilityElement {
                     if x >= headerWidth { drawPartLabel(seam, x: x, right: bounds.width, font: font, color: .white) }
                 }
             }
+            if jumps, let gain = part.gainLabel, left >= headerWidth {
+                let labelWidth = (part.seamLabel.map { Self.width($0, font: font) + 11 } ?? 4)
+                drawPartLabel(gain, x: left + labelWidth, right: right, font: font, color: color)
+            }
             if labels, left >= headerWidth {
                 let title = right - left >= Self.width(part.label, font: font) + 8 ? part.label : "\(part.position + 1)"
                 drawPartLabel(title, x: left + 4, right: right, font: font, color: color)
@@ -776,7 +800,37 @@ final class TimelineSliderElement: NSAccessibilityElement {
         return seams
     }
 
-    private func drawPartLabel(_ label: String, x: CGFloat, right: CGFloat, font: NSFont, color: NSColor) {
+    func drawRecordingGaps(_ gaps: [Range<Double>], viewport: TimelineViewport, context: CGContext, label: Bool = false) {
+        guard viewport.axis == .source else { return }
+        for gap in gaps {
+            let leading = headerWidth + viewport.x(gap.lowerBound)
+            let trailing = headerWidth + viewport.x(gap.upperBound)
+            let left = max(headerWidth, leading), right = min(bounds.width, trailing)
+            guard right > left else { continue }
+            let rect = CGRect(x: left, y: 0, width: right - left, height: bounds.height)
+            context.saveGState()
+            context.clip(to: rect)
+            context.setFillColor(DesignValues.nsColor("bg.sunken").cgColor)
+            context.fill(rect)
+            context.setStrokeColor(DesignValues.nsColor("text.tertiary").withAlphaComponent(0.45).cgColor)
+            context.setLineWidth(1)
+            for x in stride(from: rect.minX - rect.height, to: rect.maxX, by: 5) {
+                context.move(to: CGPoint(x: x, y: rect.maxY))
+                context.addLine(to: CGPoint(x: x + rect.height, y: 0))
+            }
+            context.strokePath()
+            if label {
+                let title = "Between recordings"
+                let font = VCType.mini.nsMono()
+                if Self.width(title, font: font) + 8 < rect.width {
+                    drawPartLabel(title, x: left + 3, right: right, font: font, color: DesignValues.nsColor("text.primary"))
+                }
+            }
+            context.restoreGState()
+        }
+    }
+
+    func drawPartLabel(_ label: String, x: CGFloat, right: CGFloat, font: NSFont, color: NSColor) {
         let width = Self.width(label, font: font) + 5
         guard x + width <= min(right, bounds.width) else { return }
         NSColor.black.withAlphaComponent(0.7).setFill()
@@ -804,6 +858,7 @@ struct TimelineOverviewLabel: Equatable {
 /// The overview strip (notes.md §6): the whole take as a flat lane, every clip as a block
 /// and the visible window. The overlay draws the block labels and the playhead.
 @MainActor final class TimelineOverviewLane: TimelineLane {
+    static let recordingRowHeight: CGFloat = 14
     struct State: Equatable {
         var clips: [TimelineOverviewClip] = []
         var takeLength = 0.0
@@ -811,6 +866,9 @@ struct TimelineOverviewLabel: Equatable {
         /// The viewport in take time.
         var window: ClosedRange<Double>?
         var takeLabel = ""
+        var recordings: [ProjectClock.Region] = []
+        var parts: [StoryTimelineLayout.Part] = []
+        var rate = 48_000.0
     }
     var state = State() {
         didSet {
@@ -896,7 +954,25 @@ struct TimelineOverviewLabel: Equatable {
             Self.draw("Take", font: word, color: DesignValues.nsColor("text.tertiary"), x: 10, baseline: 16)
         }
         Self.draw(state.takeLabel, font: length, color: DesignValues.nsColor("text.disabled"), x: lengthX, baseline: 16)
-
+        for (index, recording) in state.recordings.enumerated() {
+            let row = TimelineMetrics.overview.height + CGFloat(index) * Self.recordingRowHeight
+            let color = RecordingPresentation.nsColor(recording)
+            let duration = Double(recording.durationSamples) / state.rate
+            let offset = Double(recording.offsetSamples) / state.rate
+            Self.draw(recording.label, font: Self.labelFont, color: color, x: 10, baseline: row + 10)
+            context.setFillColor(DesignValues.nsColor("timeline.lane").cgColor)
+            context.fill(CGRect(x: headerWidth, y: row + 1, width: laneWidth, height: Self.recordingRowHeight - 2))
+            for part in state.parts where offset <= part.take.lowerBound && part.take.lowerBound < offset + duration {
+                let lower = headerWidth + ((part.take.lowerBound - offset) / max(0.001, duration)) * laneWidth
+                let upper = headerWidth + ((part.take.upperBound - offset) / max(0.001, duration)) * laneWidth
+                context.setFillColor(color.withAlphaComponent(part.alternateRecordingShade ? 0.32 : 0.54).cgColor)
+                context.fill(CGRect(x: lower, y: row + 2, width: max(1, upper - lower), height: Self.recordingRowHeight - 4))
+                let number = String(part.position + 1)
+                if upper - lower >= Self.width(number, font: Self.labelFont) + 4 {
+                    Self.draw(number, font: Self.labelFont, color: DesignValues.nsColor("text.primary"), x: lower + 2, baseline: row + 10)
+                }
+            }
+        }
     }
 }
 
@@ -912,6 +988,9 @@ struct TimelineOverviewLabel: Equatable {
         var trimHint: String?
         var partMarkers: [StoryTimelineLayout.Marker] = []
         var storySource: StoryTimelineLayout?
+        var recordings: [ProjectClock.Region] = []
+        var recordingGaps: [Range<Double>] = []
+        var recordingRate = 48_000.0
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
     static let labelFont = VCType.label.nsMono()
@@ -974,6 +1053,18 @@ struct TimelineOverviewLabel: Equatable {
             }
         }
         drawStoryParts(state.partMarkers, viewport: state.viewport, context: context, tint: false)
+        if state.viewport.axis == .source {
+            for recording in state.recordings {
+                let left = max(headerWidth, x(Double(recording.offsetSamples) / state.recordingRate))
+                let right = min(bounds.width, x(Double(recording.endSample) / state.recordingRate))
+                guard right > left else { continue }
+                let color = RecordingPresentation.nsColor(recording)
+                context.setFillColor(color.cgColor)
+                context.fill(CGRect(x: left, y: height - 2, width: right - left, height: 2))
+                drawPartLabel(recording.label, x: left + 3, right: right, font: VCType.mini.nsMono(), color: color)
+            }
+            drawRecordingGaps(state.recordingGaps, viewport: state.viewport, context: context, label: true)
+        }
         context.restoreGState()
     }
 }
@@ -1018,6 +1109,9 @@ struct TimelineOverviewLabel: Equatable {
         var showsSurroundingContext = true
         var partMarkers: [StoryTimelineLayout.Marker] = []
         var storySource: StoryTimelineLayout?
+        var recordings: [ProjectClock.Region] = []
+        var recordingGaps: [Range<Double>] = []
+        var recordingRate = 48_000.0
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
 
@@ -1066,6 +1160,7 @@ struct TimelineOverviewLabel: Equatable {
         context.clip(to: lane)
         if state.viewport.axis == .edited { drawEdited(in: context) } else { drawSource(in: context) }
         drawn.partSeams = drawStoryParts(state.partMarkers, viewport: state.viewport, context: context, tint: true, jumps: true)
+        drawRecordingGaps(state.recordingGaps, viewport: state.viewport, context: context)
         context.restoreGState()
     }
 
@@ -1075,14 +1170,27 @@ struct TimelineOverviewLabel: Equatable {
         let visible = state.viewport.visible
         let shown = pieces.indices(overlapping: visible.lowerBound..<max(visible.lowerBound, visible.upperBound), on: .edited)
         var kept = paint(), ai: [CGRect] = []
+        var recordings: [String: Paint] = [:]
         for index in shown {
             let piece = pieces.pieces[index]
             if piece.kind == .ai { ai.append(pieceRect(piece.edited)); continue }
-            kept.piece(x(piece.edited.lowerBound), x(piece.edited.upperBound))
-            columns(piece.edited, offset: piece.source.lowerBound - piece.edited.lowerBound, into: &kept)
+            let sample = piece.source.lowerBound * state.recordingRate
+            if let region = state.recordings.first(where: { Double($0.offsetSamples) <= sample + 0.5 && sample < Double($0.endSample) }) {
+                var regionPaint = recordings.removeValue(forKey: region.key) ?? paint()
+                regionPaint.piece(x(piece.edited.lowerBound), x(piece.edited.upperBound))
+                columns(piece.edited, offset: piece.source.lowerBound - piece.edited.lowerBound, into: &regionPaint)
+                recordings[region.key] = regionPaint
+            } else {
+                kept.piece(x(piece.edited.lowerBound), x(piece.edited.upperBound))
+                columns(piece.edited, offset: piece.source.lowerBound - piece.edited.lowerBound, into: &kept)
+            }
         }
         fillAI(ai, in: context)
         draw(&kept, in: context, wave: "timeline.wave")
+        for region in state.recordings {
+            guard var regionPaint = recordings.removeValue(forKey: region.key) else { continue }
+            draw(&regionPaint, in: context, wave: "recording.\(region.colourIndex + 1)")
+        }
         var seams: [CGRect] = []
         var last = -CGFloat.infinity
         for index in shown where pieces.isSeam(at: index) && !pieces.isPartSeam(at: index) {
@@ -1580,6 +1688,9 @@ enum TrackHeight: String, CaseIterable {
         var showsSurroundingContext = true
         var partMarkers: [StoryTimelineLayout.Marker] = []
         var storySource: StoryTimelineLayout?
+        var recordings: [ProjectClock.Region] = []
+        var recordingGaps: [Range<Double>] = []
+        var recordingRate = 48_000.0
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
     var mediaName = "" { didSet { if mediaName != oldValue { invalidate() } } }
@@ -1779,6 +1890,7 @@ enum TrackHeight: String, CaseIterable {
             }
         }
         drawStoryParts(state.partMarkers, viewport: state.viewport, context: context, tint: true, labels: true)
+        drawRecordingGaps(state.recordingGaps, viewport: state.viewport, context: context)
         context.restoreGState()
     }
 }

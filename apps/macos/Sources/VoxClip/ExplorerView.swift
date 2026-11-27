@@ -186,8 +186,12 @@ import VoxClipCore
                                 ExplorerOutlineRow(entry: entry, selectedFocused: shell.selection == .outline(entry.id) && listFocused)
                             }
                         }.tag(SidebarItem.outline(entry.id)).id(SidebarItem.outline(entry.id))
+                        if editor.hasSeveralRecordings, let part = editor.activeClip?.parts?.first(where: { $0.id == entry.partID }) {
+                            RecordingPartVersions(editor: editor, part: part).selectionDisabled()
+                        }
                     }
                     if editor.activeClip != nil { StoryOutlineAdd(editor: editor).selectionDisabled() }
+                    else { AddRecordingMenu(editor: editor).selectionDisabled() }
                 }
             } header: { ExplorerHeader(shell: shell, section: .outline, count: outline.count) }
             .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.outline.accessibilityLabel(count: outline.count))
