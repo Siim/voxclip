@@ -24,6 +24,13 @@ public struct RecordingEditDetails: Sendable {
     public let clipId: String
     public let madePartIds: [String]
     public let leftOut: [TakeMatch.Take]
+    public internal(set) var splitPartId: String? = nil
+    public internal(set) var joins: [RecordingPartJoin] = []
+}
+
+public struct RecordingPartJoin: Equatable, Sendable {
+    public let keptPartId: String
+    public let removedPartId: String
 }
 
 public enum RecordingEdits {
@@ -40,6 +47,10 @@ public enum RecordingEdits {
                 return .success(.init(try removing(key, project: project), "Remove recording"))
             case let .startFromRecording(key):
                 return .success(try start(key, project: project))
+            case let .useLineVersion(clipId, beatId, key):
+                return .success(try useVersion(clipId: clipId, beatId: beatId, key: key, project: project))
+            case let .insertLine(clipId, key, start, end, after):
+                return .success(try insertShortcut(clipId: clipId, key: key, start: start, end: end, after: after, project: project))
             case let .addPart(clipId, part, after):
                 return try changeParts(clipId, project: project, name: "Add part") { parts, _ in
                     let end = parts.count
@@ -121,7 +132,7 @@ public enum RecordingEdits {
                      details: .init(clipId: id, madePartIds: parts.map(\.id), leftOut: leftOut))
     }
 
-    private static func freshID(_ base: String, reserved: Set<String>) -> String {
+    static func freshID(_ base: String, reserved: Set<String>) -> String {
         if !reserved.contains(base) { return base }
         var number = 2
         while reserved.contains("\(base)-\(number)") { number += 1 }
@@ -211,7 +222,7 @@ public enum RecordingEdits {
         return max(active, Int(reserved))
     }
 
-    private static func changeParts(_ id: String, project: Project, name: String,
+    static func changeParts(_ id: String, project: Project, name: String,
                                     change: (inout [ClipPart], ProjectClock) throws -> Void)
         throws -> Result<RecordingEditOutcome, RecordingEditRefusal> {
         guard let state = try EditState(project: project), let clip = state.clips.first(where: { $0.id == id }) else {
