@@ -306,6 +306,39 @@ private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdit
 }
 
 extension HeavyMediaTests {
+@Test func cliExportsFivePartsAcrossRecordings() async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let project = try await Self.recordingStoryProject()
+    let input = directory.appendingPathComponent("story.voxclip")
+    let output = directory.appendingPathComponent("story.mp4")
+    try await JSONProjectStore().save(project, to: input)
+    let result = try runCLI(["export", "--open", input.path, "--clip", "story", "--style", "off", "--export", output.path, "--json"], directory: directory)
+    try #require(result.status == 0, "\(result.stderr)")
+    #expect(FileManager.default.fileExists(atPath: output.path))
+}
+
+static func recordingStoryProject() async throws -> Project {
+    let media = try FixtureLoader.sharedRoot().appendingPathComponent("fixtures/media")
+    let primary = media.appendingPathComponent("recording-0007.mp4")
+    let other = media.appendingPathComponent("recording-0010.mp4")
+    let base = try JSONProjectStore.decode(FixtureLoader.data("fixtures/recordings/two-recordings.voxclip"))
+    var transcript = try #require(base.transcript)
+    transcript.durationSeconds = 6
+    transcript.words = (0..<3).map { index in
+        TimedWord(id: "w\(index + 1)", text: "Beat", start: Double(index * 2) + 0.3, end: Double(index * 2) + 1.7)
+    }
+    var project = try await cliProject(source: primary, transcript: transcript)
+    let second = try await cliProject(source: other, transcript: transcript)
+    project.media.additionalSources = [second.media.source]
+    project = try await RecordingLoudness.add(project: project, key: second.media.source.contentKey, label: "0010",
+        transcript: transcript, primary: primary)
+    let words = ["r2.w1", "w1", "w2", "r2.w2", "w3"]
+    project.edits.clips = [.init(id: "story", startWordId: "w1", endWordId: "r2.w2",
+        parts: words.enumerated().map { .init(id: "part-\($0.offset)", startWordId: $0.element, endWordId: $0.element) })]
+    return project
+}
+
 @Test(.timeLimit(.minutes(2)), arguments: [false, true]) func cliExportsFourFiveAndChecksIt(_ explicit: Bool) async throws {
     let directory = try cliDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

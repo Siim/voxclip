@@ -40,6 +40,7 @@ public enum VoxClipErrorCode: String, Codable, Sendable, Hashable, CaseIterable 
 public enum VoxClipError: Error, LocalizedError, Codable, Sendable, Equatable {
     case unsupportedContainer(String)
     case mediaMissing(String)
+    case recordingMissing(String)
     case noAudioTrack
     case decodeFailed(String)
     case noSpeech
@@ -74,7 +75,7 @@ public enum VoxClipError: Error, LocalizedError, Codable, Sendable, Equatable {
     public var code: VoxClipErrorCode {
         switch self {
         case .unsupportedContainer: .unsupportedContainer
-        case .mediaMissing: .mediaMissing
+        case .mediaMissing, .recordingMissing: .mediaMissing
         case .noAudioTrack: .noAudioTrack
         case .decodeFailed: .decodeFailed
         case .noSpeech: .noSpeech
@@ -124,6 +125,7 @@ public enum VoxClipError: Error, LocalizedError, Codable, Sendable, Equatable {
         case .ffmpegLicenceGate: "This VoxClip build contains a GPL FFmpeg and can't run."
         case .unsupportedContainer(let context): "unsupportedContainer: \(context). Your video and edits are unchanged."
         case .mediaMissing(let context): "mediaMissing: \(context). Your video and edits are unchanged."
+        case .recordingMissing(let label): "\(label) is missing. Locate it to use its words."
         case .decodeFailed(let context): "decodeFailed: \(context). Your video and edits are unchanged."
         case .modelMissing(let model, let size): "Download the \(model) model (\(size)) to transcribe on this Mac."
         case .modelChecksumMismatch(let file): "\(file) did not match its checksum. Try the download again."

@@ -11,14 +11,29 @@ struct CompositionVideoSpan: Sendable {
     let anchorX: Double
     let anchorY: Double
     var partReframe: ReframeSettings?
+    var recordingKey: String?
+    var recordingOffset: Int64 = 0
+
+    var localSource: CMTimeRange {
+        CMTimeRange(start: source.start - CMTime(value: recordingOffset, timescale: source.start.timescale), duration: source.duration)
+    }
 
     static func build(_ request: RenderRequest) throws -> [CompositionVideoSpan] {
         let spans = try baseSpans(request)
-        guard !request.partReframes.isEmpty else { return spans }
-        return spans.map { span in
+        return try spans.map { span in
             var result = span
             let source = span.source.start.seconds + span.source.duration.seconds / 2
             result.partReframe = request.partReframes.first { $0.source.start <= source && source < $0.source.end }?.reframe
+            if !request.recordings.isEmpty {
+                let rate = Int32(request.timeline.sampleRate)
+                let start = CMTimeConvertScale(span.source.start, timescale: rate, method: .roundHalfAwayFromZero).value
+                let end = CMTimeConvertScale(span.source.end, timescale: rate, method: .roundHalfAwayFromZero).value
+                guard let recording = request.recordings.first(where: { $0.region.offsetSamples <= start && end <= $0.region.endSample }) else {
+                    throw VoxClipError.exportFailed("Invalid recording span")
+                }
+                result.recordingKey = recording.key
+                result.recordingOffset = Int64(recording.region.offsetSamples)
+            }
             return result
         }
     }

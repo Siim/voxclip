@@ -7,6 +7,8 @@ struct FilmstripSource: Equatable, Sendable {
     let url: URL
     let contentKey: String
     let cache: URL?
+    var clock: ProjectClock? = nil
+    var recordings: [RenderRecording] = []
 }
 
 /// The same nominal frame at two zoom levels can decode to different actual times.
@@ -158,29 +160,37 @@ actor FilmstripCache {
 /// than the scheduler's two generators. Setup, file access and decode stay off main.
 private actor FilmstripDecoder {
     let source: FilmstripSource
-    private var asset: AVURLAsset?
+    private var assets: [String: AVURLAsset] = [:]
     private var requests: [UUID: AVAssetImageGenerator] = [:]
     private(set) var statistics = FilmstripDecodeStatistics()
     init(source: FilmstripSource) { self.source = source }
 
     func image(_ key: FilmstripFrameKey) async -> CGImage? {
+        var file = source.url, contentKey = source.contentKey, local = key
+        if let clock = source.clock {
+            let fps = Double(TimelineFilmstrip.fps)
+            guard let time = clock.localTime(Double(key.frame) / fps),
+                  let recording = source.recordings.first(where: { $0.key == time.key }) else { return nil }
+            file = recording.url; contentKey = time.key
+            local = FilmstripFrameKey(Int64((time.localSeconds * fps).rounded()), tolerance: key.tolerance)
+        }
         var lease: CacheKeyLease?
-        if let cache = source.cache { lease = await CacheKeyRegistry.shared(cache: cache).lease(source.contentKey) }
+        if let cache = source.cache { lease = await CacheKeyRegistry.shared(cache: cache).lease(contentKey) }
         defer { lease?.release() }
-        if let folder = ThumbnailCache.posterFolder(in: source.cache, contentKey: source.contentKey, create: false),
-           let image = ThumbnailCache.readPoster(folder.appendingPathComponent(key.filename), immediately: true) { return image }
+        if let folder = ThumbnailCache.posterFolder(in: source.cache, contentKey: contentKey, create: false),
+           let image = ThumbnailCache.readPoster(folder.appendingPathComponent(local.filename), immediately: true) { return image }
         guard !Task.isCancelled else { return nil }
         let began = ContinuousClock.now
         statistics.offMain = statistics.offMain && FilmstripDecodeStatistics.offMainThread
-        if asset == nil { asset = AVURLAsset(url: source.url); statistics.assets += 1 }
-        guard let asset else { return nil }
+        if assets[contentKey] == nil { assets[contentKey] = AVURLAsset(url: file); statistics.assets += 1 }
+        guard let asset = assets[contentKey] else { return nil }
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = FilmstripCache.pixelSize
         let slack = CMTime(value: key.toleranceTicks, timescale: 600)
         generator.requestedTimeToleranceBefore = slack
         generator.requestedTimeToleranceAfter = slack
-        let time = CMTime(value: key.frame, timescale: Int32(TimelineFilmstrip.fps))
+        let time = CMTime(value: local.frame, timescale: Int32(TimelineFilmstrip.fps))
         let id = UUID()
         requests[id] = generator
         defer {
@@ -198,8 +208,8 @@ private actor FilmstripDecoder {
             }
         } onCancel: { Task { await self.cancel(id) } }
         guard let image, !Task.isCancelled else { return nil }
-        if let folder = ThumbnailCache.posterFolder(in: source.cache, contentKey: source.contentKey, create: true) {
-            ThumbnailCache.writePoster(image, to: folder.appendingPathComponent(key.filename))
+        if let folder = ThumbnailCache.posterFolder(in: source.cache, contentKey: contentKey, create: true) {
+            ThumbnailCache.writePoster(image, to: folder.appendingPathComponent(local.filename))
         }
         return image
     }

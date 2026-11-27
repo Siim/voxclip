@@ -126,23 +126,27 @@ public struct CompositionBuilder: Sendable {
             throw VoxClipError.exportFailed("Invalid output dimensions or frame rate")
         }
         let videoSpans = try CompositionVideoSpan.build(request)
-        let asset = AVURLAsset(url: request.sourceURL)
-        guard let sourceVideo = try await asset.loadTracks(withMediaType: .video).first else { throw VoxClipError.decodeFailed("No video track") }
-        let (transform, trackRange, nominalRate, edits) = try await sourceVideo.load(.preferredTransform, .timeRange, .nominalFrameRate, .segments)
-        let firstPicture = edits.first { !$0.isEmpty }?.timeMapping.target ?? trackRange
-        let videoRange = CMTimeRange(start: max(trackRange.start, firstPicture.start), end: trackRange.end)
-        guard videoRange.isValid, !videoRange.isEmpty else { throw VoxClipError.decodeFailed("No source video frames") }
-        let sourceFrameDuration = CMTime(seconds: 1 / max(1, Double(nominalRate)), preferredTimescale: 600_000)
-        let firstFrame = CMTimeRange(start: videoRange.start, duration: min(sourceFrameDuration, firstPicture.end - videoRange.start))
-        // A lip-sync result's conform reads only its picture: fal.ai's resampled audio is never used (voice-lab §9.3).
-        let sourceAudio = includesSourceAudio ? try await MediaSupport.audioTrack(in: asset) : nil
+        var sources: [String: CompositionRecording] = [:]
+        let primaryKey = request.sourceContentKey ?? ""
+        if request.recordings.isEmpty {
+            sources[primaryKey] = try await CompositionRecording(url: request.sourceURL, includesAudio: includesSourceAudio)
+        }
+        for recording in request.recordings {
+            try Task.checkCancellation()
+            guard FileManager.default.fileExists(atPath: recording.url.path) else { throw VoxClipError.recordingMissing(recording.region.label) }
+            sources[recording.key] = try await CompositionRecording(url: recording.url, includesAudio: includesSourceAudio)
+        }
+        let orientation = (sources[primaryKey] ?? sources.values.first)?.orientation ?? .up
         let composition = AVMutableComposition()
         guard let video = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { throw VoxClipError.exportFailed("Cannot create video track") }
-        let audio = sourceAudio == nil ? nil : composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+        let audio = sources.values.contains { $0.audio != nil } ? composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) : nil
         let rate = Int32(synthetic ? voicePlan!.sampleRate : plan.sampleRate)
         for span in videoSpans {
             try Task.checkCancellation()
-            let range = span.source
+            guard let recording = sources[span.recordingKey ?? primaryKey] else { throw VoxClipError.exportFailed("Invalid recording span") }
+            let (sourceVideo, trackRange, videoRange, sourceFrameDuration, firstFrame) =
+                (recording.video, recording.trackRange, recording.videoRange, recording.frameDuration, recording.firstFrame)
+            let range = span.localSource
             let cursor = span.output.start
             let scaled = range.duration != span.output.duration
             guard (!scaled && span.zoom == 1) || (range.start >= trackRange.start && range.end <= trackRange.end) else {
@@ -167,15 +171,18 @@ public struct CompositionBuilder: Sendable {
                 video.scaleTimeRange(CMTimeRange(start: insertion, duration: frameDuration), toDuration: tailDuration)
             }
             if scaled { video.scaleTimeRange(CMTimeRange(start: cursor, duration: range.duration), toDuration: span.output.duration) }
-            if !synthetic, let audio, let sourceAudio { try audio.insertTimeRange(range, of: sourceAudio, at: cursor) }
+            if !synthetic, let audio {
+                if let sourceAudio = recording.audio { try audio.insertTimeRange(range, of: sourceAudio, at: cursor) }
+                else { audio.insertEmptyTimeRange(span.output) }
+            }
         }
         let duration = CMTime(value: request.timeline.outputSamples, timescale: rate)
-        try EffectAudio.freeze(request, video: video, sourceVideo: sourceVideo, videoRange: videoRange, nominalRate: nominalRate, duration: duration)
+        try EffectAudio.freeze(request, video: video, sources: sources, primaryKey: primaryKey, videoSpans: videoSpans, duration: duration)
         let demos = try await ContextDemoCompositionRoute.insert(request, into: composition, scratchRoot: scratchRoot)
         let lipsync = try await LipsyncComposition.insert(request, into: composition, scratchRoot: scratchRoot)
         var lease: VoiceLabRenderLease?
         if synthetic {
-            guard sourceAudio != nil, let audio, let voicePlan else { throw VoxClipError.noAudioTrack }
+            guard let audio, let voicePlan else { throw VoxClipError.noAudioTrack }
             lease = try await VoiceLabAudioRenderer.stage(request: request, scratchRoot: scratchRoot)
             let mixed = AVURLAsset(url: lease!.mixedAudioURL)
             guard let mixedTrack = try await MediaSupport.audioTrack(in: mixed) else { throw VoxClipError.decodeFailed("Mixed CAF has no audio track") }
@@ -186,12 +193,17 @@ public struct CompositionBuilder: Sendable {
         // Bleeps and mutes silence the edited voice (ai.md §18.5) before clip controls stage it, so a sped-up clip
         // keeps its censoring.
         let silenced = EffectAudio.silencedRanges(request)
+        let gainsByKey = Dictionary(uniqueKeysWithValues: request.recordings.map { ($0.key, $0.region.gainDb) })
+        let gains: [RecordingSpanGain] = synthetic ? [] : videoSpans.compactMap { span in
+            guard let db = gainsByKey[span.recordingKey ?? primaryKey], db != 0 else { return nil }
+            return RecordingSpanGain(start: span.output.start.value, end: span.output.end.value, multiplier: SocialLoudness.linearGain(db))
+        }
         if let audio, !synthetic || !silenced.isEmpty {
             let parameters = AVMutableAudioMixInputParameters(track: audio)
             // The synthetic voice mix has its joins baked in; it only needs the bleeps' silence.
             let tapPlan = synthetic ? EditPlan(sampleRate: Double(rate), totalSamples: request.timeline.outputSamples,
                                                kept: [MediaInterval(startSample: 0, endSample: request.timeline.outputSamples)]) : plan
-            parameters.audioTapProcessor = try FadeTap.make(plan: tapPlan, silenced: silenced)
+            parameters.audioTapProcessor = try FadeTap.make(plan: tapPlan, silenced: silenced, recordingGains: gains)
             let audioMix = AVMutableAudioMix()
             audioMix.inputParameters = [parameters]
             mix = audioMix
@@ -202,7 +214,7 @@ public struct CompositionBuilder: Sendable {
         let timing = request.speedTiming
         var voiceTrack = audio
         var voiceLease: ClipVoiceLease?
-        if let audio, request.clipControls?.changesAudio == true || !timing.isIdentity {
+        if let audio, request.clipControls?.changesAudio == true || !timing.isIdentity || (!gains.isEmpty && request.music != nil) {
             let controls = request.clipControls ?? ProjectClipControls(clipId: "render")
             voiceLease = try await ClipVoiceRenderer.stage(composition: composition, voice: audio, audioMix: mix, editedDuration: duration,
                                                            renderedDuration: rendered, controls: controls, timing: timing, scratchRoot: scratchRoot)
@@ -224,7 +236,7 @@ public struct CompositionBuilder: Sendable {
             voiceTrack = track
         }
         let videoComposition = try makeVideoComposition(request, trackID: video.trackID, duration: duration,
-            orientation: MediaSupport.orientation(transform), videoSpans: videoSpans,
+            orientation: orientation, videoSpans: videoSpans, recordingOrientations: sources.mapValues(\.orientation),
             demoLayers: demos.layers, contextDemoLease: demos.lease, lipsyncLayers: lipsync, footageLayers: footage,
             includeDisclosure: includeDisclosure, colorCorrection: colorCorrection, previewFailures: previewFailures)
         let size = videoComposition.renderSize
@@ -270,6 +282,7 @@ public struct CompositionBuilder: Sendable {
 
     func makeVideoComposition(_ request: RenderRequest, trackID: CMPersistentTrackID, duration: CMTime,
                               orientation: CGImagePropertyOrientation, videoSpans: [CompositionVideoSpan] = [],
+                              recordingOrientations: [String: CGImagePropertyOrientation] = [:],
                               demoLayers: [CompositionDemoLayer] = [],
                               contextDemoLease: ContextDemoCompositionLease? = nil,
                               lipsyncLayers: [LipsyncVideoLayer] = [], footageLayers: [FootageLayer] = [], includeDisclosure: Bool = true,
@@ -297,7 +310,7 @@ public struct CompositionBuilder: Sendable {
         } else { disclosure = nil }
         let captionRasterizer = needsRasterizer ? try sharedRasterizer.get() : nil
         let effects = request.effects.flatMap { $0.picture.isEmpty ? nil : EffectFrames(input: $0) }
-        let framingSpans = videoSpans.filter { $0.zoom > 1 || $0.partReframe != nil }
+        let framingSpans = videoSpans.filter { $0.zoom > 1 || $0.partReframe != nil || $0.recordingKey != nil }
         var boundaryTimes: [CMTime] = [.zero, duration]
         boundaryTimes.append(contentsOf: framingSpans.flatMap { [$0.output.start, $0.output.end] })
         boundaryTimes.append(contentsOf: demoLayers.flatMap { [$0.output.start, $0.output.end] })
@@ -327,7 +340,7 @@ public struct CompositionBuilder: Sendable {
             let range = CMTimeRange(start: rendered(start), end: rendered(end))
             guard !range.isEmpty else { return nil }
             return RenderInstruction(timeRange: range, sourceTrackID: trackID,
-                request: request, orientation: orientation, rasterizer: captionRasterizer,
+                request: request, orientation: span?.recordingKey.flatMap { recordingOrientations[$0] } ?? orientation, rasterizer: captionRasterizer,
                 legacyRasterizer: rasterizer, disclosure: disclosure, demoLayer: layer,
                 contextDemoLease: contextDemoLease, videoZoom: span?.zoom ?? 1,
                 videoAnchorX: span?.anchorX ?? 0.5, videoAnchorY: span?.anchorY ?? 0.5,
@@ -340,6 +353,35 @@ public struct CompositionBuilder: Sendable {
             colorTransferFunction: AVVideoTransferFunction_ITU_R_709_2, colorYCbCrMatrix: AVVideoYCbCrMatrix_ITU_R_709_2,
             customVideoCompositorClass: FrameCompositor.self, frameDuration: frameDuration, instructions: instructions, renderSize: size)
         return AVVideoComposition(configuration: config)
+    }
+}
+
+struct CompositionRecording {
+    let asset: AVURLAsset
+    let video: AVAssetTrack
+    let audio: AVAssetTrack?
+    let orientation: CGImagePropertyOrientation
+    let trackRange: CMTimeRange
+    let videoRange: CMTimeRange
+    let frameDuration: CMTime
+    let firstFrame: CMTimeRange
+
+    init(url: URL, includesAudio: Bool, isolation: isolated (any Actor)? = #isolation) async throws {
+        let asset = AVURLAsset(url: url)
+        guard let video = try await asset.loadTracks(withMediaType: .video).first else { throw VoxClipError.decodeFailed("No video track") }
+        let (transform, range, nominalRate, edits) = try await video.load(.preferredTransform, .timeRange, .nominalFrameRate, .segments)
+        let firstPicture = edits.first { !$0.isEmpty }?.timeMapping.target ?? range
+        let pictures = CMTimeRange(start: max(range.start, firstPicture.start), end: range.end)
+        guard pictures.isValid, !pictures.isEmpty else { throw VoxClipError.decodeFailed("No source video frames") }
+        let frame = CMTime(seconds: 1 / max(1, Double(nominalRate)), preferredTimescale: 600_000)
+        self.asset = asset
+        self.video = video
+        audio = includesAudio ? try await MediaSupport.audioTrack(in: asset) : nil
+        orientation = MediaSupport.orientation(transform)
+        trackRange = range
+        videoRange = pictures
+        frameDuration = frame
+        firstFrame = CMTimeRange(start: pictures.start, duration: min(frame, firstPicture.end - pictures.start))
     }
 }
 

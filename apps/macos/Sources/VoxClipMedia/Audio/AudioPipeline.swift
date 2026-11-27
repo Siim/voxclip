@@ -138,9 +138,11 @@ public final class FadeContext: @unchecked Sendable {
     var capturedSampleRate: Double { Double(bitPattern: capturedRate.load(ordering: .acquiring)) }
     /// Output seconds a bleep or mute silences (ai.md §18.5); empty keeps the voice as the plan leaves it.
     let silenced: [ClosedRange<Double>]
+    let recordingGains: [RecordingSpanGain]
     public convenience init(plan: EditPlan) { self.init(plan: plan, captureCapacity: 0) }
-    init(plan: EditPlan, captureCapacity: Int, silenced: [ClosedRange<Double>] = []) {
+    init(plan: EditPlan, captureCapacity: Int, silenced: [ClosedRange<Double>] = [], recordingGains: [RecordingSpanGain] = []) {
         self.plan = plan; rate = plan.sampleRate; joins = ContiguousArray(plan.joins); self.silenced = silenced
+        self.recordingGains = recordingGains
         self.captureCapacity = max(0, captureCapacity)
         capturePositions = captureCapacity > 0 ? .allocate(capacity: captureCapacity) : nil
         captureValues = captureCapacity > 0 ? .allocate(capacity: captureCapacity) : nil
@@ -194,12 +196,18 @@ public final class FadeContext: @unchecked Sendable {
         let first = Int64((timeRange.start.seconds * rate).rounded())
         let durationSamples = timeRange.duration.seconds * rate
         let stride = durationSamples.isFinite && durationSamples > 0 ? durationSamples / Double(frames) : 1
+        let firstGain = recordingGains.firstIndex { $0.end > first } ?? recordingGains.endIndex
         for (bufferIndex, buffer) in UnsafeMutableAudioBufferListPointer(buffers).enumerated() {
             guard let values = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
             let channels = Int(buffer.mNumberChannels)
+            var gainIndex = firstGain
             for frame in 0..<frames {
                 let position = first + Int64((Double(frame) * stride).rounded())
                 var gain = processingGain(position)
+                while gainIndex < recordingGains.count && recordingGains[gainIndex].end <= position { gainIndex += 1 }
+                if gainIndex < recordingGains.count, recordingGains[gainIndex].start <= position {
+                    gain *= recordingGains[gainIndex].multiplier
+                }
                 if !silenced.isEmpty { gain *= Float(EffectAudio.voiceGain(at: Double(position) / rate, ranges: silenced)) }
                 for channel in 0..<channels { values[frame * channels + channel] *= gain }
                 if bufferIndex == 0, let capturePositions, let captureValues {
@@ -215,6 +223,12 @@ public final class FadeContext: @unchecked Sendable {
     }
 }
 
+struct RecordingSpanGain: Sendable {
+    let start: Int64
+    let end: Int64
+    let multiplier: Float
+}
+
 public struct FadeTap: Sendable {
     public init() {}
     public func prepare(plan: EditPlan) throws -> FadeContext {
@@ -222,9 +236,9 @@ public struct FadeTap: Sendable {
         return FadeContext(plan: plan)
     }
 
-    static func make(plan: EditPlan, silenced: [ClosedRange<Double>] = []) throws -> MTAudioProcessingTap {
+    static func make(plan: EditPlan, silenced: [ClosedRange<Double>] = [], recordingGains: [RecordingSpanGain] = []) throws -> MTAudioProcessingTap {
         guard plan.sampleRate.isFinite, plan.sampleRate > 0 else { throw VoxClipError.exportFailed("Invalid audio sample rate") }
-        return try make(context: FadeContext(plan: plan, captureCapacity: 0, silenced: silenced))
+        return try make(context: FadeContext(plan: plan, captureCapacity: 0, silenced: silenced, recordingGains: recordingGains))
     }
 
     static func make(context: FadeContext) throws -> MTAudioProcessingTap {

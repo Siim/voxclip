@@ -65,6 +65,7 @@ enum CLIWorkflow {
     }
 
     static func state(_ project: Project, derivePauses: Bool = true) throws -> EditState {
+        if project.media.spokenSources != nil, let state = try EditState(project: project) { return state }
         guard let transcript = project.transcript else { throw VoxClipError.noSpeech }
         let edits = project.edits
         let pauses = transcript.words.isEmpty || (!derivePauses && edits.cutPauseIds.isEmpty) ? [] :
@@ -87,7 +88,7 @@ enum CLIWorkflow {
         let source = project.media.source
         let rate = Double(source.audio?.sampleRate ?? 48000)
         let edits = project.edits
-        if supplied == nil && edits.cutWordIds.isEmpty && edits.cutPauseIds.isEmpty && edits.activeClipId == nil {
+        if project.media.spokenSources == nil && supplied == nil && edits.cutWordIds.isEmpty && edits.cutPauseIds.isEmpty && edits.activeClipId == nil {
             let total = Int64((source.durationSeconds * rate).rounded())
             return EditPlan(sampleRate: rate, totalSamples: total, kept: total > 0 ? [MediaInterval(startSample: 0, endSample: total)] : [])
         }
@@ -97,12 +98,12 @@ enum CLIWorkflow {
     }
 
     static func renderRequest(project: Project, source: URL, plan: EditPlan, style: CaptionStyle?, output: OutputSpec,
-                              voiceLab: VoiceLabRenderInput?, dataRoot: URL, aspectName: String? = nil) throws -> RenderRequest {
+                              voiceLab: VoiceLabRenderInput?, dataRoot: URL, aspectName: String? = nil, projectURL: URL? = nil) throws -> RenderRequest {
         try RenderCallerInputs.prepare(RenderRequest(sourceURL: source, plan: plan, style: style,
             placement: project.captions.positionByAspect[aspectName ?? project.export.aspect.rawValue] ?? project.captions.position,
             output: output, voiceLab: voiceLab), project: project, clipID: project.edits.activeClipId,
             dataRoot: dataRoot.resolvingSymlinksInPath(), shared: try? SharedResources.locate(),
-            resolveFootageURL: { JSONProjectStore.footageURL($0, beside: source) }, isCancelled: { Task.isCancelled })
+            resolveFootageURL: { JSONProjectStore.footageURL($0, beside: source) }, projectURL: projectURL, isCancelled: { Task.isCancelled })
     }
 
     static func style(_ id: String) throws -> CaptionStyle? {
@@ -300,7 +301,8 @@ enum CLIWorkflow {
         let output = try OutputSpec.resolved(source: probe, aspect: aspect, quality: quality, fps: options.fps.flatMap(Double.init), controls: controls)
         let activeClip = effectiveState.flatMap { state in state.clips.first { $0.id == state.activeClipId } }
         var request = try renderRequest(project: project, source: source, plan: plan, style: style,
-            output: output, voiceLab: voiceLab, dataRoot: dataRoot, aspectName: aspectName)
+            output: output, voiceLab: voiceLab, dataRoot: dataRoot, aspectName: aspectName, projectURL: inputURL)
+        if checkingOutputs { try validateOutputs(outputs, inputs: inputs + request.recordings.map(\.url)) }
         request.clipControls = controls
         if let musicOverride { request.music = musicOverride }
         if checkingOutputs, let music = request.music { try validateOutputs(outputs, inputs: inputs + [source, music.assetURL]) }

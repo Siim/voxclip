@@ -48,6 +48,10 @@ public enum FCPXML {
         public init(url: URL, probe: MediaProbeResult) { self.url = url; self.probe = probe }
     }
 
+    public static func pictureID(for recording: RenderRecording) -> String {
+        recording.region.prefix.isEmpty ? "picture" : "picture-\(recording.region.prefix.dropLast())"
+    }
+
     public static func unsupportedReason(effects: [ClipEffect]) -> String? {
         if effects.contains(where: { $0.kind.isCensor }) {
             return "This edit hides part of the recording. Export it as a video to keep it hidden."
@@ -87,7 +91,9 @@ public enum FCPXML {
         let root = element("fcpxml", ["version": "1.10"])
         let resources = append("resources", to: root)
         format("sequence-format", size: render.output.size, grid: grid, in: resources)
-        let pictures = replacementPictures.merging(["picture": Media(url: render.sourceURL, probe: source)]) { _, original in original }
+        let recordings = Dictionary(uniqueKeysWithValues: render.recordings.map { (pictureID(for: $0), $0.region) })
+        var pictures = replacementPictures
+        if recordings.isEmpty || recordings["picture"] != nil { pictures["picture"] = Media(url: render.sourceURL, probe: source) }
         var pictureGrids: [String: FrameGrid] = [:]
         for (id, media) in pictures.sorted(by: { $0.key < $1.key }) {
             guard let video = media.probe.video, (1...1000).contains(video.frameRate),
@@ -101,7 +107,8 @@ public enum FCPXML {
             asset(id, url: media.url, duration: seconds(media.probe.durationSeconds), audio: id == "picture" ? source.audio : nil,
                   videoFormat: formatID, in: resources)
         }
-        let cuts = try cuts(pictureSpans ?? legacySpans(render.plan), timing: timing, pictures: pictures, grids: pictureGrids, sequence: grid)
+        let spans = try pictureSpans ?? legacySpans(render)
+        let cuts = try cuts(spans, timing: timing, pictures: pictures, grids: pictureGrids, sequence: grid)
         guard let last = cuts.last else { throw VoxClipError.everythingCut }
         if let renderedVoice {
             guard let voiceAudio = renderedVoice.probe.audio, (0.001...1_000_000).contains(renderedVoice.probe.durationSeconds),
@@ -144,7 +151,9 @@ public enum FCPXML {
             let wrapped = cut.retimed
             let parent = wrapped ? append("gap", ["offset": grid.time(cut.output.lowerBound), "start": "0s",
                 "duration": grid.time(durationFrames)], to: spine) : spine
-            var attributes = ["name": picture.url.lastPathComponent, "ref": cut.picture,
+            let part = render.plan.partSeams.prefix { Double($0) / render.plan.sampleRate <= cut.edited.lowerBound + 0.000_001 }.count + 1
+            let label = recordings[cut.picture].map { "\($0.label) · part \(part)" } ?? picture.url.lastPathComponent
+            var attributes = ["name": label, "ref": cut.picture,
                 "offset": wrapped ? "0s" : grid.time(cut.output.lowerBound), "start": seconds(cut.source.lowerBound),
                 "duration": grid.time(durationFrames), "srcEnable": "video"]
             if wrapped { attributes["lane"] = "1" }
@@ -161,9 +170,10 @@ public enum FCPXML {
                               start: cut.edited.lowerBound, duration: available, gain: render.clipControls?.gainDb ?? 0,
                               mapping: cut.speed == 1 ? nil : cut.edited, in: clip)
                     }
-                } else if source.audio != nil {
-                    audio("Voice", ref: "picture", role: "dialogue", lane: "-1", offset: start,
-                          start: cut.source.lowerBound, duration: duration, gain: render.clipControls?.gainDb ?? 0,
+                } else if picture.probe.audio != nil {
+                    audio("Voice", ref: cut.picture, role: "dialogue", lane: "-1", offset: start,
+                          start: cut.source.lowerBound, duration: duration,
+                          gain: (render.clipControls?.gainDb ?? 0) + (recordings[cut.picture]?.gainDb ?? 0),
                           mapping: cut.retimed ? cut.source : nil, in: clip)
                 }
             }
@@ -197,9 +207,14 @@ public enum FCPXML {
         return xml.xmlData(options: [.nodePrettyPrint, .nodeCompactEmptyElement])
     }
 
-    private static func legacySpans(_ plan: EditPlan) throws -> [PictureSpan] {
+    private static func legacySpans(_ render: RenderRequest) throws -> [PictureSpan] {
+        let plan = render.plan
+        let recordings = Dictionary(uniqueKeysWithValues: render.recordings.map { ($0.key, $0) })
+        guard recordings.isEmpty || render.spanSources.count == plan.kept.count else {
+            throw VoxClipError.exportFailed("The picture cuts have invalid recordings.")
+        }
         var outputSamples: Int64 = 0
-        return try plan.kept.compactMap { kept in
+        return try plan.kept.enumerated().compactMap { index, kept in
             guard kept.startSample >= 0, kept.endSample >= kept.startSample, kept.endSample <= plan.totalSamples,
                   Double(kept.endSample) / plan.sampleRate <= 1_000_000 else {
                 throw VoxClipError.exportFailed("The cut plan has invalid timing.")
@@ -207,7 +222,10 @@ public enum FCPXML {
             guard kept.count > 0 else { return nil }
             let lower = Double(outputSamples) / plan.sampleRate
             outputSamples += kept.count
-            return PictureSpan(source: (Double(kept.startSample) / plan.sampleRate)..<(Double(kept.endSample) / plan.sampleRate),
+            let recording = recordings.isEmpty ? nil : recordings[render.spanSources[index]]
+            let offset = Int64(recording?.region.offsetSamples ?? 0)
+            return PictureSpan(assetID: recording.map(pictureID(for:)) ?? "picture",
+                               source: (Double(kept.startSample - offset) / plan.sampleRate)..<(Double(kept.endSample - offset) / plan.sampleRate),
                                edited: lower..<(Double(outputSamples) / plan.sampleRate))
         }
     }

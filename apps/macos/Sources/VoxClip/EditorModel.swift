@@ -1768,6 +1768,7 @@ struct EditorRenderSnapshot {
             output: output, forPreview: target == nil, captionLayout: layout, voiceLab: voiceLab)
         return try RenderCallerInputs.prepare(request, project: project, clipID: clip?.id, dataRoot: app.locations.root.resolvingSymlinksInPath(),
             shared: app.shared, resolveFootageURL: { JSONProjectStore.footageURL($0, beside: request.sourceURL) },
+            projectURL: document.fileURL,
             reduceMotion: snapshot.reduceMotion, isCancelled: { Task.isCancelled })
     }
     func buildCaptions(segments: [EditSegment]?, plan: EditPlan, output: OutputSpec, forPreview: Bool,

@@ -41,20 +41,25 @@ enum EffectAudio {
     }
 
     /// Replaces the picture over each freeze's output range with its first frame held, leaving the voice untouched.
-    static func freeze(_ request: RenderRequest, video: AVMutableCompositionTrack, sourceVideo: AVAssetTrack, videoRange: CMTimeRange,
-                       nominalRate: Float, duration: CMTime) throws {
+    static func freeze(_ request: RenderRequest, video: AVMutableCompositionTrack, sources: [String: CompositionRecording],
+                       primaryKey: String, videoSpans: [CompositionVideoSpan], duration: CMTime) throws {
         guard let freezes = request.effects?.freezes, !freezes.isEmpty else { return }
-        let frame = CMTime(seconds: 1 / max(1, Double(nominalRate)), preferredTimescale: 600_000)
         let timeline = request.timeline
         for effect in freezes.sorted(by: { $0.start < $1.start }) {
             let start = CMTime(seconds: timeline.mapTime(effect.start), preferredTimescale: 600_000)
-            let end = min(duration, CMTime(seconds: timeline.mapEndTime(effect.end), preferredTimescale: 600_000))
+            let span = videoSpans.first { $0.output.containsTime(start) }
+            guard let recording = sources[span?.recordingKey ?? primaryKey] else { continue }
+            let frame = recording.frameDuration
+            let end = min(duration, span?.recordingKey == nil ? duration : (span?.output.end ?? duration),
+                CMTime(seconds: timeline.mapEndTime(effect.end), preferredTimescale: 600_000))
             guard end - start > frame else { continue }
-            let held = CMTime(seconds: effect.start, preferredTimescale: 600_000)
+            let offset = Double(span?.recordingOffset ?? 0) / timeline.sampleRate
+            let held = CMTime(seconds: effect.start - offset, preferredTimescale: 600_000)
+            let videoRange = recording.videoRange
             let source = CMTimeRange(start: max(videoRange.start, min(held, videoRange.end - frame)), duration: frame)
             let range = CMTimeRange(start: start, end: end)
             video.removeTimeRange(range)
-            try video.insertTimeRange(source, of: sourceVideo, at: start)
+            try video.insertTimeRange(source, of: recording.video, at: start)
             video.scaleTimeRange(CMTimeRange(start: start, duration: frame), toDuration: range.duration)
         }
     }
