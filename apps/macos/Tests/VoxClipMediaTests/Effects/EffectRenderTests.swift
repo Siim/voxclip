@@ -6,7 +6,7 @@ import Foundation
 import ImageIO
 import Testing
 import UniformTypeIdentifiers
-import VoxClipCore
+@testable import VoxClipCore
 @testable import VoxClipMedia
 
 /// Ask Claude's rendering (ai.md §18.5): pixel goldens on synthetic frames, a freeze through a real composition, bleep and
@@ -277,6 +277,23 @@ import VoxClipCore
         #expect(audio.segments.count == plainAudio.segments.count, "the voice is untouched")
         try FileManager.default.createDirectory(at: Self.captures, withIntermediateDirectories: true)
         try Self.png((held, 320, 180)).write(to: Self.captures.appendingPathComponent("freeze.png"))
+    }
+
+    @Test func recordingFreezeHoldsAcrossAnOrdinaryCut() async throws {
+        let source = try await NativeMediaFixtures.shared.file("counter.mov")
+        let project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/recordings/two-recordings.voxclip"))
+        let primary = try #require(ProjectClock.build(project).regions.first)
+        let freeze = ClipEffect(id: "freeze-1", clipId: nil, kind: .freeze, start: 0.5, end: 1.5)
+        var request = Self.request(source, effects: [freeze])
+        request.plan = EditPlan(sampleRate: 48_000, totalSamples: 96_000, kept: [
+            .init(startSample: 0, endSample: 38_400), .init(startSample: 48_000, endSample: 96_000)
+        ])
+        request.recordings = [.init(region: primary, url: source)]
+        request.spanSources = [primary.key, primary.key]
+        let graph = try await CompositionBuilder().build(request)
+        let early = try await Self.frame(graph, at: 0.6), late = try await Self.frame(graph, at: 1.1)
+        #expect(early == late)
+        #expect(try await Self.frame(graph, at: 1.5) != early)
     }
 
     @Test(.timeLimit(.minutes(2))) func blurRendersThroughTheSharedComposition() async throws {

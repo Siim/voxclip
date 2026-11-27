@@ -1057,6 +1057,8 @@ After an edit, a touched part joins a neighbour when both have the same reframe 
 
 A shortcut returns one named Undo step containing the exact before and after project snapshots; a no-op creates no step.
 
+On Mac, **Play in Place** and **Play There** audition a temporary edit without changing the saved clip. The timeline's **Show Other Versions of This Line** command uses the playhead even when a recording chip is selected, then reveals the fold in play order.
+
 A shortcut that would stop paid lip-sync or a whole-clip revoice from playing selects a copy instead. The original clip and voice data stay intact. A copy plays source speech where a part no longer includes the whole paid lip-sync window.
 
 Regenerate `shared/fixtures/recordings/command-cases.json` with `python3 tools/fixtures/recordings/generate_commands.py`. Its expected five-part ranges and sample plan come from `plan-cases.json`.

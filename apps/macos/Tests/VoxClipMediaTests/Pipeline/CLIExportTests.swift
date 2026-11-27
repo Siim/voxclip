@@ -3,8 +3,8 @@ import Foundation
 import Darwin
 import Synchronization
 import Testing
-import VoxClipCore
-import VoxClipMedia
+@testable import VoxClipCore
+@testable import VoxClipMedia
 
 struct CLIResult: Sendable {
     enum ReportError: Error, Equatable { case watchdogTimeout(status: Int32), emptyOutput(status: Int32) }
@@ -340,6 +340,31 @@ private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdit
 }
 
 extension HeavyMediaTests {
+@Test func recordingCheckSkipsCoveredFramesAndStillChecksVisibleFrames() async throws {
+    let project = try await Self.recordingStoryProject()
+    let input = URL(fileURLWithPath: project.media.source.absolutePath)
+    let plan = try RenderCallerInputs.editPlan(project: project, clipID: "story")
+    let request = RenderRequest(sourceURL: input, plan: plan,
+        output: OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 1_000_000))
+    var render = try RenderCallerInputs.prepare(request, project: project, clipID: "story", dataRoot: input.deletingLastPathComponent())
+    var edit = try ExportCheckExpectation.edit(render: render, state: nil)
+    let seam = try #require(edit.recordingBoundaries.first { $0.fromKey == project.media.source.contentKey })
+    edit.recordingBoundaries = [seam]
+    let spans = try CompositionVideoSpan.build(render)
+    let span = try #require(spans.first { $0.recordingKey == seam.toKey && $0.output.start.seconds == seam.seam.at })
+    let start = span.source.start.seconds
+    var cover = ClipFootage(id: "cutaway", clipID: "story", kind: .bRoll, start: start, end: span.source.end.seconds,
+                            footage: .init(sourceKey: project.media.source.contentKey, start: 0))
+    render.footage = [.init(entry: cover, url: input)]
+    let hidden = try await RecordingExportCheck.measure(export: input, render: render, edit: edit)
+    #expect(hidden.count == 1 && hidden.first?.wrongPictureLabel == nil)
+
+    cover.end = start + 0.4
+    render.footage = [.init(entry: cover, url: input)]
+    let visible = try await RecordingExportCheck.measure(export: input, render: render, edit: edit)
+    #expect(visible.first?.wrongPictureLabel == seam.seam.from)
+}
+
 @Test func cliExportsFivePartsAcrossRecordings() async throws {
     let directory = try cliDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

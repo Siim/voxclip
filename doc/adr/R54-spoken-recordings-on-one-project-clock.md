@@ -36,7 +36,8 @@ copy do not make another one for that window.
 Write v7 only with spoken sources; do not promote a legacy project when it loads or saves. A v6 reader refuses v7.
 Swift and C# replay the same clock and plan vectors. Decoding the selected recordings and applying stored level
 adjustments are media work; measuring a match when adding a recording is separate from Core planning. Voice changes
-on words outside the primary are not part of this version.
+on words outside the primary are not part of this version. On Mac, previously paid primary patches still play in a
+mixed-recording clip. Unpatched pieces use their own recording's audio, and patch handles stay on the primary.
 
 ## Why
 

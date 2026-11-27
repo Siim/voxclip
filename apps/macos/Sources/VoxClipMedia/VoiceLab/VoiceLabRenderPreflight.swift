@@ -50,34 +50,22 @@ public enum VoiceLabRenderPreflight {
         // current output has no verified body/handle crop, so a real fit cannot
         // enter snapshot or scratch preparation, regardless of its waveform.
         try validateFit(input.prepared)
-        guard let transcript = input.project.transcript else { throw VoiceLabAssetError.invalidSelection("transcript") }
-        let edits = input.project.edits
-        let pauses = try detectPauses(transcript.words, thresholdSeconds: edits.pauseThresholdSeconds)
-        let state = EditState(transcript: transcript, pauses: pauses,
-                              pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds,
-                              cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds),
-                              corrections: edits.corrections, clips: edits.clips, activeClipId: nil)
-        let clip: ClipRange?
+        let clipID: String?
         switch input.scope {
-        case .full: clip = nil
-        case .clip(let id):
-            guard let selected = edits.clips.first(where: { $0.id == id }) else {
-                throw VoiceLabAssetError.invalidSelection("render scope")
-            }
-            clip = selected
+        case .full: clipID = nil
+        case .clip(let id): clipID = id
         }
-        let expectedLegacy = try EditPlan.build(transcript: transcript, editState: state, activeClip: clip,
-                                                duration: source.durationSeconds, sampleRate: plan.sampleRate)
+        let expectedLegacy = try RenderCallerInputs.editPlan(project: input.project, clipID: clipID)
         guard request.plan == expectedLegacy else {
             throw VoiceLabAssetError.invalidSelection("legacy source plan")
         }
         if let layout = request.captionLayout {
             // The clip's own caption look (design.md §6.6), as the caller laid it out.
-            let captions = input.project.captionSettings(forClip: clip?.id)
+            let captions = input.project.captionSettings(forClip: clipID)
             // The words as the caller laid them out: bleeps masked, then translated captions (ai.md §18.2, §18.5).
             let effects = request.effects?.effects ?? []
             let shown = CaptionTranslations.applying(ClipEffects.maskingBleeps(plan.captions, effects: effects), project: input.project,
-                                                     clipID: clip?.id, effects: effects)
+                                                     clipID: clipID, effects: effects)
             let expected = shown.map {
                 CaptionInputWord($0)
             }

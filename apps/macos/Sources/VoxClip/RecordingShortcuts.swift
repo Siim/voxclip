@@ -151,6 +151,9 @@ extension EditorModel {
     }
 
     func showRecordingLineVersions(_ line: RecordingClipLine) {
+        if transcriptRecordingScope != .playOrder {
+            chooseRecordingTranscript(.playOrder, scrollTo: line.end, announceChange: false)
+        }
         recordingOpenLineID = line.id
         recordingSelectedVersionKey = line.alternatives.first?.key
         announce(recordingVersionsAccessibility(line))

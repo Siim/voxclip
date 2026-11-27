@@ -47,10 +47,14 @@ enum EffectAudio {
         let timeline = request.timeline
         for effect in freezes.sorted(by: { $0.start < $1.start }) {
             let start = CMTime(seconds: timeline.mapTime(effect.start), preferredTimescale: 600_000)
-            let span = videoSpans.first { $0.output.containsTime(start) }
+            let index = videoSpans.firstIndex { $0.output.containsTime(start) }
+            let span = index.map { videoSpans[$0] }
             guard let recording = sources[span?.recordingKey ?? primaryKey] else { continue }
             let frame = recording.frameDuration
-            let end = min(duration, span?.recordingKey == nil ? duration : (span?.output.end ?? duration),
+            let boundary = index.flatMap { index in
+                videoSpans.dropFirst(index + 1).first { $0.recordingKey != span?.recordingKey }?.output.start
+            }
+            let end = min(duration, boundary ?? duration,
                 CMTime(seconds: timeline.mapEndTime(effect.end), preferredTimescale: 600_000))
             guard end - start > frame else { continue }
             let offset = Double(span?.recordingOffset ?? 0) / timeline.sampleRate

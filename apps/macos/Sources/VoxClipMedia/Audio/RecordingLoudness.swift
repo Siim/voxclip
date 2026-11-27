@@ -14,11 +14,15 @@ public enum RecordingLoudness {
               let recording = JSONProjectStore.recordingURL(reference, beside: primary, projectURL: projectURL) else {
             throw VoxClipError.recordingMissing(recordingLabel)
         }
-        let cuts = Set(project.edits.cutWordIds)
-        let words = (project.transcript?.words ?? []).filter { !cuts.contains($0.id) }
-        let gain = try await match(primary: primary, primaryWords: words, recording: recording, words: transcript.words)
+        let gain = try await match(primary: primary, project: project, recording: recording, transcript: transcript)
         result.media.spokenSources?[index].gainDb = gain
         return result
+    }
+
+    public static func match(primary: URL, project: Project, recording: URL, transcript: Transcript) async throws -> Double? {
+        let cuts = Set(project.edits.cutWordIds)
+        let words = (project.transcript?.words ?? []).filter { !cuts.contains($0.id) }
+        return try await match(primary: primary, primaryWords: words, recording: recording, words: transcript.words)
     }
 
     public static func match(primary: URL, primaryWords: [TimedWord], recording: URL, words: [TimedWord]) async throws -> Double? {

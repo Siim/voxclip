@@ -130,6 +130,8 @@ import VoxClipCore
                             }.disabled(!editor.capabilities.edit || missing != nil)
                             Button("Show in transcript") { editor.chooseRecordingTranscript(.recording(region.key)) }
                             if !region.prefix.isEmpty {
+                                Button("Don't match level") { editor.resetRecordingLevel(region) }
+                                    .disabled(!editor.capabilities.edit || region.gainDb == 0)
                                 Button("Remove recording \(region.label)") { editor.applyRecordingEdit(.removeSpokenSource(key: region.key)) }
                                     .disabled(removal != nil)
                             }

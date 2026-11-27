@@ -11,15 +11,23 @@ enum RecordingExportCheck {
         let sources = Dictionary(uniqueKeysWithValues: render.recordings.map { ($0.key, generator($0.url)) })
         let spans = try CompositionVideoSpan.build(render)
         let context = CIContext()
+        let timing = render.speedTiming, timeline = render.timeline
+        let covered = render.footage.compactMap { input -> Range<Double>? in
+            let start = timing.rendered(timeline.mapTime(input.entry.start))
+            let end = timing.rendered(timeline.mapEndTime(input.entry.end))
+            return start < end ? start..<end : nil
+        }
         var result: [ExportCheckInput.RecordingMeasurement] = []
         for boundary in edit.recordingBoundaries {
             try Task.checkCancellation()
-            let time = boundary.seam.at + min(0.2, (boundary.right.upperBound - boundary.seam.at) / 2)
-            let edited = render.speedTiming.edited(time)
-            let span = spans.first { $0.output.start.seconds <= edited && edited < $0.output.end.seconds }
+            let sample = visibleSample(boundary.right, fps: render.output.fps, covered: covered)
             var wrong: String?
-            if let span, let observed = try await frame(decoded, at: time),
+            if let time = sample, let span = spans.first(where: {
+                let edited = timing.edited(time)
+                return $0.recordingKey == boundary.toKey && $0.output.start.seconds <= edited && edited < $0.output.end.seconds
+            }), let observed = try await frame(decoded, at: time),
                let actual = fingerprint(CIImage(cgImage: observed), context: context) {
+                let edited = timing.edited(time)
                 let progress = (edited - span.output.start.seconds) / span.output.duration.seconds
                 let local = span.localSource.start.seconds + progress * span.localSource.duration.seconds
                 var distances: [String: Double] = [:]
@@ -52,6 +60,16 @@ enum RecordingExportCheck {
             result.append(.init(seam: boundary.seam, wrongPictureLabel: wrong, levelDelta: left.flatMap { lhs in right.map { $0 - lhs } }))
         }
         return result
+    }
+
+    private static func visibleSample(_ window: Range<Double>, fps: Double, covered: [Range<Double>]) -> Double? {
+        guard fps.isFinite, fps > 0, fps <= 60, !window.isEmpty else { return nil }
+        let first = Int(ceil(window.lowerBound * fps - 1e-6))
+        let end = Int(ceil(window.upperBound * fps - 1e-6))
+        let preferred = window.lowerBound + min(0.2, (window.upperBound - window.lowerBound) / 2)
+        return (first..<end).lazy.map { Double($0) / fps }.filter { time in
+            !covered.contains { $0.contains(time) }
+        }.min { abs($0 - preferred) < abs($1 - preferred) }
     }
 
     private static func generator(_ url: URL) -> AVAssetImageGenerator {
