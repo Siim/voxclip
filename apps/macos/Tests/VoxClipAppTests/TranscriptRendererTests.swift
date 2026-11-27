@@ -12,6 +12,30 @@ import Testing
 /// 10,000 words in the profile build.
 @Suite("Incremental transcript renderer", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are opened."), .offlineFixtures)
 @MainActor struct TranscriptRendererTests {
+    @Test func recordingSwitcherUsesPlayOrderAndRecordingBands() throws {
+        let fixture = try SharedResources.locate().root.appendingPathComponent("fixtures/recordings/two-recordings.voxclip")
+        let project = try JSONProjectStore.decode(Data(contentsOf: fixture))
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true),
+                                app: AppModel(settingsStore: RegressionSettingsStore()), preview: DemoPreviewEngine())
+        let (text, renderer, coordinator) = try pane(model)
+        _ = coordinator
+        #expect(model.transcriptRecordingScope == .playOrder)
+        let first = try #require(text.map.span(id: "r2.w1"))
+        let second = try #require(text.map.span(id: "w1"))
+        #expect(first.range.location < second.range.location)
+        #expect(renderer.marks(for: "clip-main").compactMap { $0.recording?.colourIndex } == [1, 0])
+        #expect(text.map.span(id: "r2.w3") == nil)
+        model.chooseRecordingShortcut(2)
+        render(model, renderer)
+        #expect(text.map.span(id: "w1") == nil)
+        #expect(text.map.span(id: "r2.w1") != nil)
+        model.chooseRecordingShortcut(0)
+        render(model, renderer)
+        let allFirst = try #require(text.map.span(id: "w1"))
+        let allSecond = try #require(text.map.span(id: "r2.w1"))
+        #expect(allFirst.range.location < allSecond.range.location)
+    }
+
     /// `paragraphs` turns of ten words by six speakers in turn, r0–r59 by default, each its own
     /// paragraph. Every fifth word is cut, r23 and r41 are fillers, a 1.2 s pause follows r14,
     /// and a clip spans the fifth paragraph, as an AI suggestion not yet kept with `suggested`.

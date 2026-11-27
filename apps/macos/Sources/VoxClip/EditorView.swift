@@ -137,6 +137,10 @@ import VoxClipCore
     @FocusState private var findFocused: Bool
     var body: some View {
         VStack(spacing: 0) {
+            if model.hasSeveralRecordings { RecordingSwitcher(editor: model) }
+            if let region = model.partPickRecording, let clip = model.activeClip {
+                RecordingPartPicker(editor: model, clip: clip, region: region)
+            }
             // The scope bar's "Rewrite as" strip (design.md §6.3.1), always under the clip bar's field while Rewrite can run.
             if model.showsScopeToneStrip { ScopeToneStrip(model: model) }
             if let reason = model.storyRewriteReason(), let clip = model.activeClip {

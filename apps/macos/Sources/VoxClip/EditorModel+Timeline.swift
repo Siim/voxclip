@@ -160,7 +160,13 @@ extension EditorModel {
 
     /// Seeks to `time` on the displayed axis.
     func seekTimeline(_ time: Double, on axis: TimelineAxis) {
-        seek(source: timelineSourceTime(time, on: axis))
+        let source = timelineSourceTime(time, on: axis)
+        if hasSeveralRecordings, let clock = recordingClock,
+           let local = clock.localTime(source), transcriptRecordingScope != .recording(local.key) {
+            let word = words.first { $0.end > source && clock.region(of: $0.id)?.key == local.key }
+            chooseRecordingTranscript(.recording(local.key), scrollTo: word?.id)
+        }
+        seek(source: source)
     }
 
     /// Shared word selection with the transcript. Edited endpoints map through the render

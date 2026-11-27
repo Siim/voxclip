@@ -1,4 +1,5 @@
 import SwiftUI
+import VoxClipCore
 
 @MainActor struct StoryOutlineRow: View {
     let shell: WorkspaceShell
@@ -110,6 +111,25 @@ import SwiftUI
                 .disabled(editor.addStoryPartReason != nil)
             if let reason = editor.storyPartError ?? editor.addStoryPartReason {
                 Text(reason).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            if editor.hasSeveralRecordings {
+                ForEach(editor.recordingRegions, id: \.key) { region in
+                    HStack(spacing: 4) {
+                        Button { editor.pickPart(from: region) } label: { Label("Add a part from \(region.label)", systemImage: "plus") }
+                            .disabled(!editor.capabilities.edit)
+                        Menu {
+                            Button("Use whole recording as a part") {
+                                guard let clip = editor.activeClip,
+                                      let first = editor.words.first(where: { editor.recordingClock?.region(of: $0.id) == region }),
+                                      let last = editor.words.last(where: { editor.recordingClock?.region(of: $0.id) == region }) else { return }
+                                editor.addRecordingPart(ClipPart(id: UUID().uuidString.lowercased(), startWordId: first.id, endWordId: last.id), to: clip)
+                            }.disabled(!editor.capabilities.edit)
+                            Button("Show in transcript") { editor.chooseRecordingTranscript(.recording(region.key)) }
+                        } label: { Image(systemName: "ellipsis") }
+                        .menuStyle(.borderlessButton).fixedSize()
+                        .accessibilityLabel("Options for recording \(region.label)")
+                    }
+                }
             }
         }
         .padding(.vertical, 4)

@@ -6,6 +6,11 @@ enum RecordingTranscriptChoice: Equatable {
     case playOrder, all, recording(String)
 }
 
+struct RecordingTranscriptSection {
+    let words: Range<Int>
+    let heading: String?
+}
+
 @MainActor enum RecordingPresentation {
     static func color(_ region: ProjectClock.Region) -> Color { Color(nsColor: nsColor(region)) }
 
@@ -45,6 +50,19 @@ extension EditorModel {
     }
 
     var partPickRecording: ProjectClock.Region? { recordingRegions.first { $0.key == partPickKey } }
+    var partPickAfter: Int? {
+        selectedStoryPartID.flatMap { id in activeClip?.playParts.firstIndex { $0.id == id } }.map { $0 + 1 }
+    }
+
+    var recordingPartNumber: Int { (partPickAfter ?? activeClip?.playParts.count ?? 0) + 1 }
+
+    var recordingPartSelectionTitle: String? {
+        guard partPickKey == nil, hasSeveralRecordings, let clip = activeClip,
+              let first = selectedIDs.first, let region = recordingClock?.region(of: first),
+              region.key != recordingClock?.region(of: clip.playParts[0].startWordId)?.key
+                || transcriptRecordingScope == .recording(region.key) && storyRecordingHeading != nil else { return nil }
+        return "Add to \(scopeName(clip.id)) as Part"
+    }
 
     var transcriptRecordingScope: RecordingTranscriptChoice {
         if let choice = recordingTranscriptChoice {
@@ -83,5 +101,53 @@ extension EditorModel {
     func recordingVoiceReason(for scope: RewriteScope? = nil) -> String? {
         guard let first = recordingRegions.first, let other = recordingVoiceRegion(for: scope) else { return nil }
         return "Voice changes work on \(first.label)'s words for now. Open \(other.label) on its own to change its voice."
+    }
+
+    func chooseRecordingShortcut(_ number: Int) {
+        if number == 0 { chooseRecordingTranscript(.all) }
+        else if recordingRegions.indices.contains(number - 1) {
+            chooseRecordingTranscript(.recording(recordingRegions[number - 1].key))
+        }
+    }
+
+    func pickPart(from region: ProjectClock.Region) {
+        selectedWordIDs = []
+        selectedPauseIDs = []
+        partPickKey = region.key
+        chooseRecordingTranscript(.recording(region.key))
+    }
+
+    func recordingTranscriptSections() -> [RecordingTranscriptSection]? {
+        guard hasSeveralRecordings, let clock = recordingClock else { return nil }
+        var boundsByKey: [String: Range<Int>] = [:]
+        for (index, word) in words.enumerated() {
+            guard let key = clock.region(of: word.id)?.key else { continue }
+            boundsByKey[key] = (boundsByKey[key]?.lowerBound ?? index)..<(index + 1)
+        }
+        switch transcriptRecordingScope {
+        case .all:
+            return recordingRegions.compactMap { region in
+                boundsByKey[region.key].map { .init(words: $0, heading: "\(region.label) · \(storyTakeTime(Double(region.durationSamples) / Double(clock.sampleRate)))") }
+            }
+        case .recording(let key):
+            return boundsByKey[key].map { [.init(words: $0, heading: nil)] } ?? []
+        case .playOrder:
+            guard let bounds = scopePartBounds else { return [] }
+            return bounds.enumerated().compactMap { position, span in
+                guard let region = clock.region(of: words[span.lowerBound].id) else { return nil }
+                let offset = Double(region.offsetSamples) / Double(clock.sampleRate)
+                let localStart = storyTakeTime(words[span.lowerBound].start - offset)
+                let localEnd = storyTakeTime(words[span.upperBound].end - offset)
+                var visible = Range(span)
+                if showsSurroundingContext, let regionBounds = boundsByKey[region.key] {
+                    let previous = bounds.filter { $0.upperBound < span.lowerBound && regionBounds.contains($0.upperBound) }.map(\.upperBound).max()
+                    let next = bounds.filter { $0.lowerBound > span.upperBound && regionBounds.contains($0.lowerBound) }.map(\.lowerBound).min()
+                    let lower = previous.map { ($0 + span.lowerBound) / 2 + 1 } ?? regionBounds.lowerBound
+                    let upper = next.map { (span.upperBound + $0) / 2 + 1 } ?? regionBounds.upperBound
+                    visible = max(lower, span.lowerBound - 16)..<min(upper, span.upperBound + 17)
+                }
+                return .init(words: visible, heading: "\(position + 1) · \(region.label) · \(localStart)–\(localEnd)")
+            }
+        }
     }
 }

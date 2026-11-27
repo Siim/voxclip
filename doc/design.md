@@ -531,6 +531,10 @@ The sidebar collapses last, because it holds the clips. While the viewer is coll
 
 ## 4. The transcript editor (primary surface)
 
+On Mac, spoken recordings have a dot and a short name, with their duration and **Transcribed** status in the switcher. **All** shows the recordings in clock order. A multi-recording clip opens in **Clip 1 · play order** with a numbered recording heading per part. **Show surrounding context** works within each part's recording. Choosing a recording does not edit the project. Selecting an Outline part or seeking to another recording on the timeline chooses that recording. VoiceOver announces “Showing recording 0010, 2 of 3”.
+
+**Add a part from 0010** opens an inline strip: “Select words in 0010 to add them to Clip 1 · after part 2”, **Add as Part 3**, and **Done**. Return adds; Esc leaves the strip. The strip stays after adding. The selection bar offers **Add to Clip 1 as Part** alongside **Make Clip** outside pick mode. When the selection crosses a recording boundary: “A part comes from one recording. Select words in 0010 only.” Adding announces “Part 3 added from 0010, after part 2”; moving announces “Part 3 moved to 4 of 5”.
+
 ### 4.1 Rendering
 
 - **Flowing prose, not chips.** A new paragraph starts after a sentence end followed by a pause of ≥ 1.5 s, or at a speaker change when diarization exists.
@@ -2575,6 +2579,8 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 **Mac timeline EXPORTS (V11b).** The bottom panel has TIMELINE and EXPORTS tabs. EXPORTS reuses the Explorer's `ExportsListModel`, 40 pt two-line rows, metadata and actions (Show in Finder, Open, Export again, Retry). Empty copy: “No exports yet. Export a clip or the full edit to see it here.” Selecting EXPORTS hides the timeline transport; Hide Timeline still works. It adds no sheet.
 
 ### 11.2 Map
+
+On Mac, **⌥⌘0** chooses All Recordings in the transcript and **⌥⌘1–6** choose recordings in clock order. These keys are separate from **⌘1** and **⌘2**, which switch to Home and Full Take.
 
 | Action | macOS | Windows | Notes |
 |---|---|---|---|

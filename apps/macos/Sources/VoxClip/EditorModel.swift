@@ -959,6 +959,8 @@ struct EditorRenderSnapshot {
         let words = self.words
         let clipsChanged = renderedEdits?.clips != edits.clips
         if renderedEdits?.activeClipId != edits.activeClipId {
+            recordingTranscriptChoice = nil
+            partPickKey = nil
             selectedStoryPartID = nil
             draggedStoryPartID = nil
             storyPartError = nil
@@ -983,7 +985,10 @@ struct EditorRenderSnapshot {
             wordIndex = Dictionary(uniqueKeysWithValues: words.enumerated().map { ($0.element.id, $0.offset) })
         }
         if transcriptChanged || renderedEdits?.pauseThresholdSeconds != edits.pauseThresholdSeconds {
-            pauses = (try? detectPauses(words, thresholdSeconds: edits.pauseThresholdSeconds)) ?? []
+            let detected = (try? detectPauses(words, thresholdSeconds: edits.pauseThresholdSeconds)) ?? []
+            pauses = hasSeveralRecordings ? detected.filter {
+                recordingClock?.region(of: words[$0.afterIndex].id) == recordingClock?.region(of: words[$0.afterIndex + 1].id)
+            } : detected
             pauseByAfterIndex = Dictionary(uniqueKeysWithValues: pauses.map { ($0.afterIndex, $0) })
             pauseIndex = Dictionary(uniqueKeysWithValues: pauses.map { ($0.id, $0) })
         }

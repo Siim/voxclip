@@ -312,6 +312,9 @@ import VoxClipCore
         }
         let shell = model.shell
         switch item.tag {
+        case 90...96:
+            if validateMenuItem(item) { keyEditor?.chooseRecordingShortcut(item.tag - 90) }
+            return
         case 13: shell.selection = .home; return
         case 14: if shell.document != nil { shell.selection = .fullTake }; return
         case 16: shell.toggleSidebar(); return
@@ -468,6 +471,7 @@ import VoxClipCore
                 item.toolTip = editor?.storyRewriteReason(for: editor?.rewriteScopeNow)
             }
             switch item.tag {
+            case 90...96: return keyEditor.map { $0.hasSeveralRecordings && item.tag - 90 <= $0.recordingRegions.count } ?? false
             case 13: return mainWindowIsKey
             case 14: return mainWindowIsKey && model.shell.document != nil
             case 16:
@@ -657,6 +661,13 @@ import VoxClipCore
         command(view, "Search or Run a Command…", 61, "k")
         command(view, "Home", 13, "1")
         command(view, "Full Take", 14, "2")
+        let recordingItem = NSMenuItem(title: "Transcript Recording", action: nil, keyEquivalent: "")
+        let recordingMenu = NSMenu(title: recordingItem.title)
+        for number in 0...6 {
+            command(recordingMenu, number == 0 ? "All Recordings" : "Recording \(number)", 90 + number, String(number), [.command, .option])
+        }
+        recordingItem.submenu = recordingMenu
+        view.addItem(recordingItem)
         command(view, "Hide Sidebar", 16, "s", [.command, .control])
         command(view, "Hide Timeline", 56, "j")
         let frame = NSMenuItem(title: "Frame", action: nil, keyEquivalent: "")
