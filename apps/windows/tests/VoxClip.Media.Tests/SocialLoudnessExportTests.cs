@@ -80,6 +80,7 @@ public sealed class SocialLoudnessExportTests
     [InlineData("talk-pure-gain")]
     [InlineData("talk-clicks-limited")]
     [InlineData("talk-plosives-limited")]
+    [InlineData("talk-quiet-minus30")]
     [InlineData("talk-reduction-cap")]
     [InlineData("talk-silence")]
     public void TheEncoderReadsTheLandedGainAndLimiterInItsFrameSize(string id)

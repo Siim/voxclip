@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Social loudness can boost quiet recordings by up to 20 dB on Mac and Windows, with the same peak protection.
 - The CLI exports clips in their saved frame and accepts `--aspect 4:5` for export and check on Mac and Windows.
 - Free sound-effect searches on Mac and Windows now find short Freesound clips, with licence and credit checks intact.
 - On Windows, overlapping sounds crossfade, timeline volume and range dips match the Mac, and the music lane shows the ducking heard in preview.

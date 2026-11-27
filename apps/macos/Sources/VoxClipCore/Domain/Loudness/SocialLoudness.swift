@@ -105,7 +105,7 @@ public struct SocialLoudnessReport: Codable, Sendable, Equatable {
 public enum SocialLoudness {
     public static let targetLufs = -14.0
     public static let ceilingDbtp = -1.0
-    public static let maximumBoostDb = 12.0
+    public static let maximumBoostDb = 20.0
     public static let maximumCutDb = -20.0
     public static let maximumReductionDb = 9.0
     /// A first simulation within this of the target lands with one correction; beyond it, a second one is run.
