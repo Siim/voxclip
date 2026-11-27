@@ -29,6 +29,71 @@ import Testing
         #expect(try ProjectJSON.encode(editor.project) == after)
     }
 
+    @Test func addingRemovingAndUsingARecordingVersionUndoExactly() async throws {
+        let (shell, editor) = try await open(projectID: UUID().uuidString.lowercased())
+        defer { editor.close() }
+        let fixture = try SharedResources.locate().root.appendingPathComponent("fixtures/recordings/reference-recordings.voxclip")
+        var project = try JSONProjectStore.decode(Data(contentsOf: fixture))
+        project.id = editor.project.id
+        let clip = ClipRange(id: "recording-story", startWordId: "w1", endWordId: "w13", parts: [
+            .init(id: "opening", startWordId: "w1", endWordId: "w7"),
+            .init(id: "notes", startWordId: "w8", endWordId: "w13")
+        ])
+        project.edits.clips = [clip]
+        project.edits.activeClipId = clip.id
+        let undo = try #require(editor.undoManager)
+        undo.beginUndoGrouping(); editor.replace(project, name: "Set up recordings"); undo.endUndoGrouping()
+        shell.choose(.clip(clip.id))
+        undo.removeAllActions()
+
+        func checkEdit(_ name: String, action: () -> Void) throws {
+            let before = try ProjectJSON.encode(editor.project), steps = editor.undoSteps
+            undo.beginUndoGrouping(); action(); undo.endUndoGrouping()
+            let after = try ProjectJSON.encode(editor.project)
+            #expect(after != before && undo.undoActionName == name && editor.undoSteps == steps + 1)
+            undo.undo(); #expect(try ProjectJSON.encode(editor.project) == before)
+            undo.redo(); #expect(try ProjectJSON.encode(editor.project) == after)
+        }
+
+        let other = try #require(editor.recordingRegions.dropFirst().first)
+        editor.pickPart(from: other)
+        editor.selectedWordIDs = ["r2.w12", "r2.w13"]
+        try checkEdit("Add part") { editor.addSelectionAsStoryPart() }
+        let added = try #require(editor.activeClip?.playParts.last)
+        #expect(added.startWordId == "r2.w12")
+        try checkEdit("Remove part") { editor.removeStoryPart(added.id) }
+        let opening = try #require(editor.activeClip?.playParts.first)
+        let version = try #require(editor.recordingVersions(of: opening).first)
+        try checkEdit("Use version") { editor.useRecordingVersion(version, partID: opening.id) }
+        #expect(editor.activeClip?.playParts.first?.startWordId.hasPrefix("r2.") == true)
+    }
+
+    @Test func addingCachedRecordingNeedsOneUndoAndNeverStartsTranscription() async throws {
+        let (_, editor) = try await open(projectID: UUID().uuidString.lowercased())
+        defer { editor.close() }
+        let root = try SharedResources.locate().root
+        let movie = root.appendingPathComponent("fixtures/media/recording-0010.mp4")
+        let key = try JSONProjectStore.contentKey(for: movie)
+        let fixture = root.appendingPathComponent("fixtures/recordings/two-recordings.voxclip")
+        let project = try JSONProjectStore.decode(Data(contentsOf: fixture))
+        let transcript = try #require(project.media.spokenSources?.first?.transcript)
+        RecordingTranscriptCache.write(transcript, key: key, cache: editor.app.locations.cache)
+        let undo = try #require(editor.undoManager)
+        let before = try ProjectJSON.encode(editor.project)
+        undo.beginUndoGrouping()
+        editor.addRecording(at: movie)
+        try #require(editor.recordingImportTask != nil)
+        await editor.recordingImportTask?.value
+        undo.endUndoGrouping()
+        #expect(editor.pendingRecording == nil && editor.recordingImportError == nil)
+        #expect(editor.project.media.spokenSources?.first?.transcript == transcript)
+        #expect(undo.undoActionName == "Add recording" && editor.undoSteps == 1)
+        let after = try ProjectJSON.encode(editor.project)
+        undo.undo(); #expect(try ProjectJSON.encode(editor.project) == before)
+        #expect(RecordingTranscriptCache.read(key, cache: editor.app.locations.cache, recent: []) == transcript)
+        undo.redo(); #expect(try ProjectJSON.encode(editor.project) == after)
+    }
+
     private func open(demo: Bool = true, story: Bool = false, projectID: String? = nil) async throws -> (WorkspaceShell, EditorModel) {
         _ = NSApplication.shared
         let shared = try SharedResources.locate()
