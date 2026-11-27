@@ -36,7 +36,8 @@ private actor EffectFixtureHTTP: MusicHTTP {
         #expect(placed.gainDb == -15)
         let requests = await http.requests
         #expect(requests.count == 2)
-        #expect(requests.first?.url?.query()?.contains("category=sound_effect") == true)
+        let query = try #require(requests.first?.url?.query())
+        #expect(!query.contains("category="))
         #expect(requests.last?.url?.path == "/pop.wav")
     }
 
