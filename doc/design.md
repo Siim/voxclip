@@ -2616,7 +2616,6 @@ On Mac, **⌥⌘0** chooses All Recordings in the transcript and **⌥⌘1–6**
 
 | Action | macOS | Windows | Notes |
 |---|---|---|---|
-| Show Other Versions of This Line | ⌥⌘Y | Ctrl+Shift+Y | Clip menu; Windows shortcut reserved for parity |
 | Play / pause | Space | Space | |
 | Play from caret | ⇧Space | Shift+Space | |
 | Preview this cut | P | P | From 2.0 s before to 2.0 s after the selection, cuts applied |
@@ -2639,7 +2638,7 @@ On Mac, **⌥⌘0** chooses All Recordings in the transcript and **⌥⌘1–6**
 | Restore selection | ⇧⌫ | Shift+Backspace | |
 | Correct word | Return, C, or double-click | Enter, C, or double-click | Esc cancels; Tab saves and moves on |
 | Undo / redo | ⌘Z / ⇧⌘Z | Ctrl+Z / Ctrl+Y (and Ctrl+Shift+Z) | One step per command |
-| Show Other Versions of This Line | ⌥⌘Y | Ctrl+Shift+Y | Transcript caret or timeline playhead; not in text fields |
+| Show Other Versions of This Line | ⌥⌘Y | Ctrl+Shift+Y | Clip menu; transcript caret or timeline playhead; not in text fields |
 | Select all / copy text | ⌘A / ⌘C | Ctrl+A / Ctrl+C | Copy takes the selection's transcript text |
 | Cut fillers | ⌥⌘U | Ctrl+Shift+U | |
 | Tighten pauses | ⌥⌘P | Ctrl+Shift+P | |
