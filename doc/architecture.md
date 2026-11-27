@@ -512,6 +512,8 @@ Acceptance (the on-demand `--long-hevc` clip of section 9.5): a 10-minute 1080p 
 
 ### 6.4 Export: decode → overlay → encode
 
+For a story spanning recordings, the Windows compose snapshot associates each kept span with its verified file and local offset. Voice readers open one decoder per content key, resample each recording to the project grid, and apply its saved gain before the bed and ducking. Captions and connected items stay on the project clock.
+
 - **Video.** Output frames sit on a constant grid `te = k / fps`, `k = 0 … round(plan.duration × fps) − 1`. For each `te`: `ts = plan.sourceTime(te)`; decode forward until the next frame's PTS > `ts` and keep the latest frame with PTS ≤ `ts`; seek only when the next kept range starts more than 2 s past the decoder position. One decoder suffices because kept ranges are monotonic.
 - **Compose.** Same function as preview at output size: crop and scale with `sws_scale` (`SWS_LANCZOS`), Skia captions at `te`, then BGRA → NV12 with `sws_scale` using the BT.709 matrix and limited range. Hardware encoders require NV12 input.
 - **Audio.** Kept ranges by sample index, join gains from Core, `swr` to 48 kHz stereo float, FFmpeg's native `aac` encoder at 160 kbps (frame size 1024), PTS = running output sample count.
