@@ -31,7 +31,10 @@ func threeRecordingLiveEvaluation() async throws {
     let winner = try #require(reply.object[ai: "clips"].aiArray.first)
     let recordings = try #require(input.recordings)
     let parts = try winner[ai: "parts"].aiArray.map { part in
-        try ClipAutopilotTests.range(.array([part[ai: "startWord"], part[ai: "endWord"]]))
+        let first = try #require(part[ai: "startWord"].aiInt)
+        let last = try #require(part[ai: "endWord"].aiInt)
+        try #require(first <= last)
+        return first...last
     }
     let punchline = try ClipAutopilotTests.range(#require(vector[ai: "momentParts"].aiArray.last))
     #expect(parts.contains { $0.contains(punchline.lowerBound) && $0.contains(punchline.upperBound) })

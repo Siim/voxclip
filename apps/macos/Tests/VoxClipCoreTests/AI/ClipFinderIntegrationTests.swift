@@ -261,8 +261,12 @@ func aiFinderInputGates() async throws {
     let connector = AIIntegrationConnector()
     let empty = try aiIntegrationRequest(count: 0)
     let custom = try aiIntegrationRequest(preset: .custom)
+    let bestTakes = try aiIntegrationRequest(preset: .bestTakes)
     let prompt = try AIClipTestData.prompt().document
     await #expect(throws: ClipFinderGateError.noWords(message: prompt[ai: "messages"][ai: "noWords"].aiString ?? "")) { try await finder.find(empty, connector: connector, model: "chosen") }
     await #expect(throws: ClipFinderGateError.needInstructions(message: prompt[ai: "messages"][ai: "needInstructions"].aiString ?? "")) { try await finder.find(custom, connector: connector, model: "chosen") }
+    await #expect(throws: LLMError.unavailable(reason: prompt[ai: "messages"][ai: "needRecordings"].aiString ?? "")) {
+        try await finder.find(bestTakes, connector: connector, model: "chosen")
+    }
     #expect(await connector.requests.isEmpty)
 }

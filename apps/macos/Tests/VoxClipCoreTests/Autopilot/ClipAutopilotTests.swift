@@ -361,6 +361,13 @@ import Testing
             #expect(parts.map(\.takeReason) == vector[ai: prefix + "Reasons"].aiArray.map(\.aiString))
         }
         #expect(loaded.canonicalProposal().parts == plan.parts)
+        let project = try ProjectJSON.decode(vector[ai: "project"].aiEncoded())
+        let fonts = try ClipAutopilotFonts.load(shared: Self.shared())
+        let operations = try ClipAutopilotMapping.operations(for: loaded, clipID: "best-versions", project: project, fonts: fonts)
+        let kept = try ClipAutopilotMapping.apply(operations.filter { $0.decision == .clip }, to: project).project
+        let clip = try #require(kept.edits.clips.first)
+        #expect(clip.playParts.map(\.takeReason) == loaded.parts.map(\.takeReason))
+        #expect(clip.playPartIndices(in: input.transcript.words) == loaded.parts.map { $0.startWord...$0.endWord })
         let requests = await stub.requests
         #expect(requests.count == 2)
         let momentsRequest = try #require(requests.first)
@@ -372,7 +379,7 @@ import Testing
         #expect(requests.last?.cachedBlock?.contains("<takes>") == false)
         let prompt = try ClipAutopilotPrompt(shared: Self.shared())
         var context = ClipAutopilotContext(words: input.transcript.words, scope: 0...(input.transcript.words.count - 1),
-            styleIDs: [prompt.defaults.styleID], fonts: try ClipAutopilotFonts.load(shared: Self.shared()), prompt: prompt)
+            styleIDs: [prompt.defaults.styleID], fonts: fonts, prompt: prompt)
         context.recordings = input.recordings
         #expect(ClipAutopilotValidator.moments(vector[ai: "crossRecordingReply"], context: context).moments.isEmpty)
     }

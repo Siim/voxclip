@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Test("Rendered prompts match shared templates for every preset") func aiPromptParity() throws {
+@Test("One-recording prompts match shared templates for every legacy preset") func aiPromptParity() throws {
     let prompt = try AIClipTestData.prompt()
     let builder = ClipRequestBuilder(prompt: prompt)
     let raw = try FixtureLoader.decode(JSONValue.self, at: "prompts/clip-finder.json")
@@ -11,7 +11,7 @@ import Testing
     let f1Sentences = ["1 0:00 So, today I want to talk.", "2 0:03 Um why cut by words?", "3 0:05 \"It works.\"", "4 0:07 Fast and clean", "5 1:10 Tere!",
                        "6 1:10 Mis toimub?", "7 1:11 「本当 です。」 " + (21...59).map { "w\($0)" }.joined(separator: " "),
                        "8 1:23 " + (60...65).map { "w\($0)" }.joined(separator: " "), "9 3:20 end."].joined(separator: "\n")
-    for preset in prompt.presets {
+    for preset in prompt.presets where preset.id != .bestTakes {
         for input in ["", "  Funny bits  "] {
             let window = try #require(builder.windows(words:words,preset:preset,instruction:input,contextTokens:128000).first)
             let request = builder.request(words:words,window:window,preset:preset,instruction:input,timeout:.seconds(180))

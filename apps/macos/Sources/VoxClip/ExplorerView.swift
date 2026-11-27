@@ -492,7 +492,8 @@ import VoxClipCore
         let sourceWords = clock?.words ?? words
         guard let ranges = clip.playPartIndices(in: sourceWords) else { return nil }
         let proposalParts = zip(ranges, clip.playParts).map { range, part in
-            ClipProposal.Part(startWord: range.lowerBound, endWord: range.upperBound, takeReason: part.takeReason)
+            let reason = part.takeReason ?? found.parts?.first { $0.startWordId == part.startWordId && $0.endWordId == part.endWordId }?.takeReason
+            return ClipProposal.Part(startWord: range.lowerBound, endWord: range.upperBound, takeReason: reason)
         }
         let parts = ProposalStripPart.from(proposalParts, words: sourceWords, clock: clock)
         let kind: ClipProposal.NewClip.Kind = parts.count == 1 ? .stretch : clip.kind == .showreel ? .showreel : .story
