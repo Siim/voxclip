@@ -53,7 +53,7 @@ struct RecordingFeedback: Equatable {
 
     private var recordingChips: some View {
         HStack(spacing: 6) {
-                if let clip = editor.activeClip, editor.storyRecordingRegions.count > 1 {
+                if let clip = editor.activeClip, editor.hasSeveralRecordings {
                     chip(.playOrder) { Text("\(editor.scopeName(clip.id)) · play order") }
                 }
                 if editor.hasSeveralRecordings || editor.pendingRecording != nil {

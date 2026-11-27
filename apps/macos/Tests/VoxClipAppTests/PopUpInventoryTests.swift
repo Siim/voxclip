@@ -14,6 +14,7 @@ struct PopUpInventoryTests {
         "EditorModel.swift": (1, "Locate…'s NSOpenPanel: a system file picker"),
         "ExportJob.swift": (1, "the Export job's folder NSOpenPanel: a system file picker"),
         "MusicSection.swift": (1, "the Music section's Add a file… NSOpenPanel: a system file picker"),
+        "RecordingImport.swift": (1, "Add a recording's Choose a file… NSOpenPanel: a free-standing system file picker (#31 §3.7)"),
         "SettingsView.swift": (4, "Settings pages: two NSOpenPanels, the licences and privacy text sheets"),
         "LocalModelsView.swift": (1, "Settings model download confirmation; editor downloads are inline"),
         "VoiceLabSettings.swift": (1, "Settings-only saved-voice deletion; enrollment is inline"),

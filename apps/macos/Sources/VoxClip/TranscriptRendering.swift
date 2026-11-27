@@ -111,6 +111,7 @@ struct TranscriptParagraphContent: Equatable {
             case inserted
             /// The blank the focused change's Keep and Undo buttons stand over.
             case spacer
+            case recordingControl
         }
         var kind: Kind
         var id: String
@@ -121,6 +122,7 @@ struct TranscriptParagraphContent: Equatable {
         var change: TranscriptChangeMark?
         /// The buttons a spacer makes room for.
         var actions: [TranscriptChangeAction] = []
+        var recordingControl: RecordingInlineControl?
     }
     var firstWord: Int
     var start: Double
@@ -679,6 +681,7 @@ struct TranscriptAppearance: Equatable {
             result.append(content)
         }
         if let proposal { placeSpacer(in: &result, proposal: proposal) } else { spacerID = nil; spacerActions = [] }
+        placeRecordingControls(in: &result, model: model)
         // The thread's room under the focused change's last paragraph (design.md §6.3 "Talk back to Claude").
         threadParagraph = nil
         if let slot = model.rewriteThreadSlot(proposal),
@@ -695,6 +698,33 @@ struct TranscriptAppearance: Equatable {
             }
         }
         return result
+    }
+
+    private func placeRecordingControls(in paragraphs: inout [TranscriptParagraphContent], model: EditorModel) {
+        guard model.hasSeveralRecordings, model.activeClip != nil else { return }
+        var before: [String: RecordingInlineControl] = [:], after: [String: [RecordingInlineControl]] = [:]
+        switch model.transcriptRecordingScope {
+        case .playOrder:
+            for line in model.recordingClipLines where !line.alternatives.isEmpty {
+                before[line.start] = .marker(line)
+                if model.recordingOpenLineID == line.id { after[line.end, default: []].append(.versions(line)) }
+            }
+            for omitted in model.recordingOmittedLines { after[omitted.after, default: []].append(.omitted(omitted)) }
+        case .recording(let key):
+            for run in model.otherRecordingLines where run.key == key { before[run.startWordId] = .solo(run) }
+        case .all: return
+        }
+        for index in paragraphs.indices {
+            paragraphs[index].pieces = paragraphs[index].pieces.flatMap { piece -> [TranscriptParagraphContent.Piece] in
+                guard piece.kind == .word else { return [piece] }
+                let leading = before.removeValue(forKey: piece.id).map { [$0] } ?? []
+                let trailing = after.removeValue(forKey: piece.id) ?? []
+                func controls(_ values: [RecordingInlineControl]) -> [TranscriptParagraphContent.Piece] {
+                    values.map { .init(kind: .recordingControl, id: piece.id, text: "", recordingControl: $0) }
+                }
+                return controls(leading) + [piece] + controls(trailing)
+            }
+        }
     }
 
     /// Puts the Keep and Undo buttons' blank (impl-plan item 23) after the focused change's last
@@ -746,6 +776,16 @@ struct TranscriptAppearance: Equatable {
             let next = index + 1 < pieces.count ? pieces[index + 1].kind : nil
             let space = next != .fold && next != .comma && next != .spacer ? " " : ""
             switch piece.kind {
+            case .recordingControl:
+                guard let control = piece.recordingControl, let model = text?.model else { continue }
+                if !control.inline, value.length > 0, !value.string.hasSuffix("\u{2028}") {
+                    value.append(NSAttributedString(string: "\u{2028}", attributes: styles.body))
+                }
+                let attachment = RecordingInlineAttachment(control, editor: model, transcript: text)
+                let attributed = NSMutableAttributedString(attachment: attachment)
+                attributed.addAttributes(styles.body, range: NSRange(location: 0, length: attributed.length))
+                value.append(attributed)
+                if !control.inline, next != nil { value.append(NSAttributedString(string: "\u{2028}", attributes: styles.body)) }
             case .aiMarker:
                 spans.append(TranscriptSpan(id: piece.id, range: range, pause: false, kind: .ai))
                 value.append(NSAttributedString(string: piece.text, attributes: styles.marker))

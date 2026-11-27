@@ -5,6 +5,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - On Windows, start a clip from one recording, audition and swap individual line versions, and insert lines only another recording says.
+- Claude Code and Codex can read recordings and matched takes and propose a story across recordings, without sending media or spending money.
+- On Mac, start a clip from one recording, audition and swap in another recording's version of a line, or insert a line only another recording has.
 - On Windows, switch between recordings, build clips from their words, and compare or swap part versions without losing paid lip sync.
 - Best versions and the autopilot planner can pick one take per beat across recordings; Mac proposal cards show why each part was chosen.
 - On Mac, view and edit story parts from several recordings in the Outline, with recording colours and times local to each recording.

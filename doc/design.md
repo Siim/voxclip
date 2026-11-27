@@ -539,6 +539,12 @@ On Mac, spoken recordings have a dot and a short name, with their duration and *
 
 Show **Not transcribed** with **Transcribe on this Mac**, or the priced cloud action **Transcribe with ElevenLabs · ≈ $0.09** (using the actual estimate). While working, say “Transcribing on this Mac · 42%” with the actual progress and **Cancel**. If a recording is level-matched, show “−1.8 dB to match 0007” using the actual gain and recording name.
 
+**Other versions of this line (Mac).** In **Clip 1 · play order**, show **⇄ 2** before a line with two aligned versions in other recordings. No marker means no aligned version elsewhere. VoiceOver reads “Line 1, 2 other versions, in 0010 and 0006”. The marker or **Show Other Versions of This Line** (⌥⌘Y) opens a fold below the line, titled “Line 1 · 2 other versions”. The clip row comes first, marked **In Clip 1**. Each alternative shows its recording chip, local time, changed words underlined, and “0 fillers · longest pause 0.2 s · 168 wpm”.
+
+**▶ Play in Place** auditions across the joins with one second either side and changes nothing. **Use This Version** brings in just the aligned words; strike out any longer tail and say “Brings in only the words that line up, up to “tracking,”.” The swap is one “Use version” undo step. Toast and announce “Line 1 now uses 0010's version · part 1 split”, with **Undo** on the toast. Use **Use in a Copy** when the existing part's paid lip sync must be kept. If the version is missing, leave its actions disabled and show “0010 is missing. Locate it to use its words.” and **Locate…**. If a recording is still transcribing, say “0006's version of this line shows when transcribing finishes.”
+
+**Left-out and unique lines (Mac).** Show a skipped line in place as a dashed row: “restart · left out · “Sorry, where was I… so, so.”” with **Put Back**. It rejoins the parts in one “Add part” undo step and announces “Restart put back in Clip 1.” In a recording's own transcript, show its unique line's inline row just before the words, with **▶** (VoiceOver: “Play There”) and **Insert There**. Use the same placement and disabled reasons as the Outline (§6.2).
+
 ### 4.1 Rendering
 
 - **Flowing prose, not chips.** A new paragraph starts after a sentence end followed by a pause of ≥ 1.5 s, or at a speaker change when diarization exists.
@@ -1121,6 +1127,14 @@ The gallery scrolls inside the column and clips at its own viewport, which alway
 **Claude's pick.** While the clip style's captions are Auto (§6.6), a line under the style row reads "✦ Claude picked {style} · {reason}" for the active clip, 12 `text.secondary` with the name in 600, wrapping. When clips have no pick yet, a borderless "✦ Pick styles for {n} clips" button follows. It sends through the inline connector confirmation (§6.3), with the verb "Pick styles", and never opens a sheet. While it runs, the line reads "Picking caption styles…" with Cancel. A failure shows as an inline notice in the same place. Choosing a tile in the gallery fixes the clip style's captions to that style, so the line and the button disappear.
 
 ### 6.2 Clips (sidebar)
+
+**Start from (Mac).** With several spoken recordings and no clip, the Outline reads “3 spoken recordings of the same idea” and “11 of 0007's 14 lines are also said in another recording.” List recordings in clock order: **Start from ● 0007 · 1:55 · 14 lines**, then “1 restart left out”. Start from uses the whole recording except restarts and false starts, splitting parts at the skipped lines. It is one “Start from recording” undo step. Toast “Clip 1 made from 0007 · 1 restart left out” with **Undo** and announce “Clip 1 made from 0007, 2 parts, 1 restart left out”. Once a clip exists, the recording row menu offers **Start a New Clip from 0007**. While waiting for a transcript, show “Start from 0006 needs its words. It's ready when transcribing finishes.” and **Cancel**; when not transcribed, show “0006 isn't transcribed yet.” and **Transcribe on this Mac**.
+
+Beside Start from, **✦ Make one clip from the best parts of these 3 recordings** opens Find Clips until the **Best versions** preset is available. Without a connector, leave it disabled with “Choose an AI connector in Settings › AI. Start from a recording works without one.” Below the choices, say “or select words in any recording and press **Make Clip** ⌥⌘K”.
+
+**Only in other recordings (Mac).** Below the parts, show **Only in other recordings · 3**, closed by default and remembered per project. List unused unique sentences in clip order; omit restarts and false starts and group adjacent sentences from a recording (“2 sentences”). Each entry shows its recording chip, local time, words and placement: “only in 0010 · fits after “…my personal time tracker” in part 3”. Quote the clip's version of the preceding line. **▶ Play There** auditions with one second either side. **Insert There** splits the part and inserts the line in one “Add part” undo step. Toast and announce “Part 4 added from 0010, after “…my personal time tracker””. If the preceding line isn't in the clip, disable **Insert There** and say ““…my personal time tracker” isn't in Clip 1. Insert it at the end, then move it.” with **Insert at End**. After the first 20 entries, offer **Show all 34** with the actual count.
+
+**Versions, not takes.** A line said in another recording is a **version** in the UI: **Other versions**, **Use This Version**, **Best versions**. Voice Lab's paid output is still **Takes**. Rewrite's change versions are alternative edits, not recordings: show a recording chip on each recording version and identify it as a version “of this line” or “of part 2”. Internal names such as `TakeMatch` do not change.
 
 **Recording controls (Windows).** Above the transcript, **All** shows the recordings in clock order, **Clip 1 · play order** shows a mixed-recording clip part by part, and **Ctrl+Alt+0–6** chooses All or a recording. Outline selection and timeline seeks reveal the corresponding recording; Narrator hears “Showing recording 0010, 2 of 3”. **+ Add a recording** accepts a companion or a dropped video, or opens the system chooser. It reuses a confirmed transcript when available and otherwise runs local or explicitly approved cloud transcription inline. In the Outline, **Add a part from 0010** opens pick mode until **Done** or Esc. Outside pick mode, **Add to Clip 1 as Part** sits beside **Make clip**. Keep, Add recording, Add part, Move part, Remove part and Use version are each one Undo step. Proposal cards show the reason under each chosen part.
 
@@ -2598,8 +2612,11 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 
 On Mac, **⌥⌘0** chooses All Recordings in the transcript and **⌥⌘1–6** choose recordings in clock order. These keys are separate from **⌘1** and **⌘2**, which switch to Home and Full Take.
 
+**Show Other Versions of This Line** follows the transcript caret, or the playhead when the timeline has focus. In the inline recording versions fold, ↑/↓ choose a row, Space plays it in place, Return uses it, and Esc closes the fold and restores the transcript caret. None of these fold keys fires in a text field. Recording versions don't use ⌥←/⌥→; Rewrite keeps those for change navigation.
+
 | Action | macOS | Windows | Notes |
 |---|---|---|---|
+| Show Other Versions of This Line | ⌥⌘Y | Ctrl+Shift+Y | Clip menu; Windows shortcut reserved for parity |
 | Play / pause | Space | Space | |
 | Play from caret | ⇧Space | Shift+Space | |
 | Preview this cut | P | P | From 2.0 s before to 2.0 s after the selection, cuts applied |
@@ -2671,7 +2688,7 @@ On Mac, **⌥⌘0** chooses All Recordings in the transcript and **⌥⌘1–6**
 - **Edit:** Undo, Redo, Cut, Copy, Paste, Select All, Cut Selection, Restore Selection, Correct Word, Rewrite {scope} (⇧⌘R; the title follows the scope: "Rewrite Selection", "Rewrite Clip {n}" or "Rewrite Full Take", and gains "…" when the send asks first; §6.3), Type New Words…, Copy Text, Find…, Find Next, Find Previous, Cut Fillers, Tighten Pauses, Restore All Cuts, Transcribe Again…; Insert Words… (Voice Lab on; hidden until Core can place an insertion, §6.3); M2: Tighten with AI…, Clean Audio…; M3: Change Voice….
 - **View:** Show Cuts (⌥⌘C, a checkmark item; it works in a Versions window too), Show/Hide Pauses, Show/Hide Viewer (⌥⌘I), Home (⌘1), Full Take (⌘2), Show/Hide Sidebar (⌃⌘S), Show/Hide Timeline (⌘J), Frame (9:16 · 1:1 · 16:9 · Original, a checkmark on the project's frame), Bigger/Smaller/Actual Size, Enter Full Screen. Each Show/Hide title describes the current action.
 - **Playback:** Play/Pause, Play from Selection, Preview Cut, Back 3 Seconds (J), Forward 3 Seconds, Shuttle Back/Stop/Forward, Go to Start/End.
-- **Clip:** Make Clip from Selection (⌥⌘K), Find Clips… (⇧⌘K), Cancel Finding Clips (⌘., only while finding), Keep Suggestion, Dismiss Suggestion, Keep All Suggestions, Rename Clip…, Remove Clip, Set Start (I), Set End (O), Previous Clip ([), Next Clip (]), Export Clip….
+- **Clip:** Make Clip from Selection (⌥⌘K), Find Clips… (⇧⌘K), Cancel Finding Clips (⌘., only while finding), Keep Suggestion, Dismiss Suggestion, Keep All Suggestions, Rename Clip…, Remove Clip, Set Start (I), Set End (O), Previous Clip ([), Next Clip (]), Show Other Versions of This Line (⌥⌘Y), Export Clip….
 - **Window:** standard items, plus "VoxClip" (brings back the main window).
 - **Help:** Keyboard Shortcuts opens the same command field; Welcome Tour, What Leaves This Mac, Reveal Logs, Copy Diagnostics.
 

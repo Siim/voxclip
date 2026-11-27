@@ -155,7 +155,8 @@ extension EditorModel {
         }
     }
 
-    @discardableResult func applyRecordingEdit(_ edit: RecordingEdit, preparing base: Project? = nil, message: String? = nil) -> Bool {
+    @discardableResult func applyRecordingEdit(_ edit: RecordingEdit, preparing base: Project? = nil, message: String? = nil,
+                                               feedback: ((RecordingEditOutcome) -> (toast: String, announcement: String))? = nil) -> Bool {
         guard capabilities.edit else { return false }
         storyPartError = nil
         switch RecordingEdits.apply(edit, project: base ?? project) {
@@ -163,14 +164,16 @@ extension EditorModel {
             guard let step = outcome.undoStep else { return false }
             let copy = step.after.edits.activeClipId != project.edits.activeClipId
             replace(step.after, name: step.name, restoresRecordingScope: copy)
+            let custom = feedback?(outcome)
             let announcement: String?
             if copy, case .swapTake = edit, let title = activeClip?.title {
                 announcement = "Made \(title) to keep the lip sync"
-            } else { announcement = outcome.announcement ?? message }
+            } else { announcement = outcome.announcement ?? custom?.announcement ?? message }
             if let announcement {
                 announce(announcement)
                 if hasSeveralRecordings || base?.media.spokenSources?.isEmpty == false {
-                    recordingFeedback = .init(text: announcement, revision: projectRevision)
+                    recordingFeedback = .init(text: outcome.announcement == nil ? custom?.toast ?? announcement : announcement,
+                                              revision: projectRevision)
                 }
             }
             return true

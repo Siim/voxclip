@@ -113,13 +113,15 @@ import VoxClipCore
                 Text(reason).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if editor.hasSeveralRecordings {
-                ForEach(editor.recordingRegions.dropFirst(), id: \.key) { region in
+                ForEach(editor.recordingRegions, id: \.key) { region in
                     let missing = editor.recordingMissingReason(region)
                     let removal = region.prefix.isEmpty ? nil : editor.removeRecordingReason(region)
                     HStack(spacing: 4) {
                         Button { editor.pickPart(from: region) } label: { Label("Add a part from \(region.label)", systemImage: "plus") }
                             .disabled(!editor.capabilities.edit || missing != nil)
                         Menu {
+                            Button("Start a New Clip from \(region.label)") { editor.startFromRecording(region) }
+                                .disabled(!editor.canStartFromRecording(region))
                             Button("Use whole recording as a part") {
                                 guard let clip = editor.activeClip,
                                       let first = editor.words.first(where: { editor.recordingClock?.region(of: $0.id) == region }),
