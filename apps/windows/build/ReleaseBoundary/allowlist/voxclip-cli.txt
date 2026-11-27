@@ -282,7 +282,7 @@ member VoxClip.Cli.CliOperations :: method internal RequireExportable(VoxClip.Co
 member VoxClip.Cli.CliOperations :: method internal RequireSrtOutput(string,string)
 member VoxClip.Cli.CliOperations :: method internal Required(System.CommandLine.ParseResult,string)
 member VoxClip.Cli.CliOperations :: method internal TranscribeMediaAsync(VoxClip.Core.Domain.Shared.MediaInfo,System.CommandLine.ParseResult,string,bool,bool,VoxClip.Core.Domain.Autopilot.ClaudeModeClock,System.Threading.CancellationToken)
-member VoxClip.Cli.CliOperations :: method internal ValidateExportDestinations(VoxClip.Core.Domain.Shared.ComposeSnapshot,System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Cli.CliOperations :: method internal ValidateExportDestinations(VoxClip.Core.Domain.Shared.ComposeSnapshot,System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IEnumerable`1<string>)
 member VoxClip.Cli.CliOperations :: method internal ValidateRequestedScope(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.ClipRange>,int,string,string)
 member VoxClip.Cli.CliOperations :: method internal WriteExportAsync(VoxClip.Cli.PreparedExport,System.CommandLine.ParseResult,System.Threading.CancellationToken,VoxClip.Cli.ExportPreparer)
 member VoxClip.Cli.CliOperations :: method private BuildPlanUnchecked(VoxClip.Core.Domain.Shared.Project,bool)
