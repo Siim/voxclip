@@ -17,6 +17,21 @@ namespace VoxClip.Ui.Tests;
 public sealed class TimelineTests
 {
     [Fact]
+    public void CanSeekAndPreviewACutInTheSecondRecording()
+    {
+        var model = ClipSemanticsTests.RecordingOpening();
+        model.Select(model.Index("r2.w18"));
+        model.Select(model.Index("r2.w21"), extend: true);
+        Assert.True(model.AddSelectionAsPart());
+        model.Select(model.Index("r2.w18"));
+        var seek = model.ClampProjectTime(model.SourceTime);
+        var cut = Assert.IsType<TimeRange>(model.PreviewCutRange());
+        Assert.True(cut.Start <= seek && seek < cut.End);
+        Assert.Equal(model.RecordingRegions[1].Key, model.RecordingClock!.LocalTime(seek)?.Key);
+        Assert.Equal(model.ClampProjectTime(seek + 3), cut.End);
+    }
+
+    [Fact]
     public void RecordingLineEditsUpdateTimelineSeamsAndUndoRestoresThem()
     {
         var model = ClipSemanticsTests.RecordingReference();

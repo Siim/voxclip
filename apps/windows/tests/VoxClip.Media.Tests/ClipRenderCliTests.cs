@@ -35,11 +35,11 @@ public sealed class ClipRenderCliTests
         }
         else File.Delete(companion.AbsolutePath);
         var destination = Path.Combine(directory.Path, "out.mp4");
-        var (code, json) = await RecordingCliAsync(["--open", story.Path, "--export", destination, "--style", "off", "--json"], ct,
+        var (code, json, error) = await RecordingCliAsync(["--open", story.Path, "--export", destination, "--style", "off", "--json"], ct,
             (_, _) => Task.FromResult<(Project?, MediaInfo)>((story.Project, story.Primary)),
             (_, _, _) => throw new InvalidOperationException("The encoder must not run without both recordings."));
         Assert.NotEqual(0, code);
-        Assert.Contains("0010 is missing. Locate it to use its words.", json);
+        Assert.Contains("0010 is missing. Locate it to use its words.", json + error);
         Assert.False(File.Exists(destination));
     }
 
@@ -53,31 +53,33 @@ public sealed class ClipRenderCliTests
         using var directory = new RecordingTemp();
         var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
         var destination = Path.Combine(directory.Path, "out.mp4");
-        var (exportCode, json) = await RecordingCliAsync(["--open", story.Path, "--export", destination, "--style", "off", "--loudness", "off", "--json"], ct);
-        Assert.True(exportCode == 0, json);
+        var (exportCode, json, exportError) = await RecordingCliAsync(["--open", story.Path, "--export", destination, "--style", "off", "--loudness", "off", "--json"], ct);
+        Assert.True(exportCode == 0, json + exportError);
         using var export = JsonDocument.Parse(json);
         var plan = EditingEngine.BuildPlan(EditingEngine.FromProject(story.Project)!, story.Primary.DurationSeconds, 48_000);
         Assert.Equal(plan.Duration, export.RootElement.GetProperty("durationSeconds").GetDouble(), 7);
-        var (checkCode, checkedJson) = await RecordingCliAsync(["check", destination, "--project", story.Path, "--clip", "clip-recordings",
+        var (checkCode, checkedJson, checkError) = await RecordingCliAsync(["check", destination, "--project", story.Path, "--clip", "clip-recordings",
             "--aspect", "source", "--style", "off", "--loudness", "off", "--json"], ct);
-        Assert.True(checkCode is 0 or 8, checkedJson);
+        Assert.True(checkCode is 0 or 8, checkedJson + checkError);
         using var checkedReport = JsonDocument.Parse(checkedJson);
         var report = checkedReport.RootElement.GetProperty("check");
         Assert.Equal(["0007", "0010", "0007"], report.GetProperty("recordingSeams").EnumerateArray().Select(seam => seam.GetProperty("to").GetString()));
         Assert.DoesNotContain(report.GetProperty("sync").GetProperty("items").EnumerateArray(), item => item.GetProperty("kind").GetString() == "pictureSource");
     }
 
-    private static async Task<(int Code, string Json)> RecordingCliAsync(string[] args, CancellationToken ct,
+    /// <summary>Runs the CLI in process. Progress goes to stderr, so only stdout is the JSON document.</summary>
+    private static async Task<(int Code, string Json, string Error)> RecordingCliAsync(string[] args, CancellationToken ct,
         VoxClip.Cli.ExportInputReader? open = null, VoxClip.Cli.ExportPreparer? prepare = null)
     {
         var previousOut = Console.Out;
         var previousError = Console.Error;
         using var output = new StringWriter();
+        using var error = new StringWriter();
         try
         {
             Console.SetOut(output);
-            Console.SetError(output);
-            return (await AcceptedCli.RunAsync(args, ct, open, prepare), output.ToString());
+            Console.SetError(error);
+            return (await AcceptedCli.RunAsync(args, ct, open, prepare), output.ToString(), error.ToString());
         }
         finally { Console.SetOut(previousOut); Console.SetError(previousError); }
     }

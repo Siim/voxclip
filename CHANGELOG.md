@@ -12,6 +12,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - On Mac, clips that mix recordings keep playing paid voice patches from the primary recording.
 - On Mac, the export check skips cutaways when checking the camera at a recording seam.
 - On Mac, a freeze holds across ordinary cuts in a recording, then stops at a recording change.
+- On Windows, seek and preview cuts across recordings, recover left-out lines in order, and turn off automatic recording level matching.
 - On Mac, make one clip from the best lines across card recordings, or combine them in a project without AI; the Outline’s ✦ chip runs Best versions.
 - On Windows, start a clip from one recording, audition and swap individual line versions, and insert lines only another recording says.
 - Claude Code and Codex can read recordings and matched takes and propose a story across recordings, without sending media or spending money.

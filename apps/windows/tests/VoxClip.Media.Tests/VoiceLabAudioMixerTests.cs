@@ -675,6 +675,40 @@ public sealed partial class VoiceLabAudioMixerTests
     }
 
     [Fact]
+    public void NativeSnapshotKeepsAPaidPrimaryPatchInATwoRecordingClip()
+    {
+        var project = Fixture("passage-render-v3.voxclip");
+        var reference = project.Media.Source;
+        var companion = reference with { ContentKey = new string('b', 64), AbsolutePath = Path.GetFullPath("companion.mov"), RelativePath = "companion.mov" };
+        project = project with { Media = project.Media with { AdditionalSources = [companion] } };
+        project = Assert.IsType<RecordingEditResult.Applied>(RecordingEdits.Apply(new RecordingEdit.AddSpokenSource(companion.ContentKey, project.Transcript!), project)).Project;
+        var clip = Assert.Single(project.Edits.Clips);
+        clip = clip with
+        {
+            EndWordId = "r2.w2", Kind = StoryClipKind.Story,
+            Parts = [new("primary", clip.StartWordId, clip.EndWordId), new("companion", "r2.w1", "r2.w2")],
+        };
+        project = project with { Edits = project.Edits with { Clips = [clip], ActiveClipId = clip.Id } };
+        var prepared = VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Clip(clip.Id), VoiceLabLabelPosition.TopLeft);
+        var input = VoiceLabRenderInput.Capture(project, prepared, Path.GetTempPath());
+        var plan = EditingEngine.BuildPlan(EditingEngine.FromProject(project)!, reference.DurationSeconds, reference.Audio!.SampleRate);
+        var media = new MediaInfo(reference.AbsolutePath, reference.DurationSeconds, reference.Video, reference.Audio,
+            new(640, 360), "h264", "aac", false, 0, 1, 0);
+        var snapshot = new ComposeSnapshot(media, plan, null, new(new(640, 360), 30, 4_000_000)) { VoiceLab = input };
+
+        var captured = input.CaptureSnapshot(snapshot);
+        var timeline = Assert.IsType<RenderTimeline.VoiceLab>(captured.Timeline);
+        Assert.Equal("vl-passage", Assert.Single(timeline.Plan.Pieces, piece => piece.Kind == VoiceLabOutputPieceKind.Synth).SegmentId);
+        Assert.Equal(companion.ContentKey, ProjectClock.Build(project).RegionAt(timeline.Plan.Pieces[^1].SourceStartSample)?.Key);
+        Assert.Equal(VoiceLabProjectErrorCode.StaleRenderContract,
+            Assert.Throws<VoiceLabProjectException>(() => input.CaptureSnapshot(snapshot with
+                { Media = media with { DurationSeconds = media.DurationSeconds + 1 } })).Code);
+        Assert.Equal(VoiceLabProjectErrorCode.StaleRenderContract,
+            Assert.Throws<VoiceLabProjectException>(() => input.CaptureSnapshot(snapshot with
+                { Plan = plan with { TotalSamples = 7000 } })).Code);
+    }
+
+    [Fact]
     public void NativeSnapshotRejectsDifferentSourceGridAndStaleCaptionsBeforePreparation()
     {
         var project = Fixture("passage-render-v3.voxclip");
