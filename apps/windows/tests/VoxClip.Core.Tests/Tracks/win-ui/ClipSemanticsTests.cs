@@ -1,9 +1,11 @@
 #if WIN_UI_TESTS
+using System.Text.Json.Nodes;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.VoiceLab;
+using VoxClip.Tests.Support;
 using Xunit;
 
 namespace VoxClip.Ui.Tests;
@@ -50,11 +52,14 @@ public sealed class ClipSemanticsTests
     [Fact]
     public void SevenRecordingActionsMakeTheSharedFivePartClip()
     {
+        var vectors = JsonNode.Parse(FixtureLoader.ReadText("fixtures/recordings/command-cases.json"))!;
         var model = RecordingReference();
         var primary = model.RecordingRegions[0];
         var alternate = model.RecordingRegions[1];
         Assert.True(model.StartFromRecording(primary.Key));
+        Assert.Equal("Start from recording", model.UndoActionName);
         var starter = model.ActiveClip;
+        var started = ProjectSerialization.Serialize(model.Project);
         var line = Assert.Single(model.RecordingClipLines, line => line.FirstId == "w1");
         Assert.True(model.OpenRecordingVersions(line));
         Assert.NotNull(model.RecordingLineAudition(line, alternate.Key));
@@ -62,19 +67,45 @@ public sealed class ClipSemanticsTests
         Assert.True(model.UseRecordingLineVersion(line, alternate.Key));
         Assert.Equal("Use version", model.UndoActionName);
         var swapped = model.ActiveClip;
+        var swappedProject = ProjectSerialization.Serialize(model.Project);
         model.SetOtherRecordingLinesExpanded(true);
         var solo = Assert.Single(model.OtherRecordingLines, run => run.StartWordId == "r2.w18");
-        Assert.Equal("w23", model.RecordingPlacement(solo));
+        Assert.Equal(vectors["placement"]!.GetValue<string>(), model.RecordingPlacement(solo));
         Assert.NotNull(model.RecordingSoloAudition(solo));
         Assert.Same(swapped, model.ActiveClip);
         Assert.True(model.InsertRecordingLine(solo));
         Assert.Equal("Add part", model.UndoActionName);
-        Assert.Equal(new[] { ("r2.w1", "r2.w11"), ("w8", "w13"), ("w18", "w23"), ("r2.w18", "r2.w21"), ("w24", "w27") },
+        Assert.Equal(vectors["final"]!["ranges"]!.AsArray().Select(pair => (pair![0]!.GetValue<string>(), pair[1]!.GetValue<string>())),
             model.ClipParts.Select(part => (part.Part.StartWordId, part.Part.EndWordId)));
+        var final = ProjectSerialization.Serialize(model.Project);
         model.Undo();
-        Assert.Equal(swapped, model.ActiveClip);
+        Assert.Equal(swappedProject, ProjectSerialization.Serialize(model.Project));
+        Assert.Equal("Use version", model.UndoActionName);
         model.Undo();
-        Assert.Equal(starter, model.ActiveClip);
+        Assert.Equal(started, ProjectSerialization.Serialize(model.Project));
+        Assert.Equal("Use version", model.RedoActionName);
+        model.Redo();
+        Assert.Equal(swappedProject, ProjectSerialization.Serialize(model.Project));
+        Assert.Equal("Add part", model.RedoActionName);
+        model.Redo();
+        Assert.Equal(final, ProjectSerialization.Serialize(model.Project));
+    }
+
+    [Fact]
+    public void UniqueLineCanGoAtTheEndWhenItsNeighbourIsOutsideTheClip()
+    {
+        var model = RecordingOpening();
+        var solo = Assert.Single(model.OtherRecordingLines, run => run.StartWordId == "r2.w18");
+        var before = ProjectSerialization.Serialize(model.Project);
+        Assert.EndsWith("isn't in Clip 1. Insert it at the end, then move it.", model.RecordingSoloDisabledReason(solo));
+        Assert.Null(model.RecordingSoloAudition(solo));
+        Assert.False(model.InsertRecordingLine(solo));
+        Assert.Null(model.RecordingSoloDisabledReason(solo, atEnd: true));
+        Assert.True(model.InsertRecordingLine(solo, atEnd: true));
+        Assert.Equal("Add part", model.UndoActionName);
+        Assert.Equal(("r2.w18", "r2.w21"), (model.ClipParts[^1].Part.StartWordId, model.ClipParts[^1].Part.EndWordId));
+        model.Undo();
+        Assert.Equal(before, ProjectSerialization.Serialize(model.Project));
     }
 
     internal static EditorViewModel RecordingOpening()
