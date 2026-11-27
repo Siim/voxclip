@@ -203,6 +203,12 @@ On Windows, construction, record copies and decoding silently normalize supplied
 
 `ProjectClock` is the source side of this mapping for a project with spoken companions. It joins the immutable local transcripts in clock order on the primary sample grid and exposes the regions, guard gaps and clock end for planning. Companion IDs are qualified (`r2.w1`); the primary transcript and all its IDs stay exact. `resolve`/`sourceTime` map a clock sample to a recording key and a local sample on the primary grid, and `mapTime` is the inverse inside that region. Region ends are exclusive and a guard gap resolves to no recording. The edit state uses the joined words and does not make pauses between recordings. The planner and renderer consume the clock separately from the file format.
 
+For a multi-recording project, `totalSamples` is the clock end. The edit and Voice Lab planners plan each recording in its own time on the primary grid, then add its offset to each kept span. A full take keeps regions in clock order; a story keeps its parts in play order. The complement of those spans includes every guard gap. Kept spans stay in project-clock samples so other edit layers still use one axis; a media caller resolves each span's start through `ProjectClock` to get the recording key and local sample.
+
+`TimelinePieces.isRecordingSeam(at:)` (`IsRecordingSeam` on Windows) identifies a change of recording between consecutive pieces in playback order. It also works on a full take with no part seams. The first caption after either kind of seam starts a new page. Fades are unchanged except that a recording's own start and end count as source edges, so a span touching one has no fade on that side.
+
+`shared/fixtures/recordings/plan-cases.json` uses `five-part-a1-b1-b2-a2-b3` as the reference for the recording shortcut vectors; it records the ordered word ranges and the local kept samples for each part. `tools/fixtures/recordings/generate.py` derives these from the existing single-recording oracle.
+
 ### 2.8 CaptionWord
 
 ```text
@@ -661,6 +667,8 @@ buildSegments(state, activeClip?):        // activeClip = resolved indices or no
 ```
 
 Words outside the clip are cut only inside this function. Pauses cut for the full take stay in force inside a clip, so a clip never contains audio that the full take cuts. For example, a cut pause right after the clip's last word shortens the clip's 0.25 s tail to the pause breath. VoxConvo behaves the same way.
+
+With spoken companions, each part or ordinary clip must stay in one region (otherwise: “A part comes from one recording.”). Only words and pauses from that region take part in its edge calculations. Lead-in, tail padding, cut reach and `pauseKeepSeconds` cannot enter a guard gap; the gap after the region's last word is a source tail, not a pause. Single-recording projects keep the original planning path and sample counts.
 
 ### 7.2 clipTimes (reference `clips.ts:32-40`)
 

@@ -19,6 +19,12 @@ grid. The same cut sets, corrections and clip parts work with these IDs. Times r
 or no recording in a guard gap. A one-recording clock returns the original transcript unchanged. An ordinary clip or a
 part cannot cross regions. A story can use parts from any number of regions in any play order.
 
+The edit and Voice Lab planners reuse the single-recording rules inside each region, then shift kept spans to the
+project clock and assemble them in play order. The clock end is the plan end, with every guard gap cut. Lead-in,
+tail padding, retained pause breath and cut reach stop at the region edges. A kept span touching a recording's
+real start or end has no fade on that side. A recording change is a seam even in a full take without story parts;
+`TimelinePieces` identifies it separately and the next caption starts a new page.
+
 Word IDs are opaque after import: transcription numbers the local words and only the clock adds the recording prefix.
 Pause IDs use the complete preceding word ID, and cut commands distinguish words from pauses by lookup.
 Persistence, part validation and timeline word anchors look up joined words instead of only the primary transcript.
@@ -28,8 +34,9 @@ and its paid assets remain in the project. Copies remember the clip protecting t
 copy do not make another one for that window.
 
 Write v7 only with spoken sources; do not promote a legacy project when it loads or saves. A v6 reader refuses v7.
-Swift and C# replay the same clock vectors. Planning the region edges and fades, decoding recordings, rendering seams
-and offering the controls are separate steps. Voice changes on words outside the primary are not part of this version.
+Swift and C# replay the same clock and plan vectors. Decoding the selected recordings and applying stored level
+adjustments are media work; measuring a match when adding a recording is separate from Core planning. Voice changes
+on words outside the primary are not part of this version.
 
 ## Why
 
