@@ -23,6 +23,7 @@ import Testing
         }
 
         try edit("Start from recording") { editor.startFromRecording(primary) }
+        #expect(editor.announcements.contains("Clip 1 made from 0007, 2 parts, 1 restart left out"))
         #expect(editor.transcriptRecordingScope == .playOrder)
         #expect(shell.outlineEntries.count == 2)
         let opening = try #require(editor.recordingLineWithVersions(at: "w1"))
@@ -32,6 +33,7 @@ import Testing
         perform { editor.playRecordingLineVersion(opening, key: alternate.key) }
         #expect(try ProjectJSON.encode(editor.project) == beforeAudition)
         try edit("Use version") { editor.useRecordingLineVersion(opening, key: alternate.key) }
+        #expect(editor.announcements.contains("Line 1 now uses 0010's version · part 1 split"))
         perform { editor.otherRecordingLinesExpanded = true }
         let solo = try #require(editor.otherRecordingLines.first { $0.startWordId == "r2.w18" })
         #expect(editor.recordingPlacement(solo) == "w23")
@@ -39,6 +41,7 @@ import Testing
         perform { editor.playRecordingLineThere(solo) }
         #expect(try ProjectJSON.encode(editor.project) == beforeInsertAudition)
         try edit("Add part") { editor.insertRecordingLine(solo) }
+        #expect(editor.announcements.contains("Part 4 added from 0010, after “…my personal time tracker”"))
         #expect(editor.activeClip?.playParts.map { [$0.startWordId, $0.endWordId] } == [
             ["r2.w1", "r2.w11"], ["w8", "w13"], ["w18", "w23"], ["r2.w18", "r2.w21"], ["w24", "w27"]
         ])
@@ -54,6 +57,7 @@ import Testing
         let restart = try #require(editor.recordingOmittedLines.first)
         #expect(restart.id == "w14")
         try checkRecordingEdit(editor, "Add part") { editor.putBackRecordingLine(restart) }
+        #expect(editor.announcements.contains("Restart put back in Clip 1."))
         #expect(editor.activeClip?.playParts.count == 1 && editor.recordingOmittedLines.isEmpty)
     }
 

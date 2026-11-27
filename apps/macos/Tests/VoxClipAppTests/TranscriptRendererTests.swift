@@ -37,14 +37,8 @@ import Testing
     }
 
     @Test func recordingControlsAppearBesideTheirWords() throws {
-        let fixture = try SharedResources.locate().root.appendingPathComponent("fixtures/recordings/reference-recordings.voxclip")
-        var project = try JSONProjectStore.decode(Data(contentsOf: fixture))
-        project.edits.clips = []
-        project.edits.activeClipId = nil
-        let model = EditorModel(document: VoxClipDocument(project: project, demo: true),
-                                app: AppModel(settingsStore: RegressionSettingsStore()), preview: DemoPreviewEngine())
+        let model = try recordingShortcutModel()
         defer { model.close() }
-        try modelStartFromPrimary(model)
         let (text, renderer, coordinator) = try pane(model)
         defer { withExtendedLifetime(coordinator) {} }
         let matches = try #require(model.recordingTakeMatches)
@@ -96,10 +90,83 @@ import Testing
         #expect(NSMaxRange(previous.range) <= solo.1.location && NSMaxRange(solo.1) <= punchline.range.location)
     }
 
-    private func modelStartFromPrimary(_ model: EditorModel) throws {
+    @Test func recordingFoldKeysActInTheTranscriptAndNotInTextFields() throws {
+        let model = try recordingShortcutModel(thirdVersion: true)
+        defer { model.close() }
+        let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))
+        defer { pane.close() }
+        let opening = try #require(model.recordingLineWithVersions(at: "w1"))
+        let word = try #require(pane.text.map.span(id: "w1"))
+        pane.text.setSelectedRange(NSRange(location: word.range.location, length: 0))
+        try #require(pane.window.makeFirstResponder(pane.text))
+        #expect(AppDelegate.recordingLine(for: model, responder: pane.window.firstResponder)?.id == opening.id)
+        #expect(model.recordingVersionsAccessibility(opening) == "Line 1, 2 other versions, in 0010 and 0006")
+        model.showRecordingLineVersions(opening)
+        #expect(model.lastAnnouncement == "Line 1, 2 other versions, in 0010 and 0006")
+        pane.update(rebuild: true)
+
+        func key(_ characters: String, _ code: UInt16) throws -> NSEvent {
+            try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: pane.window.windowNumber, context: nil, characters: characters,
+                charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
+        }
+        let down = try key("\u{f701}", 125), up = try key("\u{f700}", 126)
+        let space = try key(" ", 49), enter = try key("\r", 36), escape = try key("\u{1b}", 53)
+        let original = model.project
+        let first = try #require(opening.alternatives.first)
+        let last = try #require(opening.alternatives.last)
+        let field = NSTextField(string: "Search")
+        pane.scroll.addSubview(field)
+        try #require(pane.window.makeFirstResponder(field))
+        let input = try #require(field.currentEditor() as? NSTextView)
+        #expect(AppDelegate.recordingLine(for: model, responder: field) == nil)
+        #expect(AppDelegate.recordingLine(for: model, responder: input) == nil)
+        for event in [down, up, space, enter, escape] {
+            if pane.window.firstResponder !== input { try #require(pane.window.makeFirstResponder(field)) }
+            pane.window.firstResponder?.keyDown(with: event)
+            #expect(model.recordingSelectedVersionKey == first.key && model.recordingOpenLineID == opening.id)
+            #expect(model.recordingAuditionTask == nil && model.project == original)
+        }
+
+        try #require(pane.window.makeFirstResponder(pane.text))
+        pane.text.keyDown(with: down)
+        #expect(model.recordingSelectedVersionKey == last.key)
+        pane.text.keyDown(with: up)
+        #expect(model.recordingSelectedVersionKey == first.key)
+        pane.text.keyDown(with: space)
+        #expect(model.recordingAuditionTask != nil && model.project == original)
+        pane.text.keyDown(with: escape)
+        #expect(model.recordingOpenLineID == nil && model.recordingAuditionTask == nil)
+        #expect(pane.text.selectedRange().location == pane.text.map.span(id: opening.start)?.range.location)
+        model.showRecordingLineVersions(opening)
+        pane.text.keyDown(with: enter)
+        #expect(model.activeClip?.playParts.first?.startWordId == "r2.w1" && model.recordingOpenLineID == nil)
+    }
+
+    private func recordingShortcutModel(thirdVersion: Bool = false) throws -> EditorModel {
+        _ = NSApplication.shared
+        let fixture = try SharedResources.locate().root.appendingPathComponent("fixtures/recordings/reference-recordings.voxclip")
+        var project = try JSONProjectStore.decode(Data(contentsOf: fixture))
+        project.edits.clips = []
+        project.edits.activeClipId = nil
+        if thirdVersion {
+            var media = try #require(project.media.additionalSources.first)
+            media.absolutePath = "/synthetic/DJI_0006.MOV"
+            media.contentKey = String(repeating: "6", count: 64)
+            var spoken = try #require(project.media.spokenSources?.first)
+            spoken.sourceKey = media.contentKey
+            spoken.wordIdPrefix = "r3."
+            spoken.offsetSeconds += Int(media.durationSeconds.rounded(.up)) + 1
+            spoken.transcript.words = Array(spoken.transcript.words.prefix(11))
+            project.media.additionalSources.append(media)
+            project.media.spokenSources?.append(spoken)
+        }
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true),
+                                app: AppModel(settingsStore: RegressionSettingsStore()), preview: DemoPreviewEngine())
         let primary = try #require(model.recordingRegions.first)
         model.startFromRecording(primary)
         try #require(model.transcriptRecordingScope == .playOrder)
+        return model
     }
 
     /// `paragraphs` turns of ten words by six speakers in turn, r0–r59 by default, each its own

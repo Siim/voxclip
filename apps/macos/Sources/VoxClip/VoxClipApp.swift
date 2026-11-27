@@ -306,13 +306,18 @@ import VoxClipCore
     var settingsWindowForTests: NSWindow? { settingsWindow }
     #endif
     private func recordingLineForMenu() -> (EditorModel, RecordingClipLine)? {
-        guard let editor = keyEditor, let responder = NSApp.keyWindow?.firstResponder else { return nil }
+        guard let editor = keyEditor,
+              let line = Self.recordingLine(for: editor, responder: NSApp.keyWindow?.firstResponder) else { return nil }
+        return (editor, line)
+    }
+
+    static func recordingLine(for editor: EditorModel, responder: NSResponder?) -> RecordingClipLine? {
         if let transcript = responder as? TranscriptNSTextView, let line = transcript.recordingLineAtCaret {
-            return (editor, line)
+            return line
         }
         if TimelineItemShortcut.focusedCanvas(responder) != nil,
            let word = editor.words.first(where: { $0.start <= editor.sourceTime && editor.sourceTime <= $0.end }),
-           let line = editor.recordingLineWithVersions(at: word.id) { return (editor, line) }
+           let line = editor.recordingLineWithVersions(at: word.id) { return line }
         return nil
     }
 
