@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, preview and export story clips from several recordings, with matched speech levels and a check for the picture and voice at each recording change.
 - Mac and Windows can compare transcript lines across recordings and identify alternate versions, restarts and lines unique to one take.
 - Mac and Windows project files can store spoken companions and story parts from different recordings, plan the parts in play order with a new caption page at each recording seam, and keep paid voice work safe when a version changes.
 - When a project can’t load, the CLI reports the invalid field path and reason in text and JSON on Mac and Windows.
