@@ -23,6 +23,99 @@ public sealed class ClipSemanticsTests
     }
 
     internal static EditorViewModel Story() => new(Fixture("story-project.voxclip", "story-clips"));
+    internal static EditorViewModel RecordingStory() => new(Fixture("two-recordings.voxclip", "recordings"));
+    internal static EditorViewModel RecordingOpening()
+    {
+        var project = Fixture("reference-recordings.voxclip", "recordings");
+        var clip = new ClipRange("clip-opening", "w1", "w7", null, ClipOrigin.Manual, null, null, true);
+        return new(project with { Edits = project.Edits with { ActiveClipId = clip.Id, Clips = [clip] } });
+    }
+
+    [Fact]
+    public void RecordingPartPickAddsAfterTheSelectedPartAndUndoRestoresTheClip()
+    {
+        var model = RecordingOpening();
+        model.Select(model.Index("w18"));
+        model.Select(model.Index("w23"), extend: true);
+        Assert.True(model.AddSelectionAsPart());
+        var opening = model.ClipParts[0].Id;
+        Assert.True(model.SelectPart(opening));
+        Assert.True(model.PickPartFrom(model.RecordingRegions[1].Key));
+        Assert.Equal("Select words in 0010 to add them to Clip 1 · after part 1", model.PartPickPrompt);
+        Assert.Equal(2, model.RecordingPartNumber);
+        Assert.False(model.CanAddPart);
+        model.Select(model.Index("r2.w18"));
+        model.Select(model.Index("r2.w21"), extend: true);
+        Assert.True(model.AddSelectionAsPart());
+        Assert.Equal("Add part", model.UndoActionName);
+        Assert.Equal(["w1", "r2.w18", "w18"], model.ClipParts.Select(part => part.Part.StartWordId));
+        Assert.Equal("Clip 1 · 3 parts · from 0007 and 0010", model.StoryRecordingHeading);
+        Assert.NotNull(model.PartPickRecording);
+        model.Undo();
+        Assert.Equal(["w1", "w18"], model.ClipParts.Select(part => part.Part.StartWordId));
+        Assert.Equal("Add part", model.RedoActionName);
+    }
+
+    [Fact]
+    public void RecordingSelectionCannotCrossAGuardGapAndShowsTheInlineReason()
+    {
+        var model = RecordingOpening();
+        Assert.True(model.ChooseRecordingShortcut(0));
+        model.Select(model.Index("w27"));
+        model.Select(model.Index("r2.w1"), extend: true);
+        Assert.False(model.CanAddPart);
+        Assert.False(model.AddSelectionAsPart());
+        Assert.Equal("A part comes from one recording. Select words in 0007 only.", model.AddPartHelp);
+        Assert.Null(model.UndoActionName);
+    }
+
+    [Fact]
+    public void WholePartVersionUsesTheMatchedRecordingAndUndoesInOneStep()
+    {
+        var model = RecordingOpening();
+        var opening = Assert.Single(model.ClipParts);
+        var version = Assert.Single(model.RecordingVersions(opening));
+        Assert.Equal("0010", version.Recording.Label);
+        Assert.Null(model.RecordingVersionCopyReason(opening, version));
+        Assert.True(model.UseRecordingVersion(opening.Id, version));
+        var updated = Assert.Single(model.ClipParts);
+        Assert.Equal(opening.Id, updated.Id);
+        Assert.Equal(("r2.w1", "r2.w11"), (updated.Part.StartWordId, updated.Part.EndWordId));
+        Assert.Equal("Use version", model.UndoActionName);
+        model.Undo();
+        Assert.Equal("w1", Assert.Single(model.ClipParts).Part.StartWordId);
+        Assert.Equal("Use version", model.RedoActionName);
+    }
+
+    [Fact]
+    public void ProposalReasonIncludesThePartNumberAndItsRecording()
+    {
+        var model = RecordingStory();
+        Assert.Equal(["Part 1 · 0010 · A clearer opening"], model.ProposalRecordingReasons(model.ActiveClip!));
+    }
+
+    [Fact]
+    public void MissingVersionStaysVisibleButCannotBeUsedOrAuditioned()
+    {
+        var model = RecordingOpening();
+        var part = Assert.Single(model.ClipParts);
+        var version = Assert.Single(model.RecordingVersions(part));
+        model.IsRecordingMissing = source => source.ContentKey == version.Recording.Key;
+        Assert.Equal("0010 is missing. Locate it to use its words.", model.RecordingVersionDisabledReason(part.Id, version));
+        Assert.False(model.UseRecordingVersion(part.Id, version));
+        Assert.Null(model.RecordingVersionPreview(part.Id, version));
+        Assert.Null(model.UndoActionName);
+    }
+
+    [Fact]
+    public void RemoveRecordingExplainsThePartThatUsesIt()
+    {
+        var model = RecordingStory();
+        var key = model.RecordingRegions[1].Key;
+        Assert.Equal("Clip 1 uses 1 part from 0010. Remove that part first.", model.RemoveRecordingReason(key));
+        Assert.False(model.RemoveRecording(key));
+        Assert.Null(model.UndoActionName);
+    }
 
     [Fact]
     public void StoryOutlineFollowsPlayOrderAndMovesOnePartInAnUndoStep()
