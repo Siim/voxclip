@@ -128,6 +128,9 @@ public sealed partial class EditorPage : Page
         pauseBreath = App.Services.Get("editing.pauseBreath", "natural");
         App.Services.SettingsChanged += EditorSettingsChanged;
         Transcript.Attach(ViewModel);
+        Transcript.RecordingAuditionRequested = PlayRecordingAudition;
+        Transcript.StopRecordingAuditionRequested = StopRecordingAudition;
+        Transcript.LocateRecordingRequested = LocateRecording;
         Transcript.RewriteRequested += (_, _) => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite");
         Timeline.Attach(ViewModel);
         CaptionDrag.Attach(ViewModel);
@@ -1111,6 +1114,7 @@ public sealed partial class EditorPage : Page
         }
         Add(VirtualKey.Z, VirtualKeyModifiers.Control, ViewModel.Undo);
         Add(VirtualKey.Y, VirtualKeyModifiers.Control, ViewModel.Redo);
+        Add(VirtualKey.Y, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => Transcript.ShowOtherRecordingVersions());
         Add(VirtualKey.Z, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, ViewModel.Redo);
         // Ctrl+R on a word selection with an empty field rewrites it in the default tone at once (design §6.3.1).
         Add(VirtualKey.R, VirtualKeyModifiers.Control, () =>

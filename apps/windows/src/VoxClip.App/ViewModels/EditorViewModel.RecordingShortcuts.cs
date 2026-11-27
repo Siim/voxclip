@@ -81,6 +81,8 @@ public sealed partial class EditorViewModel
         SelectedRecordingVersionKey = null;
     }
 
+    internal void SelectRecordingVersion(string key) => SelectedRecordingVersionKey = key;
+
     internal RecordingClipLine? RecordingLineAt(int word) => TranscriptRecordingView.Kind == RecordingViewKind.PlayOrder
         ? RecordingClipLines.FirstOrDefault(line => line.Alternatives.Count > 0 && Index(line.FirstId) <= word && word <= Index(line.LastId)) : null;
 

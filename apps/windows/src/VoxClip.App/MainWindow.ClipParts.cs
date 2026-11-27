@@ -190,6 +190,25 @@ public sealed partial class MainWindow
             }
             if (model.ActiveClip is not null)
             {
+                if (model.OtherRecordingLines is { Count: > 0 } runs)
+                {
+                    var lines = Ui.Stack(6);
+                    var fold = new Expander { Header = $"Only in other recordings · {runs.Count}", Content = lines,
+                        IsExpanded = model.OtherRecordingLinesExpanded, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+                    fold.Expanding += (_, _) => model.SetOtherRecordingLinesExpanded(true);
+                    fold.Collapsed += (_, _) => model.SetOtherRecordingLinesExpanded(false);
+                    foreach (var run in runs.Take(20)) lines.Children.Add(RecordingShortcutRow.Solo(model, run, false, page.PlayRecordingAudition, page.LocateRecording));
+                    if (runs.Count > 20)
+                    {
+                        var show = Ui.Button($"Show all {runs.Count}", () =>
+                        {
+                            lines.Children.RemoveAt(lines.Children.Count - 1);
+                            foreach (var run in runs.Skip(20)) lines.Children.Add(RecordingShortcutRow.Solo(model, run, false, page.PlayRecordingAudition, page.LocateRecording));
+                        });
+                        lines.Children.Add(show);
+                    }
+                    host.Children.Add(fold);
+                }
                 foreach (var omitted in model.OmittedRecordingLines)
                 {
                     var words = string.Join(" ", model.Words.Skip(model.Index(omitted.Take.StartWordId))
