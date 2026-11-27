@@ -9,7 +9,7 @@ internal enum RecordingViewKind { All, Recording, PlayOrder }
 
 internal readonly record struct RecordingView(RecordingViewKind Kind, string? Key = null);
 internal sealed record RecordingSection(int First, int Last, string? Heading);
-internal sealed record OmittedRecordingLine(TakeMatch.Take Take, string AfterWordId, string Label);
+internal sealed record OmittedRecordingLine(TakeMatch.Take Take, string? AfterWordId, string? BeforePartId, string Label);
 internal sealed record RecordingVersion(ProjectClock.Region Recording, string FirstId, string LastId,
     IReadOnlySet<string> ChangedWordIds, int Fillers, double Pause, double Start, double End)
 {
@@ -246,16 +246,41 @@ public sealed partial class EditorViewModel
             ? StoryRecordingRegions.SelectMany(region => RecordingTakes(region.Key)).Where(IsLeftOut).Select(take =>
             {
                 var first = Index(take.StartWordId);
-                var before = ClipParts.FirstOrDefault(part => part.Last == first - 1);
-                return first < 0 || before is null || ClipParts.Any(part => part.First <= first && first <= part.Last)
-                    ? null : new OmittedRecordingLine(take, before.Part.EndWordId, IsRestart(take) ? "restart" : "false start");
+                var last = Index(take.EndWordId);
+                if (first < 0 || last < first || ClipParts.Any(part => part.First <= last && first <= part.Last)) return null;
+                var siblings = ClipParts.Where(part => part.Recording?.Key == take.Key).OrderBy(part => part.First).ToArray();
+                var before = siblings.LastOrDefault(part => part.Last < first);
+                var after = siblings.FirstOrDefault(part => part.First > last);
+                return new OmittedRecordingLine(take, before?.Part.EndWordId, after?.Id, IsRestart(take) ? "restart" : "false start");
             }).OfType<OmittedRecordingLine>().OrderBy(line => Index(line.Take.StartWordId)).ToArray()
             : [];
 
-    internal bool PutBackRecordingLine(OmittedRecordingLine line) => CanEditParts && ActiveClip is { } clip &&
-        RecordingUnavailable(line.Take.Key) is null && ApplyRecordingEdit(new RecordingEdit.InsertLine(clip.Id, line.Take.Key,
-            line.Take.StartWordId, line.Take.EndWordId, line.AfterWordId), feedback: _ =>
-            Notice = $"{char.ToUpperInvariant(line.Label[0])}{line.Label[1..]} put back in {ActiveClipLabel}.");
+    internal bool PutBackRecordingLine(OmittedRecordingLine line)
+    {
+        if (!CanEditParts || ActiveClip is not { } clip || RecordingUnavailable(line.Take.Key) is not null) return false;
+        string Feedback() => Notice = $"{char.ToUpperInvariant(line.Label[0])}{line.Label[1..]} put back in {ActiveClipLabel}.";
+        var insert = new RecordingEdit.InsertLine(clip.Id, line.Take.Key, line.Take.StartWordId, line.Take.EndWordId, line.AfterWordId);
+        if (line.AfterWordId is not null || ClipParts.FirstOrDefault(part => part.Id == line.BeforePartId) is not { } next)
+            return ApplyRecordingEdit(insert, feedback: _ => Feedback());
+
+        RecordingEditResult result;
+        if (Index(line.Take.EndWordId) + 1 == next.First)
+            result = RecordingEdits.Apply(new RecordingEdit.TrimPart(clip.Id, next.Id, line.Take.StartWordId, next.Part.EndWordId), project);
+        else
+        {
+            result = RecordingEdits.Apply(insert, project);
+            if (result is RecordingEditResult.Applied { Details: { MadePartIds: [var inserted] } details } added)
+            {
+                var preceding = next.Number > 1 ? ClipParts[next.Number - 2].Id : null;
+                result = RecordingEdits.Apply(new RecordingEdit.MovePart(details.ClipId, inserted, preceding), added.Project);
+            }
+            else if (result is RecordingEditResult.Applied) return false;
+        }
+        if (result is RecordingEditResult.Refused refused) { Notice = refused.Message; return false; }
+        if (result is not RecordingEditResult.Applied applied || !ReplaceProject(applied.Project, "Add part")) return false;
+        Announce(Feedback());
+        return true;
+    }
 
     internal IReadOnlyList<RecordingVersion> RecordingVersions(ClipPartRow part)
     {

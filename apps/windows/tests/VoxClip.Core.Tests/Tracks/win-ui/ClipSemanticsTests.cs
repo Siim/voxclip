@@ -77,6 +77,39 @@ public sealed class ClipSemanticsTests
     }
 
     [Fact]
+    public void PutBackRestoresConsecutiveLeadingRestartsInRecordingOrder()
+    {
+        var project = RecordingReference().Project;
+        var transcript = project.Transcript!;
+        var template = transcript.Words[0];
+        string[] text = ["One", "more", "time.", "Let", "me", "start", "again.", "We", "can", "ship", "it."];
+        var words = text.Select((word, index) => template with
+        {
+            Id = $"lead{index}", Text = word, Start = index * .2, End = index * .2 + .15, RawStart = null, RawEnd = null,
+        }).ToArray();
+        var model = new EditorViewModel(project with { Transcript = transcript with { Words = words } });
+        Assert.True(model.StartFromRecording(model.RecordingRegions[0].Key));
+        Assert.Equal("lead7", Assert.Single(model.ClipParts).Part.StartWordId);
+        var original = model.Project;
+        Assert.Equal(["lead0", "lead3"], model.OmittedRecordingLines.Select(line => line.Take.StartWordId));
+        var shell = new ShellViewModel();
+        shell.Update(model, showingHome: false, [], null);
+        Assert.Equal([SidebarKind.OmittedRecordingLine, SidebarKind.OmittedRecordingLine, SidebarKind.Outline],
+            shell.Rows.Where(row => row.Kind is SidebarKind.OmittedRecordingLine or SidebarKind.Outline).Take(3).Select(row => row.Kind));
+        Assert.True(model.PutBackRecordingLine(model.OmittedRecordingLines[0]));
+        Assert.Equal(["lead0", "lead7"], model.ClipParts.Select(part => part.Part.StartWordId));
+        var firstRestored = model.Project;
+        Assert.True(model.PutBackRecordingLine(Assert.Single(model.OmittedRecordingLines)));
+        Assert.Equal(("lead0", "lead10"), (Assert.Single(model.ClipParts).Part.StartWordId, model.ClipParts[0].Part.EndWordId));
+        Assert.Empty(model.OmittedRecordingLines);
+        Assert.Equal("Add part", model.UndoActionName);
+        model.Undo();
+        Assert.Equal(ProjectSerialization.Serialize(firstRestored), ProjectSerialization.Serialize(model.Project with { ModifiedAt = firstRestored.ModifiedAt }));
+        model.Undo();
+        Assert.Equal(ProjectSerialization.Serialize(original), ProjectSerialization.Serialize(model.Project with { ModifiedAt = original.ModifiedAt }));
+    }
+
+    [Fact]
     public void SevenRecordingActionsMakeTheSharedFivePartClip()
     {
         var vectors = JsonNode.Parse(FixtureLoader.ReadText("fixtures/recordings/command-cases.json"))!;
