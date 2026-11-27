@@ -269,6 +269,7 @@ func musicFlagsRejectInvalidCombinationsBeforeOpeningInput(flags: [String], mess
     ("assetDuration", "voiceLab/assets/0/durationSeconds: invalid value"),
     ("captionY", "captions/position/y: missing required field"),
     ("captionX", "captions/position/x: invalid value"),
+    ("correctionKey", "edits/corrections: invalid value"),
     ("aiPart", "ai/results/0/clips/0/parts/0/endWordId: missing required field"),
 ])
 func cliReportsSafeProjectFieldErrors(_ defect: String, _ problem: String) throws {
@@ -279,6 +280,12 @@ func cliReportsSafeProjectFieldErrors(_ defect: String, _ problem: String) throw
     let privateContent = "project-private-content-marker"
     project["title"] = privateContent
     if defect == "story" { project["schemaVersion"] = 4 }
+    else if defect == "correctionKey" {
+        // A rejected key is reported at its map, never printed: a newline would split the one-line diagnostic.
+        var edits = try #require(project["edits"] as? [String: Any])
+        edits["corrections"] = ["bad\n\(privateContent)": "fixed"]
+        project["edits"] = edits
+    }
     else if defect == "aspect" || defect == "quality" {
         var settings = try #require(project["export"] as? [String: Any])
         settings[defect] = privateContent

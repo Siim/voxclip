@@ -15,6 +15,10 @@ enum ProjectValidation {
         return object
     }
 
+    /// A map key names its entry only when it is a plain identifier, so a rejected key is never printed.
+    static func isPathKey(_ key: String) -> Bool { key.range(of: #"\A[A-Za-z0-9._:-]{1,128}\z"#, options: .regularExpression) != nil }
+    static func entry(_ parent: String, _ key: String) -> String { isPathKey(key) ? "\(parent)/\(key)" : parent }
+
     static func array(_ value: JSONValue?, at path: String = "/") throws -> [JSONValue] {
         guard case .array(let array) = value else { try fail("expected array", at: path) }
         return array
@@ -36,7 +40,7 @@ enum ProjectValidation {
             let style = try object(clipStyle, required: "preset captions music maxLengthSec shapes rewording captionPicks", optional: "tone", at: "clipStyle")
             for (key, pick) in try map(style["captionPicks"], at: "clipStyle/captionPicks") {
                 // Optional: the clip's caption overrides and "by": "user" for the creator's own choice (design.md §6.6).
-                let path = "clipStyle/captionPicks/\(key)"
+                let path = entry("clipStyle/captionPicks", key)
                 let fields = try object(pick, required: "styleId reason", optional: "overrides by", at: path)
                 if let overrides = fields["overrides"] { _ = try map(overrides, at: "\(path)/overrides") }
                 if let by = fields["by"], by != .string("user") { try fail("invalid value", at: "\(path)/by") }
@@ -133,7 +137,7 @@ enum ProjectValidation {
                                optional: version >= 3 ? "speakingRateSamples wholeClipRevoices" : "speakingRateSamples", at: "voiceLab")
         if let rates = voice["speakingRateSamples"] {
             for (key, samples) in try map(rates, at: "voiceLab/speakingRateSamples") {
-                let path = "voiceLab/speakingRateSamples/\(key)"
+                let path = entry("voiceLab/speakingRateSamples", key)
                 for (index, sample) in try array(samples, at: path).enumerated() { _ = try object(sample, required: "id ratio", at: "\(path)/\(index)") }
             }
         }
@@ -312,9 +316,12 @@ enum ProjectValidation {
         text.range(of: "\\A(?:" + pattern + ")\\z", options: .regularExpression) != nil
     }
     static func require(_ condition: Bool, _ reason: String) throws { if !condition { try fail(reason) } }
-    static func text(_ text: String?, min: Int = 0, max: Int = Int.max, pattern: String? = nil) throws {
+    static func text(_ text: String?, min: Int = 0, max: Int = Int.max, pattern: String? = nil, at path: String? = nil) throws {
         guard let text else { return }
-        try require(text.unicodeScalars.count >= min && text.unicodeScalars.count <= max && (pattern.map { matches(text, $0) } ?? true), "Invalid project text")
+        guard text.unicodeScalars.count >= min && text.unicodeScalars.count <= max && (pattern.map { matches(text, $0) } ?? true) else {
+            if let path { try fail("invalid value", at: path) }
+            try fail("Invalid project text")
+        }
     }
     static func number(_ number: Double, min: Double = 0, max: Double = .greatestFiniteMagnitude, at path: String? = nil) throws {
         guard number.isFinite && number >= min && number <= max else {
@@ -377,7 +384,7 @@ enum ProjectValidation {
         try require(Set(edits.cutWordIds).count == edits.cutWordIds.count && Set(edits.cutPauseIds).count == edits.cutPauseIds.count, "Duplicate cut ids")
         for id in edits.cutWordIds { try text(id, pattern: idPattern) }
         for id in edits.cutPauseIds { try text(id, pattern: "pause-after-" + idPattern) }
-        for (id, correction) in edits.corrections { try text(id, pattern: idPattern); try validateWordText(correction) }
+        for (id, correction) in edits.corrections { try text(id, pattern: idPattern, at: "edits/corrections"); try validateWordText(correction) }
         try text(edits.activeClipId, pattern: idPattern)
         try require(Set(edits.clips.map(\.id)).count == edits.clips.count, "Duplicate clip ids")
         for clip in edits.clips {

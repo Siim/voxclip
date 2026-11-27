@@ -23,6 +23,7 @@ public sealed class CliTests
     [InlineData("assetDuration", "voiceLab/assets/0/durationSeconds: invalid value")]
     [InlineData("captionY", "captions/position/y: missing required field")]
     [InlineData("captionX", "captions/position/x: invalid value")]
+    [InlineData("correctionKey", "edits/corrections: invalid value")]
     [InlineData("aiPart", "ai/results/0/clips/0/parts/0/endWordId: missing required field")]
     public async Task ProjectFailuresNameTheFieldAndReasonWithoutItsValue(string defect, string problem)
     {
@@ -37,6 +38,7 @@ public sealed class CliTests
             if (defect == "story") project["schemaVersion"] = 4;
             else if (defect is "aspect" or "quality") project["export"]![defect] = privateContent;
             else if (defect == "captionY") project["captions"]!["position"] = new JsonObject { ["x"] = 0.5 };
+            else if (defect == "correctionKey") project["edits"]!["corrections"] = new JsonObject { ["bad\n" + privateContent] = "fixed" };
             else if (defect == "captionX") project["captions"]!["position"] = new JsonObject { ["x"] = 2, ["y"] = 0.5 };
             else if (defect == "aiPart")
             {

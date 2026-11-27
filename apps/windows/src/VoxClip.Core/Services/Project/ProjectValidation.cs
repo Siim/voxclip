@@ -37,7 +37,7 @@ internal static class ProjectValidation
         String(root.GetProperty("id"), "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
         Timestamp(root.GetProperty("createdAt")); Timestamp(root.GetProperty("modifiedAt"));
         if (root.TryGetProperty("title", out var title)) Text(title, 0, 200);
-        if (root.TryGetProperty("extensions", out var extensions)) Dictionary(extensions, "extensions", (key, _, _) => Pattern(key, "[a-z0-9]+(?:\\.[a-z0-9-]+)+"));
+        if (root.TryGetProperty("extensions", out var extensions)) Dictionary(extensions, "extensions", (_, _, _) => { }, "[a-z0-9]+(?:\\.[a-z0-9-]+)+");
         var saved = root.GetProperty("savedBy");
         Object(saved, "app version platform", path: "savedBy"); String(saved.GetProperty("app"), "VoxClip");
         String(saved.GetProperty("version"), "[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?"); Choice(saved.GetProperty("platform"), "macos", "windows");
@@ -110,7 +110,7 @@ internal static class ProjectValidation
         var edits = root.GetProperty("edits"); Object(edits, "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId", path: "edits");
         Number(edits.GetProperty("pauseThresholdSeconds"), double.Epsilon, 10); Number(edits.GetProperty("pauseKeepSeconds"), 0, 1);
         UniqueStrings(edits.GetProperty("cutWordIds"), Id, "edits/cutWordIds"); UniqueStrings(edits.GetProperty("cutPauseIds"), "pause-after-" + Id, "edits/cutPauseIds");
-        Dictionary(edits.GetProperty("corrections"), "edits/corrections", (key, value, _) => { Pattern(key, Id); WordText(value, normalizeWordText); });
+        Dictionary(edits.GetProperty("corrections"), "edits/corrections", (_, value, _) => WordText(value, normalizeWordText), Id);
         Array(edits.GetProperty("clips"), "edits/clips", (clip, path) =>
         {
             // leadInSeconds: schema v4 only, above 0 and at most the 0.6 s opening scan (ADR-R48 part 2).
@@ -156,15 +156,14 @@ internal static class ProjectValidation
             Array(shapes, "clipStyle/shapes", (shape, _) => Choice(shape, "16:9", "9:16", "1:1"));
             Require(shapes.GetArrayLength() > 0 && shapes.EnumerateArray().Select(shape => shape.GetString()).Distinct().Count() == shapes.GetArrayLength());
             Choice(clipStyle.GetProperty("rewording"), "off", "fix-only", "tighten");
-            Dictionary(clipStyle.GetProperty("captionPicks"), "clipStyle/captionPicks", (key, pick, path) =>
+            Dictionary(clipStyle.GetProperty("captionPicks"), "clipStyle/captionPicks", (_, pick, path) =>
             {
-                Pattern(key, Id);
                 // Optional: the clip's overrides and "by": "user" for the creator's own choice (design §6.6).
                 Object(pick, "styleId reason", "overrides by", path: path); String(pick.GetProperty("styleId"), Slug); Require(pick.GetProperty("styleId").GetString() != "auto");
                 if (pick.TryGetProperty("overrides", out var overrides)) ExpectObject(overrides, $"{path}/overrides");
                 if (pick.TryGetProperty("by", out var by)) Require(by.ValueKind == JsonValueKind.String && by.GetString() == "user");
                 Require(pick.GetProperty("reason").ValueKind == JsonValueKind.String && pick.GetProperty("reason").GetString()!.EnumerateRunes().Count() <= 120);
-            });
+            }, Id);
         }
         var export = root.GetProperty("export"); Object(export, "aspect quality srt folder", path: "export");
         var aspect = export.GetProperty("aspect");
@@ -175,7 +174,7 @@ internal static class ProjectValidation
             throw Problem("export/quality", "invalid value");
         Boolean(export.GetProperty("srt")); Nullable(export.GetProperty("folder"), value => Text(value, 1, 4096));
         var share = root.GetProperty("share"); Object(share, "captions", path: "share");
-        Dictionary(share.GetProperty("captions"), "share/captions", (key, value, _) => { Pattern(key, "(?:full|" + Id + ")"); Text(value, 0, 3000); });
+        Dictionary(share.GetProperty("captions"), "share/captions", (_, value, _) => Text(value, 0, 3000), "(?:full|" + Id + ")");
         var ai = root.GetProperty("ai"); Object(ai, "results", path: "ai"); Array(ai.GetProperty("results"), "ai/results", (result, path) =>
         {
             Object(result, "id createdAt provider model preset instructions language inputSha256 clips", path: path); String(result.GetProperty("id"), Id); Timestamp(result.GetProperty("createdAt"));
@@ -402,10 +401,19 @@ internal static class ProjectValidation
     }
 
     // "$.a.b[0]['key']" (System.Text.Json) as "a/b/0/key"; empty when unknown.
-    internal static string FieldPath(string? jsonPath) => jsonPath is { Length: > 1 } && jsonPath[0] == '$'
-        ? Regex.Replace(jsonPath[1..], @"\.|\[(\d+)\]|\['(.*?)'\]", match =>
-            "/" + (match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value)).TrimStart('/')
-        : "";
+    // The path stops before the first key that is not a plain identifier, so a rejected key is never printed.
+    internal static string FieldPath(string? jsonPath)
+    {
+        if (jsonPath is not { Length: > 1 } || jsonPath[0] != '$') return "";
+        var segments = new List<string>();
+        foreach (Match match in Regex.Matches(jsonPath[1..], @"\.([^.\[]+)|\[(\d+)\]|\['(.*?)'\]"))
+        {
+            var segment = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
+            if (!PathKey.IsMatch(segment)) break;
+            segments.Add(segment);
+        }
+        return string.Join('/', segments);
+    }
 
     private static void Timestamp(JsonElement value)
         => Require(value.ValueKind == JsonValueKind.String && UtcTimestamp.TryParse(value.GetString(), out _));
@@ -445,15 +453,20 @@ internal static class ProjectValidation
         }
     }
 
-    private static void Dictionary(JsonElement value, string path, Action<string, JsonElement, string> validate)
+    // A key that fails its pattern is reported at the map; an accepted key names its entry only when it is a plain identifier.
+    private static void Dictionary(JsonElement value, string path, Action<string, JsonElement, string> validate, string? keyPattern = null)
     {
         ExpectObject(value, path);
         foreach (var property in value.EnumerateObject())
         {
-            var entryPath = $"{path}/{property.Name}";
+            if (keyPattern is not null) At(path, () => Pattern(property.Name, keyPattern));
+            var entryPath = Entry(path, property.Name);
             At(entryPath, () => validate(property.Name, property.Value, entryPath));
         }
     }
+
+    private static readonly Regex PathKey = new(@"\A[A-Za-z0-9._:-]{1,128}\z", RegexOptions.CultureInvariant);
+    private static string Entry(string parent, string key) => PathKey.IsMatch(key) ? $"{parent}/{key}" : parent;
 
     private static void UniqueStrings(JsonElement value, string pattern, string path)
     {

@@ -84,7 +84,9 @@ public actor JSONProjectStore: ProjectStore {
         @unknown default:
             return .projectUnreadable("/: invalid project document")
         }
-        let segments = (prefix.map { [$0] } ?? []) + keys.map { key in key.intValue.map(String.init) ?? key.stringValue }
+        // The path stops before the first key that is not a plain identifier, so a rejected key is never printed.
+        let names = keys.map { key in key.intValue.map(String.init) ?? key.stringValue }
+        let segments = (prefix.map { [$0] } ?? []) + names.prefix { ProjectValidation.isPathKey($0) }
         guard !segments.isEmpty else { return .projectUnreadable("/: invalid project document") }
         let path = segments.joined(separator: "/")
         return .projectUnreadable("\(path): \(reason)")
