@@ -273,6 +273,31 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(model.currentMusic == fixture.music.first)
     }
 
+    @Test func aRecordingSeamAndTitleFollowPlayOrder() throws {
+        let root = try SharedResources.locate().root
+        var fixture = try JSONProjectStore.decode(Data(contentsOf: root.appendingPathComponent("fixtures/recordings/two-recordings.voxclip")))
+        let clock = ProjectClock.build(fixture)
+        let word = try #require(clock.words.first { $0.id == "r2.w1" })
+        fixture.clipEffects = [.init(id: "recording-title", clipId: "clip-main", kind: .title,
+            start: word.start, end: word.end, text: "Second recording", position: .top)]
+        let model = editor(try app(), project: fixture)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close(); model.close() }
+        try #require(model.plan != nil, "\(model.previewError ?? "No preview error")")
+        let before = try #require(canvas.content.items.first { $0.item.id == .effect("recording-title") }?.ranges.first)
+        let story = try #require(model.storyTimeline)
+        #expect(story.parts.count == 2)
+        #expect(story.parts.allSatisfy { $0.edited != nil })
+        #expect(canvas.content.partMarkers.map { $0.recording?.label } == ["0010", "0007"])
+        #expect(canvas.content.partMarkers.last?.seamLabel?.hasPrefix("→ 0007 ") == true)
+        #expect(canvas.content.recordingGaps.count == 1)
+        model.moveStoryPart("first", to: 1)
+        canvas.renderContent()
+        let after = try #require(canvas.content.items.first { $0.item.id == .effect("recording-title") }?.ranges.first)
+        #expect(canvas.content.partMarkers.last?.seamLabel?.hasPrefix("→ 0010 ") == true)
+        #expect(after.start > before.start && model.project.clipEffects == fixture.clipEffects)
+    }
+
     @Test func aTitleDragWritesOneNamedUndoOnRelease() throws {
         let app = try app()
         var fixture = try project()
