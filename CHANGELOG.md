@@ -3,6 +3,7 @@
 User-facing changes, newest first, one line each. The release scripts read the section whose heading starts with `## <version>` (doc/release.md section 4); replace "Unreleased" with the release date (`YYYY-MM-DD`) in the release commit.
 
 ## 0.1.0 - Unreleased
+- Claude Code and Codex can read recordings and matched takes and propose a story across recordings, without sending media or spending money.
 
 - Best versions and the autopilot planner can pick one take per beat across recordings; Mac proposal cards show why each part was chosen.
 - On Mac, view and edit story parts from several recordings in the Outline, with recording colours and times local to each recording.
