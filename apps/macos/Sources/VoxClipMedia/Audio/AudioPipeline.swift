@@ -138,10 +138,12 @@ public final class FadeContext: @unchecked Sendable {
     var capturedSampleRate: Double { Double(bitPattern: capturedRate.load(ordering: .acquiring)) }
     /// Output seconds a bleep or mute silences (ai.md §18.5); empty keeps the voice as the plan leaves it.
     let silenced: [ClosedRange<Double>]
-    let recordingGains: [RecordingSpanGain]
+    let plannedRecordingGains: [RecordingSpanGain]
+    var recordingGains: [RecordingSpanGain]
     public convenience init(plan: EditPlan) { self.init(plan: plan, captureCapacity: 0) }
     init(plan: EditPlan, captureCapacity: Int, silenced: [ClosedRange<Double>] = [], recordingGains: [RecordingSpanGain] = []) {
         self.plan = plan; rate = plan.sampleRate; joins = ContiguousArray(plan.joins); self.silenced = silenced
+        plannedRecordingGains = recordingGains
         self.recordingGains = recordingGains
         self.captureCapacity = max(0, captureCapacity)
         capturePositions = captureCapacity > 0 ? .allocate(capacity: captureCapacity) : nil
@@ -164,6 +166,10 @@ public final class FadeContext: @unchecked Sendable {
         joins = ContiguousArray(plan.joins.map { Join(outSample: Int64((Double($0.outSample) * scale).rounded()),
                                                     fadeOutLen: Int64((Double($0.fadeOutLen) * scale).rounded()),
                                                     fadeInLen: Int64((Double($0.fadeInLen) * scale).rounded())) })
+        recordingGains = plannedRecordingGains.map { gain in
+            RecordingSpanGain(start: Int64((Double(gain.start) * scale).rounded()), end: Int64((Double(gain.end) * scale).rounded()),
+                              multiplier: gain.multiplier)
+        }
     }
 
     func processingGain(_ sample: Int64) -> Float {

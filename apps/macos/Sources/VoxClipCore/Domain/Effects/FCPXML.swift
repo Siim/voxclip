@@ -104,7 +104,8 @@ public enum FCPXML {
             pictureGrids[id] = pictureGrid
             let formatID = "\(id)-format"
             format(formatID, size: media.probe.orientedSize ?? PixelSize(width: video.width, height: video.height), grid: pictureGrid, in: resources)
-            asset(id, url: media.url, duration: seconds(media.probe.durationSeconds), audio: id == "picture" ? source.audio : nil,
+            asset(id, url: media.url, duration: seconds(media.probe.durationSeconds),
+                  audio: recordings[id] != nil ? media.probe.audio : id == "picture" ? source.audio : nil,
                   videoFormat: formatID, in: resources)
         }
         let spans = try pictureSpans ?? legacySpans(render)

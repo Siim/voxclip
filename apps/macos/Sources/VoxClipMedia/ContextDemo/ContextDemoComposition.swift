@@ -20,7 +20,12 @@ struct CompositionVideoSpan: Sendable {
 
     static func build(_ request: RenderRequest) throws -> [CompositionVideoSpan] {
         let spans = try baseSpans(request)
-        return try spans.map { span in
+        let routed = request.recordings.isEmpty ? [] : request.spanSources
+        let legacy = if case .legacy = request.timeline { true } else { false }
+        guard !legacy || request.recordings.isEmpty || routed.count == spans.count else {
+            throw VoxClipError.exportFailed("Invalid recording span")
+        }
+        return try spans.enumerated().map { index, span in
             var result = span
             let source = span.source.start.seconds + span.source.duration.seconds / 2
             result.partReframe = request.partReframes.first { $0.source.start <= source && source < $0.source.end }?.reframe
@@ -28,7 +33,9 @@ struct CompositionVideoSpan: Sendable {
                 let rate = Int32(request.timeline.sampleRate)
                 let start = CMTimeConvertScale(span.source.start, timescale: rate, method: .roundHalfAwayFromZero).value
                 let end = CMTimeConvertScale(span.source.end, timescale: rate, method: .roundHalfAwayFromZero).value
-                guard let recording = request.recordings.first(where: { $0.region.offsetSamples <= start && end <= $0.region.endSample }) else {
+                guard let recording = request.recordings.first(where: {
+                    (!legacy || routed[index] == $0.key) && $0.region.offsetSamples <= start && end <= $0.region.endSample
+                }) else {
                     throw VoxClipError.exportFailed("Invalid recording span")
                 }
                 result.recordingKey = recording.key

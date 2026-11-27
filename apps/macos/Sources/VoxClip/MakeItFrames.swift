@@ -155,7 +155,8 @@ extension EditorModel {
         guard let ai = await services.frameAI(self), let found = await pass.frames(for: clips) else { return nil }
         // The opening scan runs beside the plan request; the apply waits for it.
         await pass.startOpening(for: clip)
-        var frames = ClipAutopilotFrames(sheet: found.sheet, clipStart: clip.start, clipEnd: clips.last?.end ?? clip.end, images: ai.images,
+        var frames = ClipAutopilotFrames(sheet: found.sheet, clipStart: clips.map(\.start).min() ?? clip.start,
+                                         clipEnd: clips.map(\.end).max() ?? clip.end, images: ai.images,
                                          pitchBaseline: await pass.pitchBaseline())
         var usd: Decimal?
         if frames.sendsImages, case .key(let connector, let model) = ai.billing {
@@ -249,7 +250,7 @@ extension EditorModel {
     /// without a face or without a portrait or square shape to export.
     private func makeItFaceRow(_ record: MakeItFrameRecord, run: MakeItRun) -> MakeItRow? {
         guard let (next, crop) = ClipPicture.crop(project, clipID: run.clipID, sentences: record.sentences, shapes: makeItStyle.shapes) else { return nil }
-        run.inverses[ClipPicture.cropRowID] = .reframe(clipID: run.clipID, previous: crop.previous)
+        run.inverses[ClipPicture.cropRowID] = .reframe(clipID: run.clipID, previous: crop.previous, parts: crop.parts)
         replace(next, name: "Make it postable")
         return MakeItRow(id: ClipPicture.cropRowID, text: "\(crop.shape.rawValue) follows your face",
                          detail: "The crop is centred on your measured face position, not the middle of the frame",

@@ -81,11 +81,12 @@ public enum RenderCallerInputs {
                 throw VoxClipError.exportFailed("Invalid recording sample grid")
             }
             result.spanSources = try intervals.map { span in
-                guard let start = Int(exactly: span.startSample), let region = clock.region(at: start),
+                guard let start = Int(exactly: span.startSample), let resolved = clock.resolve(start),
+                      let region = clock.regions.first(where: { $0.key == resolved.key }),
                       span.endSample <= region.endSample, span.endSample > span.startSample else {
                     throw VoxClipError.exportFailed("Invalid recording span")
                 }
-                return region.key
+                return resolved.key
             }
             let used = Set(result.spanSources)
             result.recordings = try clock.regions.filter { used.contains($0.key) }.map { region in

@@ -42,6 +42,10 @@ struct Fixture {
     var audioBitrate = 128_000
     var audioTones: [Double] = []
     var nativeChirp = false
+    var recordingTone: Double? = nil
+    var recordingAmplitude = 0.2
+    var audioRate = 48_000
+    var rotated = false
 }
 
 let fixtures: [Fixture] = [
@@ -53,6 +57,13 @@ let fixtures: [Fixture] = [
     Fixture(file: "big-2400x1350.mp4", width: 2400, height: 1350, seconds: 2, picture: "black", audio: "chirp"),
     Fixture(file: "bars-1080p.mp4", width: 1920, height: 1080, seconds: 2, picture: "bars", audio: nil,
             bitrate: 1_000_000)
+]
+
+let recordingFixtures = [
+    Fixture(file: "recording-0007.mp4", width: 320, height: 180, seconds: 6, picture: "recording", audio: "chirp",
+            recordingTone: 293),
+    Fixture(file: "recording-0010.mp4", width: 144, height: 256, seconds: 6, picture: "recording", audio: "chirp",
+            recordingTone: 487, recordingAmplitude: 0.1, audioRate: 44_100, rotated: true)
 ]
 
 let pocketFixture = Fixture(file: "pocket4-like-2tracks.mov", width: 1280, height: 720, seconds: 6,
@@ -127,6 +138,25 @@ func drawFrame(_ buffer: CVPixelBuffer, fixture: Fixture, frame: Int, noise: CGI
     context.setShouldAntialias(false)
     let width = CGFloat(fixture.width)
     let height = CGFloat(fixture.height)
+    if fixture.picture == "recording" {
+        context.setFillColor(red: fixture.rotated ? 0.58 : 0.02, green: 0.04, blue: fixture.rotated ? 0.03 : 0.30, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(gray: 1, alpha: 1)
+        if fixture.rotated {
+            context.fill(CGRect(x: 22, y: 0, width: 8, height: height))
+            context.fill(CGRect(x: 110, y: 25, width: 8, height: height - 25))
+        } else {
+            context.fill(CGRect(x: 0, y: 28, width: width, height: 5))
+            context.fill(CGRect(x: 55, y: 0, width: 5, height: height))
+        }
+        context.setFillColor(gray: 0, alpha: 1)
+        context.fill(CGRect(x: 32, y: 48, width: 80, height: 27))
+        context.setFillColor(red: 1, green: 1, blue: 0, alpha: 1)
+        for bit in 0..<8 where frame & (1 << bit) != 0 {
+            context.fill(CGRect(x: 34 + 9 * bit, y: 50, width: 7, height: 23))
+        }
+        return
+    }
     let background: CGFloat = fixture.picture == "gray" ? 32.0 / 255 : 0
     context.setFillColor(red: background, green: background, blue: background, alpha: 1)
     context.fill(CGRect(x: 0, y: 0, width: width, height: height))
@@ -161,18 +191,20 @@ func drawFrame(_ buffer: CVPixelBuffer, fixture: Fixture, frame: Int, noise: CGI
 }
 
 func pcmBuffer(start: Int, count: Int, channels: Int = 1, tone: Double? = nil,
-               nativeChirp: Bool = false) throws -> CMSampleBuffer {
+               nativeChirp: Bool = false, audioRate: Int = sampleRate, recordingTone: Double? = nil,
+               recordingAmplitude: Double = 0.2) throws -> CMSampleBuffer {
     var samples = [Int16](repeating: 0, count: count * channels)
     for index in 0..<count {
-        let time = Double(start + index) / Double(sampleRate)
-        let phase = tone.map { 2 * Double.pi * $0 * time }
+        let time = Double(start + index) / Double(audioRate)
+        let phase = recordingTone.map { 2 * Double.pi * ($0 * time + 7 * time * time) }
+            ?? tone.map { 2 * Double.pi * $0 * time }
             ?? (2 * Double.pi * (nativeChirp ? 997 * time + 81 * time * time
                 : 200 * time + 1800 * time * time / 60))
-        let amplitude = tone == 440 ? 0.4 : (nativeChirp && tone == nil ? 0.35 : 0.3)
+        let amplitude = recordingTone == nil ? (tone == 440 ? 0.4 : (nativeChirp && tone == nil ? 0.35 : 0.3)) : recordingAmplitude
         let value = Int16((amplitude * sin(phase) * 32767).rounded())
         for channel in 0..<channels { samples[index * channels + channel] = value }
     }
-    var description = AudioStreamBasicDescription(mSampleRate: Double(sampleRate), mFormatID: kAudioFormatLinearPCM,
+    var description = AudioStreamBasicDescription(mSampleRate: Double(audioRate), mFormatID: kAudioFormatLinearPCM,
         mFormatFlags: kLinearPCMFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked,
         mBytesPerPacket: UInt32(channels * 2), mFramesPerPacket: 1, mBytesPerFrame: UInt32(channels * 2),
         mChannelsPerFrame: UInt32(channels), mBitsPerChannel: 16, mReserved: 0)
@@ -190,8 +222,8 @@ func pcmBuffer(start: Int, count: Int, channels: Int = 1, tone: Double? = nil,
                                       dataLength: length)
     }
     try require(status == noErr, "cannot copy PCM")
-    var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: Int32(sampleRate)),
-        presentationTimeStamp: CMTime(value: Int64(start), timescale: Int32(sampleRate)), decodeTimeStamp: .invalid)
+    var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: Int32(audioRate)),
+        presentationTimeStamp: CMTime(value: Int64(start), timescale: Int32(audioRate)), decodeTimeStamp: .invalid)
     var sample: CMSampleBuffer?
     try require(CMSampleBufferCreateReady(allocator: kCFAllocatorDefault, dataBuffer: block,
         formatDescription: format, sampleCount: count, sampleTimingEntryCount: 1, sampleTimingArray: &timing,
@@ -213,6 +245,7 @@ func generate(_ fixture: Fixture, at url: URL) async throws {
         AVVideoCompressionPropertiesKey: compression,
         AVVideoEncoderSpecificationKey: [kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder as String: true]]
     let video = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
+    if fixture.rotated { video.transform = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: CGFloat(fixture.height), ty: 0) }
     let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: video, sourcePixelBufferAttributes: [
         kCVPixelBufferPixelFormatTypeKey as String: fixture.main10
             ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange : kCVPixelFormatType_32BGRA,
@@ -224,7 +257,7 @@ func generate(_ fixture: Fixture, at url: URL) async throws {
     if let kind = fixture.audio {
         for index in 0..<max(1, fixture.audioTones.count) {
             var output: [String: Any] = [AVFormatIDKey: kind == "pcm" ? kAudioFormatLinearPCM : kAudioFormatMPEG4AAC,
-                AVSampleRateKey: sampleRate, AVNumberOfChannelsKey: fixture.audioChannels]
+                AVSampleRateKey: fixture.audioRate, AVNumberOfChannelsKey: fixture.audioChannels]
             if kind == "pcm" {
                 output[AVLinearPCMBitDepthKey] = 16
                 output[AVLinearPCMIsFloatKey] = false
@@ -287,8 +320,10 @@ func generate(_ fixture: Fixture, at url: URL) async throws {
                 for (index, audio) in audioInputs.enumerated() where audioFrames[index] < totalFrames && audio.isReadyForMoreMediaData {
                     let tone = fixture.audioTones.isEmpty ? (fixture.audio == "pcm" ? 440.0 : nil)
                         : (fixture.audioTones[index] == 0 ? nil : fixture.audioTones[index])
-                    let sample = try pcmBuffer(start: audioFrames[index] * 1600, count: 1600,
-                        channels: fixture.audioChannels, tone: tone, nativeChirp: fixture.nativeChirp)
+                    let count = fixture.audioRate / frameRate
+                    let sample = try pcmBuffer(start: audioFrames[index] * count, count: count,
+                        channels: fixture.audioChannels, tone: tone, nativeChirp: fixture.nativeChirp, audioRate: fixture.audioRate,
+                        recordingTone: fixture.recordingTone, recordingAmplitude: fixture.recordingAmplitude)
                     try require(audio.append(sample), "cannot append audio: \(writer.error?.localizedDescription ?? "unknown error")")
                     audioFrames[index] += 1
                     if audioFrames[index] == totalFrames { audio.markAsFinished() }
@@ -674,7 +709,7 @@ func verify(_ directory: URL) async throws {
 
 func main() async throws {
     let arguments = Array(CommandLine.arguments.dropFirst())
-    try require(arguments.count == 2, "usage: swift tools/fixtures/media/generate.swift --out DIR | --verify DIR | --index DIR | --long-hevc FILE | --motion-60s FILE | --pocket4 FILE | --verify-pocket4 FILE | --win-hevc FILE | --verify-win-hevc FILE")
+    try require(arguments.count == 2, "usage: swift tools/fixtures/media/generate.swift --out DIR | --verify DIR | --index DIR | --recordings DIR | --long-hevc FILE | --motion-60s FILE | --pocket4 FILE | --verify-pocket4 FILE | --win-hevc FILE | --verify-win-hevc FILE")
     let destination = URL(fileURLWithPath: arguments[1])
     switch arguments[0] {
     case "--out":
@@ -686,6 +721,13 @@ func main() async throws {
         try makeIndex(in: destination)
     case "--index": try makeIndex(in: destination)
     case "--verify": try await verify(destination)
+    case "--recordings":
+        for fixture in recordingFixtures {
+            let output = destination.appendingPathComponent(fixture.file)
+            try await generate(fixture, at: output)
+            let bytes = try Data(contentsOf: output).count
+            try require(bytes < maximumBytes, "\(fixture.file) exceeds 2 MB")
+        }
     case "--pocket4":
         try await generate(pocketFixture, at: destination)
         try await verifyPocket(destination)
