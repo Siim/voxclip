@@ -2416,6 +2416,7 @@ member VoxClip.Media.VoiceLab.VoiceLabAudioMixer :: method private Wave(string)
 member VoxClip.Media.VoiceLab.VoiceLabAudioMixer :: method public Dispose()
 member VoxClip.Media.VoiceLab.VoiceLabCapacity :: field internal AvailableBytes
 member VoxClip.Media.VoiceLab.VoiceLabCapacity :: field internal VolumeIdentity
+member VoxClip.Media.VoiceLab.VoiceLabCapacity :: field private MountTable
 member VoxClip.Media.VoiceLab.VoiceLabCapacity :: method internal Bytes(long,long,long)
 member VoxClip.Media.VoiceLab.VoiceLabCapacity :: method internal Require(System.Collections.Generic.IEnumerable`1<VoxClip.Media.VoiceLab.VoiceLabCapacity+Allocation>)
 member VoxClip.Media.VoiceLab.VoiceLabCapacity :: method internal Require(VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Media.VoiceLab.VoiceLabCapacity+Allocation[])
