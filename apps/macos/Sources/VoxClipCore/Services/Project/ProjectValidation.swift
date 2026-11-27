@@ -28,7 +28,8 @@ enum ProjectValidation {
     static func validate(_ raw: JSONValue) throws {
         try ProjectMigrations.checkVersion(raw)
         let wireVersion = try map(raw)["schemaVersion"]
-        let isV6 = wireVersion == .number(6)
+        let isV7 = wireVersion == .number(7)
+        let isV6 = isV7 || wireVersion == .number(6)
         let isV5 = isV6 || wireVersion == .number(5)
         let isV4 = isV5 || wireVersion == .number(4)
         let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""), at: "/")
@@ -43,7 +44,7 @@ enum ProjectValidation {
         }
         if let title = root["title"], case .string = title {} else if root["title"] != nil { try fail("Invalid project title") }
         _ = try object(root["savedBy"], required: "app version platform", at: "savedBy")
-        let media = try object(root["media"], required: "source", optional: isV4 ? "additionalSources footage" : "", at: "media")
+        let media = try object(root["media"], required: isV7 ? "source spokenSources" : "source", optional: isV4 ? "additionalSources footage" : "", at: "media")
         let additional = try media["additionalSources"].map { try array($0, at: "media/additionalSources") } ?? []
         try require(media["additionalSources"] == nil || !additional.isEmpty, "Empty companion source list")
         var sourceKeys = Set<String>()
@@ -68,11 +69,26 @@ enum ProjectValidation {
                 }
             }
         }
-        if root["transcript"] != .null {
-            let transcript = try object(root["transcript"], required: "schemaVersion words language languageProbability durationSeconds engine verbatim refined pipelineVersion rawKey createdAt", at: "transcript")
-            _ = try object(transcript["engine"], required: "id modelId modelSha256 engineVersion locale", at: "transcript/engine")
-            for (index, word) in try array(transcript["words"], at: "transcript/words").enumerated() {
-                _ = try object(word, required: "id text kind start end rawStart rawEnd conf speaker timing", at: "transcript/words/\(index)")
+        func transcriptWire(_ value: JSONValue?, at path: String) throws {
+            let transcript = try object(value, required: "schemaVersion words language languageProbability durationSeconds engine verbatim refined pipelineVersion rawKey createdAt", at: path)
+            _ = try object(transcript["engine"], required: "id modelId modelSha256 engineVersion locale", at: "\(path)/engine")
+            for (index, word) in try array(transcript["words"], at: "\(path)/words").enumerated() {
+                _ = try object(word, required: "id text kind start end rawStart rawEnd conf speaker timing", at: "\(path)/words/\(index)")
+            }
+        }
+        if root["transcript"] != .null { try transcriptWire(root["transcript"], at: "transcript") }
+        if isV7 {
+            let spokenPath = "media/spokenSources"
+            let spoken = try array(media["spokenSources"], at: spokenPath)
+            guard (1...5).contains(spoken.count) else { try fail("expected one to five companion spoken recordings", at: spokenPath) }
+            for (index, source) in spoken.enumerated() {
+                let path = "\(spokenPath)/\(index)"
+                let fields = try object(source, required: "sourceKey offsetSeconds wordIdPrefix transcript", optional: "gainDb label", at: path)
+                if let label = fields["label"], label.aiString == nil { try fail("expected a string", at: "\(path)/label") }
+                if let gain = fields["gainDb"] {
+                    guard case .number = gain else { try fail("expected a number", at: "\(path)/gainDb") }
+                }
+                try transcriptWire(fields["transcript"], at: "\(path)/transcript")
             }
         }
         let edits = try object(root["edits"], required: "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId", at: "edits")
@@ -88,8 +104,12 @@ enum ProjectValidation {
             if let parts = fields["parts"] {
                 for (partIndex, part) in try array(parts, at: "\(path)/parts").enumerated() {
                     let partPath = "\(path)/parts/\(partIndex)"
-                    let fields = try object(part, required: "id startWordId endWordId", optional: "reframe", at: partPath)
+                    let fields = try object(part, required: "id startWordId endWordId", optional: isV7 ? "reframe takeReason" : "reframe", at: partPath)
                     if let reframe = fields["reframe"] { _ = try object(reframe, required: "mode zoom centerX centerY", at: "\(partPath)/reframe") }
+                    if let reason = fields["takeReason"] {
+                        guard let value = reason.aiString else { try fail("expected a string", at: "\(partPath)/takeReason") }
+                        try text(value, max: StoryClips.maxTakeReasonScalars)
+                    }
                 }
             }
             // An opening lead-in (ADR-R48) is schema v4 only: 0 < s ≤ 0.6.
@@ -300,33 +320,16 @@ enum ProjectValidation {
             }
             if let audio = source.audio { try require(audio.sampleRate > 0 && audio.channels > 0, "Invalid audio facts") }
         }
-        var media = ProjectMedia(source: project.media.source, additionalSources: project.media.additionalSources)
+        var media = ProjectMedia(source: project.media.source, additionalSources: project.media.additionalSources, spokenSources: project.media.spokenSources)
         var placementIDs = Set<String>()
         for entry in project.media.footage {
             try text(entry.id, pattern: idPattern)
             try text(entry.clipID, pattern: idPattern)
             try text(entry.footage.sourceKey, pattern: hashPattern)
-            try require(placementIDs.insert(entry.id).inserted && media.storeFootage(entry, allowShortSource: project.schemaVersion == 6), "Invalid companion footage placement")
+            try require(placementIDs.insert(entry.id).inserted && media.storeFootage(entry, allowShortSource: project.schemaVersion >= 6), "Invalid companion footage placement")
         }
-        if let transcript = project.transcript {
-            try require(transcript.schemaVersion == 1 && transcript.pipelineVersion >= 1, "Invalid transcript version")
-            try number(transcript.durationSeconds)
-            try text(transcript.language, pattern: "[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")
-            if let probability = transcript.languageProbability { try number(probability, max: 1) }
-            try text(transcript.rawKey, pattern: hashPattern)
-            try text(transcript.engine.modelId, max: 128)
-            try text(transcript.engine.modelSha256, pattern: hashPattern)
-            try text(transcript.engine.engineVersion, min: 1, max: 128)
-            try text(transcript.engine.locale, max: 35)
-            for word in transcript.words {
-                try text(word.id, pattern: idPattern)
-                try validateWordText(word.text)
-                if let start = word.rawStart { try number(start) }
-                if let end = word.rawEnd { try number(end) }
-                if let confidence = word.conf { try number(confidence, max: 1) }
-                try text(word.speaker, max: 64)
-            }
-        }
+        if let transcript = project.transcript { try validateTranscript(transcript) }
+        for source in project.media.spokenSources ?? [] { try validateTranscript(source.transcript) }
         let edits = project.edits
         try number(edits.pauseThresholdSeconds, min: .leastNonzeroMagnitude, max: 10)
         try number(edits.pauseKeepSeconds, max: 1)
@@ -366,6 +369,26 @@ enum ProjectValidation {
             }
         }
         for key in project.extensions?.keys ?? Dictionary<String, JSONValue>().keys { try text(key, pattern: "[a-z0-9]+(?:\\.[a-z0-9-]+)+") }
+    }
+
+    static func validateTranscript(_ transcript: Transcript, normalizeWordText: Bool = false) throws {
+        try require(transcript.schemaVersion == 1 && transcript.pipelineVersion >= 1, "Invalid transcript version")
+        try number(transcript.durationSeconds)
+        try text(transcript.language, pattern: "[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")
+        if let probability = transcript.languageProbability { try number(probability, max: 1) }
+        try text(transcript.rawKey, pattern: hashPattern)
+        try text(transcript.engine.modelId, max: 128)
+        try text(transcript.engine.modelSha256, pattern: hashPattern)
+        try text(transcript.engine.engineVersion, min: 1, max: 128)
+        try text(transcript.engine.locale, max: 35)
+        for word in transcript.words {
+            try text(word.id, pattern: idPattern)
+            try validateWordText(normalizeWordText ? EditingPrimitives.nfc(word.text) : word.text)
+            if let start = word.rawStart { try number(start) }
+            if let end = word.rawEnd { try number(end) }
+            if let confidence = word.conf { try number(confidence, max: 1) }
+            try text(word.speaker, max: 64)
+        }
     }
 
     static func validateWordText(_ value: String) throws {

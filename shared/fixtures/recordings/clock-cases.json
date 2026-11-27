@@ -1,0 +1,322 @@
+{
+  "schema": "voxclip-recording-clock/1",
+  "project": "two-recordings.voxclip",
+  "sampleRate": 48000,
+  "regions": [
+    {
+      "key": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+      "label": "0007",
+      "prefix": "",
+      "offsetSamples": 0,
+      "durationSamples": 102000,
+      "gainDb": 0,
+      "colourIndex": 0
+    },
+    {
+      "key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "0010",
+      "prefix": "r2.",
+      "offsetSamples": 192000,
+      "durationSamples": 48001,
+      "gainDb": -1.8,
+      "colourIndex": 1
+    }
+  ],
+  "guardGaps": [
+    [
+      102000,
+      192000
+    ]
+  ],
+  "resolve": [
+    {
+      "clockSample": -1,
+      "source": null
+    },
+    {
+      "clockSample": 0,
+      "source": {
+        "key": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+        "localSample": 0
+      }
+    },
+    {
+      "clockSample": 101999,
+      "source": {
+        "key": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+        "localSample": 101999
+      }
+    },
+    {
+      "clockSample": 102000,
+      "source": null
+    },
+    {
+      "clockSample": 191999,
+      "source": null
+    },
+    {
+      "clockSample": 192000,
+      "source": {
+        "key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "localSample": 0
+      }
+    },
+    {
+      "clockSample": 192001,
+      "source": {
+        "key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "localSample": 1
+      }
+    },
+    {
+      "clockSample": 240000,
+      "source": {
+        "key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "localSample": 48000
+      }
+    },
+    {
+      "clockSample": 240001,
+      "source": null
+    }
+  ],
+  "shiftedWords": [
+    {
+      "id": "r2.w1",
+      "samples": [
+        192005,
+        196354,
+        192001,
+        196463
+      ]
+    },
+    {
+      "id": "r2.w2",
+      "samples": [
+        237714,
+        239946,
+        null,
+        null
+      ]
+    }
+  ],
+  "selection": {
+    "startWordId": "w2",
+    "endWordId": "r2.w1",
+    "refusal": "A part comes from one recording."
+  },
+  "edits": {
+    "cutWordIds": [
+      "r2.w2"
+    ],
+    "cutPauseIds": [
+      "pause-after-r2.w1"
+    ],
+    "corrections": {
+      "r2.w1": "Report"
+    }
+  },
+  "invalidSpokenSources": [
+    {
+      "name": "empty",
+      "overrides": []
+    },
+    {
+      "name": "null",
+      "overrides": null
+    },
+    {
+      "name": "too many",
+      "overrides": [
+        {},
+        {},
+        {},
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "name": "duplicate recording",
+      "overrides": [
+        {},
+        {
+          "wordIdPrefix": "r3.",
+          "offsetSeconds": 7
+        }
+      ]
+    },
+    {
+      "name": "unknown companion",
+      "overrides": [
+        {
+          "sourceKey": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        }
+      ]
+    },
+    {
+      "name": "primary is not a companion",
+      "overrides": [
+        {
+          "sourceKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393"
+        }
+      ]
+    },
+    {
+      "name": "duplicate prefix",
+      "overrides": [
+        {},
+        {
+          "sourceKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "offsetSeconds": 7
+        }
+      ]
+    },
+    {
+      "name": "guard gap too small",
+      "overrides": [
+        {
+          "offsetSeconds": 3
+        }
+      ]
+    },
+    {
+      "name": "fractional offset",
+      "overrides": [
+        {
+          "offsetSeconds": 4.5
+        }
+      ]
+    },
+    {
+      "name": "invalid prefix",
+      "overrides": [
+        {
+          "wordIdPrefix": "r02."
+        }
+      ]
+    },
+    {
+      "name": "invalid gain",
+      "overrides": [
+        {
+          "gainDb": 12.1
+        }
+      ]
+    },
+    {
+      "name": "invalid label",
+      "overrides": [
+        {
+          "label": "🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣🟣"
+        }
+      ]
+    },
+    {
+      "name": "unknown property",
+      "overrides": [
+        {
+          "unexpected": true
+        }
+      ]
+    },
+    {
+      "name": "word outside its recording",
+      "overrides": [
+        {
+          "transcript": {
+            "schemaVersion": 1,
+            "words": [
+              {
+                "id": "w1",
+                "text": "Reporting",
+                "kind": "word",
+                "start": 0.00011337868480725624,
+                "end": 2.0,
+                "rawStart": 2.2675736961451248e-05,
+                "rawEnd": 0.09297052154195011,
+                "conf": null,
+                "speaker": null,
+                "timing": "native"
+              }
+            ],
+            "language": "en",
+            "languageProbability": 0.99,
+            "durationSeconds": 1.0000226757369615,
+            "engine": {
+              "id": "elevenlabs",
+              "modelId": "scribe_v2",
+              "modelSha256": null,
+              "engineVersion": "scribe_v2",
+              "locale": null
+            },
+            "verbatim": true,
+            "refined": true,
+            "pipelineVersion": 1,
+            "rawKey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "createdAt": "2026-10-25T09:12:41Z"
+          }
+        }
+      ]
+    },
+    {
+      "name": "colliding local word IDs",
+      "overrides": [
+        {
+          "transcript": {
+            "schemaVersion": 1,
+            "words": [
+              {
+                "id": "w1",
+                "text": "Reporting",
+                "kind": "word",
+                "start": 0.00011337868480725624,
+                "end": 0.09070294784580499,
+                "rawStart": 2.2675736961451248e-05,
+                "rawEnd": 0.09297052154195011,
+                "conf": null,
+                "speaker": null,
+                "timing": "native"
+              },
+              {
+                "id": "w1",
+                "text": "tool",
+                "kind": "word",
+                "start": 0.9523809523809523,
+                "end": 0.9988662131519275,
+                "rawStart": null,
+                "rawEnd": null,
+                "conf": null,
+                "speaker": null,
+                "timing": "native"
+              }
+            ],
+            "language": "en",
+            "languageProbability": 0.99,
+            "durationSeconds": 1.0000226757369615,
+            "engine": {
+              "id": "elevenlabs",
+              "modelId": "scribe_v2",
+              "modelSha256": null,
+              "engineVersion": "scribe_v2",
+              "locale": null
+            },
+            "verbatim": true,
+            "refined": true,
+            "pipelineVersion": 1,
+            "rawKey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "createdAt": "2026-10-25T09:12:41Z"
+          }
+        }
+      ]
+    }
+  ],
+  "removal": {
+    "removedKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "nextKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "afterBothOffset": 7,
+    "survivingPrefix": "r3.",
+    "readdedPrefix": "r4."
+  }
+}

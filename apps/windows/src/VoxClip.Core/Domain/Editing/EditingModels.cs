@@ -29,7 +29,8 @@ public enum StoryClipKind
 
 /// <summary>One inclusive source range in play order, with stable identity and optional face reframe.</summary>
 public sealed record ClipPart(string Id, string StartWordId, string EndWordId,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ReframeSettings? Reframe = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ReframeSettings? Reframe = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? TakeReason = null);
 
 /// <summary>One inclusive range in a persisted AI suggestion.</summary>
 public sealed record ClipWordRange(string StartWordId, string EndWordId);
@@ -54,7 +55,31 @@ public sealed record ClipRange(string Id, string StartWordId, string EndWordId, 
 /// <summary>Immutable editor snapshot; editing §2.5.</summary>
 public sealed record EditState(TranscriptModel Transcript, IReadOnlyList<Pause> Pauses, double PauseThresholdSeconds,
     double PauseKeepSeconds, IReadOnlySet<string> CutWordIds, IReadOnlySet<string> CutPauseIds,
-    IReadOnlyDictionary<string, string> Corrections, IReadOnlyList<ClipRange> Clips, string? ActiveClipId);
+    IReadOnlyDictionary<string, string> Corrections, IReadOnlyList<ClipRange> Clips, string? ActiveClipId)
+{
+    /// <summary>Present when the editor snapshot uses the joined recording clock.</summary>
+    [JsonIgnore] public ProjectClock? ProjectClock { get; internal init; }
+}
+
+/// <summary>One undoable change to the spoken recordings or the clip's ordered parts.</summary>
+public abstract record RecordingEdit
+{
+    private RecordingEdit() { }
+    /// <summary>Promote a known companion into a spoken recording.</summary>
+    public sealed record AddSpokenSource(string Key, TranscriptModel Transcript, string? Label = null, double? GainDb = null) : RecordingEdit;
+    /// <summary>Remove an unreferenced recording from the clock, not from media.</summary>
+    public sealed record RemoveSpokenSource(string Key) : RecordingEdit;
+    /// <summary>Insert after a part, or append when none is specified.</summary>
+    public sealed record AddPart(string ClipId, ClipPart Part, string? AfterPartId = null) : RecordingEdit;
+    /// <summary>Move after a part, or to the start when none is specified.</summary>
+    public sealed record MovePart(string ClipId, string PartId, string? AfterPartId) : RecordingEdit;
+    /// <summary>Remove the part from the clip's play order.</summary>
+    public sealed record RemovePart(string ClipId, string PartId) : RecordingEdit;
+    /// <summary>Change the part's bounds within its recording.</summary>
+    public sealed record TrimPart(string ClipId, string PartId, string StartWordId, string EndWordId) : RecordingEdit;
+    /// <summary>Replace a part with a version from a different recording.</summary>
+    public sealed record SwapTake(string ClipId, string PartId, string StartWordId, string EndWordId, string? TakeReason = null) : RecordingEdit;
+}
 
 /// <summary>Explicit planner kind; editing §2.6. Never infer from an id.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<EditSegmentKind>))]
@@ -86,7 +111,7 @@ public sealed record EditPlan(double SampleRate, long TotalSamples, IReadOnlyLis
     private readonly IReadOnlyList<MediaInterval> kept = Kept;
     private long outputSamples = NormalizeOutputSamples(Kept, OutputSamples);
     private IReadOnlyList<Join> joins = NormalizeJoins(SampleRate, TotalSamples, Kept, Joins);
-    private GainPart[] gainParts = BuildGainParts(SampleRate, TotalSamples, Kept);
+    private GainPart[] gainParts = BuildGainParts(SampleRate, TotalSamples, Kept, []);
     private SourceMapEntry[] sourceIndex = EditingPlanner.SourceIndex(Kept);
 
     /// <summary>Native audio sample rate. A record copy rebuilds its gain table when changed.</summary>
@@ -102,12 +127,18 @@ public sealed record EditPlan(double SampleRate, long TotalSamples, IReadOnlyLis
 
     /// <summary>Output sample at the start of each nonempty part after the first.</summary>
     [JsonIgnore] public IReadOnlyList<long> PartSeams { get; init; } = [];
+    private readonly IReadOnlyList<MediaInterval>? recordingRegions;
+    [JsonInclude, JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    internal IReadOnlyList<MediaInterval>? RecordingRegions { get => recordingRegions; init { recordingRegions = value; RebuildDerived(); } }
+    internal IReadOnlyList<long> RecordingSeams => RecordingRegions is null ? [] : EditingPlanner.RecordingSeams(
+        Kept.Select((span, index) => (span, gainParts[index].Start)), RecordingRegions, entry => entry.span.StartSample, entry => entry.Start);
+    internal IReadOnlyList<long> CaptionSeams => RecordingRegions is null ? PartSeams : PartSeams.Concat(RecordingSeams).Distinct().Order().ToArray();
 
     private void RebuildDerived()
     {
         outputSamples = Kept.Sum(part => part.EndSample - part.StartSample);
-        joins = EditingPlanner.BuildJoins(SampleRate, TotalSamples, Kept);
-        gainParts = BuildGainParts(SampleRate, TotalSamples, Kept);
+        joins = EditingPlanner.BuildJoins(SampleRate, TotalSamples, Kept, RecordingRegions ?? []);
+        gainParts = BuildGainParts(SampleRate, TotalSamples, Kept, RecordingRegions ?? []);
         sourceIndex = EditingPlanner.SourceIndex(Kept);
     }
 
@@ -119,13 +150,13 @@ public sealed record EditPlan(double SampleRate, long TotalSamples, IReadOnlyLis
 
     private static IReadOnlyList<Join> NormalizeJoins(double rate, long total, IReadOnlyList<MediaInterval> intervals, IReadOnlyList<Join> supplied)
     {
-        var derived = EditingPlanner.BuildJoins(rate, total, intervals);
+        var derived = EditingPlanner.BuildJoins(rate, total, intervals, []);
         return derived;
     }
 
     private readonly record struct GainPart(long Start, long End, long FadeIn, long FadeOut);
 
-    private static GainPart[] BuildGainParts(double rate, long total, IReadOnlyList<MediaInterval> intervals)
+    private static GainPart[] BuildGainParts(double rate, long total, IReadOnlyList<MediaInterval> intervals, IReadOnlyList<MediaInterval> regions)
     {
         var parts = new GainPart[intervals.Count];
         long offset = 0;
@@ -133,8 +164,8 @@ public sealed record EditPlan(double SampleRate, long TotalSamples, IReadOnlyLis
         {
             var interval = intervals[index];
             var length = interval.EndSample - interval.StartSample;
-            var fade = (long)Math.Min(EditingMath.Round(0.005 * rate), length / 2);
-            parts[index] = new(offset, offset + length, interval.StartSample > 0 ? fade : 0, interval.EndSample < total ? fade : 0);
+            var (fadeIn, fadeOut) = EditingPlanner.Fades(rate, total, interval, regions);
+            parts[index] = new(offset, offset + length, fadeIn, fadeOut);
             offset += length;
         }
         return parts;
@@ -266,12 +297,16 @@ public static class EditingEngine
     {
         if (FromProject(project) is not { } state) return project;
         var changed = Reduce(state, operation, project);
-        return ReferenceEquals(state, changed) ? project : ApplyToProject(project, changed);
+        if (ReferenceEquals(state, changed)) return project;
+        var result = ApplyToProject(project, changed);
+        return operation is EditOperation.SetClipParts set && project.Media.SpokenSources is not null &&
+            changed.Clips.Count > state.Clips.Count && changed.ActiveClipId is { } copy
+            ? RecordingEdits.RecordCopy(result, copy, set.Id) : result;
     }
 
     /// <summary>Reduce one operation using the project for paid-work and placement checks.</summary>
     public static EditState Reduce(EditState state, EditOperation operation, Project project) =>
-        EditingSession.Reduce(state, operation, project.Ai.Results, project);
+        EditingSession.Reduce(state, operation, project.Ai.Results, project, project.Media.SpokenSources is null ? "story" : "copy");
     /// <summary>Compute scoped counts and gates without changing the snapshot; editing §6.4.</summary>
     public static EditSummary Summarize(EditState state) => EditingSession.Summarize(state);
     /// <summary>Reduce one undoable operation.</summary>
@@ -290,7 +325,7 @@ public static class EditingEngine
     public static EditPlan BuildPlan(EditState state, double duration, double rate) =>
         state.Clips.FirstOrDefault(clip => clip.Id == state.ActiveClipId) is { Parts: not null } story
             ? BuildStoryPlan(state, story, duration, rate)
-            : BuildEditPlan(BuildSegments(state, duration), duration, rate, state.PauseKeepSeconds);
+            : EditingPlanner.BuildScopedPlan(BuildSegments(state, duration), state, duration, rate);
 
     /// <summary>Build a story by concatenating its single-range plans on the same sample grid.</summary>
     public static EditPlan BuildStoryPlan(EditState state, ClipRange clip, double duration, double rate) =>
@@ -303,7 +338,7 @@ public static class EditingEngine
         => EditingPlanner.CutRange(segments, index, duration, pauseKeepSeconds);
     /// <summary>Map valid kept speech words independently, preserving corrected text exactly, editing §7.6.</summary>
     public static IReadOnlyList<CaptionWord> CaptionCopy(IReadOnlyList<EditSegment> segments, EditPlan plan)
-        => plan.PartSeams.Count > 0 ? EditingPlanner.StoryCaptions(segments, plan)
+        => plan.CaptionSeams.Count > 0 ? EditingPlanner.StoryCaptions(segments, plan)
             : segments.Where(segment => segment.Kind == EditSegmentKind.Word && (segment.WordKind ?? Shared.WordKind.Word) == Shared.WordKind.Word && !segment.Cut && EditingPlanner.Valid(segment))
                 .Select(segment => new CaptionWord(segment.Id, segment.Text ?? "", plan.MapTime(segment.Start), plan.MapTime(segment.End))).Where(word => word.End > word.Start).ToArray();
 }

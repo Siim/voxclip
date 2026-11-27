@@ -1,0 +1,1499 @@
+{
+  "schema": "voxclip-recording-plans/1",
+  "sampleRate": 48000,
+  "cases": [
+    {
+      "id": "five-part-a1-b1-b2-a2-b3",
+      "project": "reference-recordings.voxclip",
+      "clip": {
+        "id": "clip-recordings",
+        "startWordId": "w8",
+        "endWordId": "r2.w21",
+        "title": null,
+        "origin": "manual",
+        "aiResultId": null,
+        "aiClipIndex": null,
+        "selected": true,
+        "kind": "story",
+        "parts": [
+          {
+            "id": "A1",
+            "startWordId": "r2.w1",
+            "endWordId": "r2.w11"
+          },
+          {
+            "id": "B1",
+            "startWordId": "w8",
+            "endWordId": "w13"
+          },
+          {
+            "id": "B2",
+            "startWordId": "w18",
+            "endWordId": "w23"
+          },
+          {
+            "id": "A2",
+            "startWordId": "r2.w18",
+            "endWordId": "r2.w21"
+          },
+          {
+            "id": "B3",
+            "startWordId": "w24",
+            "endWordId": "w27"
+          }
+        ]
+      },
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [],
+        "cutPauseIds": [],
+        "corrections": {}
+      },
+      "totalSamples": 432000,
+      "outputSamples": 221520,
+      "kept": [
+        [
+          288000,
+          349200
+        ],
+        [
+          48000,
+          84000
+        ],
+        [
+          108000,
+          172800
+        ],
+        [
+          402240,
+          432000
+        ],
+        [
+          210240,
+          240000
+        ]
+      ],
+      "cuts": [
+        [
+          0,
+          48000
+        ],
+        [
+          84000,
+          108000
+        ],
+        [
+          172800,
+          210240
+        ],
+        [
+          240000,
+          288000
+        ],
+        [
+          349200,
+          402240
+        ]
+      ],
+      "fades": [
+        [
+          0,
+          0,
+          240
+        ],
+        [
+          61200,
+          240,
+          240
+        ],
+        [
+          97200,
+          240,
+          240
+        ],
+        [
+          162000,
+          240,
+          0
+        ],
+        [
+          191760,
+          240,
+          0
+        ]
+      ],
+      "partSeams": [
+        61200,
+        97200,
+        162000,
+        191760
+      ],
+      "recordingSeams": [
+        61200,
+        162000,
+        191760
+      ],
+      "captions": [
+        [
+          "r2.w1",
+          "I",
+          0,
+          4189,
+          false
+        ],
+        [
+          "r2.w2",
+          "started",
+          5236,
+          9425,
+          false
+        ],
+        [
+          "r2.w3",
+          "Superscribe",
+          10473,
+          14662,
+          false
+        ],
+        [
+          "r2.w4",
+          "as",
+          15709,
+          19898,
+          false
+        ],
+        [
+          "r2.w5",
+          "a",
+          20945,
+          25135,
+          false
+        ],
+        [
+          "r2.w6",
+          "dictation",
+          26182,
+          30371,
+          false
+        ],
+        [
+          "r2.w7",
+          "tool",
+          31418,
+          35607,
+          false
+        ],
+        [
+          "r2.w8",
+          "that",
+          36655,
+          40844,
+          false
+        ],
+        [
+          "r2.w9",
+          "supports",
+          41891,
+          46080,
+          false
+        ],
+        [
+          "r2.w10",
+          "time",
+          47127,
+          51316,
+          false
+        ],
+        [
+          "r2.w11",
+          "tracking.",
+          52364,
+          57600,
+          false
+        ],
+        [
+          "w8",
+          "It",
+          66000,
+          69520,
+          true
+        ],
+        [
+          "w9",
+          "grew",
+          70400,
+          73920,
+          false
+        ],
+        [
+          "w10",
+          "from",
+          74800,
+          78320,
+          false
+        ],
+        [
+          "w11",
+          "my",
+          79200,
+          82720,
+          false
+        ],
+        [
+          "w12",
+          "own",
+          83600,
+          87120,
+          false
+        ],
+        [
+          "w13",
+          "notes.",
+          88000,
+          92400,
+          false
+        ],
+        [
+          "w18",
+          "It",
+          102000,
+          108400,
+          true
+        ],
+        [
+          "w19",
+          "became",
+          110000,
+          116400,
+          false
+        ],
+        [
+          "w20",
+          "my",
+          118000,
+          124400,
+          false
+        ],
+        [
+          "w21",
+          "personal",
+          126000,
+          132400,
+          false
+        ],
+        [
+          "w22",
+          "time",
+          134000,
+          140400,
+          false
+        ],
+        [
+          "w23",
+          "tracker.",
+          142000,
+          150000,
+          false
+        ],
+        [
+          "r2.w18",
+          "It's",
+          167760,
+          172560,
+          true
+        ],
+        [
+          "r2.w19",
+          "a",
+          173760,
+          178560,
+          false
+        ],
+        [
+          "r2.w20",
+          "reporting",
+          179760,
+          184560,
+          false
+        ],
+        [
+          "r2.w21",
+          "tool.",
+          185760,
+          191760,
+          false
+        ],
+        [
+          "w24",
+          "Now",
+          197520,
+          202320,
+          true
+        ],
+        [
+          "w25",
+          "it",
+          203520,
+          208320,
+          false
+        ],
+        [
+          "w26",
+          "does",
+          209520,
+          214320,
+          false
+        ],
+        [
+          "w27",
+          "both.",
+          215520,
+          221520,
+          false
+        ]
+      ],
+      "sources": [
+        [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          0,
+          61200
+        ],
+        [
+          "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          48000,
+          84000
+        ],
+        [
+          "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          108000,
+          172800
+        ],
+        [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          114240,
+          144000
+        ],
+        [
+          "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          210240,
+          240000
+        ]
+      ],
+      "parts": [
+        {
+          "id": "A1",
+          "sourceKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "kept": [
+            [
+              0,
+              61200
+            ]
+          ]
+        },
+        {
+          "id": "B1",
+          "sourceKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          "kept": [
+            [
+              48000,
+              84000
+            ]
+          ]
+        },
+        {
+          "id": "B2",
+          "sourceKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          "kept": [
+            [
+              108000,
+              172800
+            ]
+          ]
+        },
+        {
+          "id": "A2",
+          "sourceKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "kept": [
+            [
+              114240,
+              144000
+            ]
+          ]
+        },
+        {
+          "id": "B3",
+          "sourceKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          "kept": [
+            [
+              210240,
+              240000
+            ]
+          ]
+        }
+      ],
+      "pauseIds": [
+        "pause-after-w23",
+        "pause-after-r2.w17"
+      ]
+    },
+    {
+      "id": "full-take-caption-seam",
+      "project": "reference-recordings.voxclip",
+      "clip": null,
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [],
+        "cutPauseIds": [],
+        "corrections": {}
+      },
+      "totalSamples": 432000,
+      "outputSamples": 384000,
+      "kept": [
+        [
+          0,
+          240000
+        ],
+        [
+          288000,
+          432000
+        ]
+      ],
+      "cuts": [
+        [
+          240000,
+          288000
+        ]
+      ],
+      "fades": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          240000,
+          0,
+          0
+        ]
+      ],
+      "partSeams": [],
+      "recordingSeams": [
+        240000
+      ],
+      "captions": [
+        [
+          "w1",
+          "I",
+          0,
+          4937,
+          false
+        ],
+        [
+          "w2",
+          "started",
+          6171,
+          11109,
+          false
+        ],
+        [
+          "w3",
+          "Superscribe",
+          12343,
+          17280,
+          false
+        ],
+        [
+          "w4",
+          "as",
+          18514,
+          23451,
+          false
+        ],
+        [
+          "w5",
+          "a",
+          24686,
+          29623,
+          false
+        ],
+        [
+          "w6",
+          "dictation",
+          30857,
+          35794,
+          false
+        ],
+        [
+          "w7",
+          "tool.",
+          37029,
+          43200,
+          false
+        ],
+        [
+          "w8",
+          "It",
+          52800,
+          56320,
+          false
+        ],
+        [
+          "w9",
+          "grew",
+          57200,
+          60720,
+          false
+        ],
+        [
+          "w10",
+          "from",
+          61600,
+          65120,
+          false
+        ],
+        [
+          "w11",
+          "my",
+          66000,
+          69520,
+          false
+        ],
+        [
+          "w12",
+          "own",
+          70400,
+          73920,
+          false
+        ],
+        [
+          "w13",
+          "notes.",
+          74800,
+          79200,
+          false
+        ],
+        [
+          "w14",
+          "Sorry,",
+          88800,
+          91680,
+          false
+        ],
+        [
+          "w15",
+          "where",
+          92400,
+          95280,
+          false
+        ],
+        [
+          "w16",
+          "was",
+          96000,
+          98880,
+          false
+        ],
+        [
+          "w17",
+          "I?",
+          99600,
+          103200,
+          false
+        ],
+        [
+          "w18",
+          "It",
+          112800,
+          119200,
+          false
+        ],
+        [
+          "w19",
+          "became",
+          120800,
+          127200,
+          false
+        ],
+        [
+          "w20",
+          "my",
+          128800,
+          135200,
+          false
+        ],
+        [
+          "w21",
+          "personal",
+          136800,
+          143200,
+          false
+        ],
+        [
+          "w22",
+          "time",
+          144800,
+          151200,
+          false
+        ],
+        [
+          "w23",
+          "tracker.",
+          152800,
+          160800,
+          false
+        ],
+        [
+          "w24",
+          "Now",
+          216000,
+          220800,
+          false
+        ],
+        [
+          "w25",
+          "it",
+          222000,
+          226800,
+          false
+        ],
+        [
+          "w26",
+          "does",
+          228000,
+          232800,
+          false
+        ],
+        [
+          "w27",
+          "both.",
+          234000,
+          240000,
+          false
+        ],
+        [
+          "r2.w1",
+          "I",
+          240000,
+          244189,
+          true
+        ],
+        [
+          "r2.w2",
+          "started",
+          245236,
+          249425,
+          false
+        ],
+        [
+          "r2.w3",
+          "Superscribe",
+          250473,
+          254662,
+          false
+        ],
+        [
+          "r2.w4",
+          "as",
+          255709,
+          259898,
+          false
+        ],
+        [
+          "r2.w5",
+          "a",
+          260945,
+          265135,
+          false
+        ],
+        [
+          "r2.w6",
+          "dictation",
+          266182,
+          270371,
+          false
+        ],
+        [
+          "r2.w7",
+          "tool",
+          271418,
+          275607,
+          false
+        ],
+        [
+          "r2.w8",
+          "that",
+          276655,
+          280844,
+          false
+        ],
+        [
+          "r2.w9",
+          "supports",
+          281891,
+          286080,
+          false
+        ],
+        [
+          "r2.w10",
+          "time",
+          287127,
+          291316,
+          false
+        ],
+        [
+          "r2.w11",
+          "tracking.",
+          292364,
+          297600,
+          false
+        ],
+        [
+          "r2.w12",
+          "It",
+          304800,
+          306720,
+          false
+        ],
+        [
+          "r2.w13",
+          "became",
+          307200,
+          309120,
+          false
+        ],
+        [
+          "r2.w14",
+          "my",
+          309600,
+          311520,
+          false
+        ],
+        [
+          "r2.w15",
+          "personal",
+          312000,
+          313920,
+          false
+        ],
+        [
+          "r2.w16",
+          "time",
+          314400,
+          316320,
+          false
+        ],
+        [
+          "r2.w17",
+          "tracker.",
+          316800,
+          319200,
+          false
+        ],
+        [
+          "r2.w18",
+          "It's",
+          360000,
+          364800,
+          false
+        ],
+        [
+          "r2.w19",
+          "a",
+          366000,
+          370800,
+          false
+        ],
+        [
+          "r2.w20",
+          "reporting",
+          372000,
+          376800,
+          false
+        ],
+        [
+          "r2.w21",
+          "tool.",
+          378000,
+          384000,
+          false
+        ]
+      ],
+      "sources": [
+        [
+          "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          0,
+          240000
+        ],
+        [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          0,
+          144000
+        ]
+      ],
+      "parts": [],
+      "pauseIds": [
+        "pause-after-w23",
+        "pause-after-r2.w17"
+      ]
+    },
+    {
+      "id": "region-start-and-end",
+      "project": "reference-recordings.voxclip",
+      "clip": {
+        "id": "clip-recordings",
+        "startWordId": "w24",
+        "endWordId": "r2.w11",
+        "title": null,
+        "origin": "manual",
+        "aiResultId": null,
+        "aiClipIndex": null,
+        "selected": true,
+        "kind": "story",
+        "parts": [
+          {
+            "id": "A1",
+            "startWordId": "r2.w1",
+            "endWordId": "r2.w11"
+          },
+          {
+            "id": "B3",
+            "startWordId": "w24",
+            "endWordId": "w27"
+          }
+        ],
+        "leadInSeconds": 0.6
+      },
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [],
+        "cutPauseIds": [],
+        "corrections": {}
+      },
+      "totalSamples": 432000,
+      "outputSamples": 90960,
+      "kept": [
+        [
+          288000,
+          349200
+        ],
+        [
+          210240,
+          240000
+        ]
+      ],
+      "cuts": [
+        [
+          0,
+          210240
+        ],
+        [
+          240000,
+          288000
+        ],
+        [
+          349200,
+          432000
+        ]
+      ],
+      "fades": [
+        [
+          0,
+          0,
+          240
+        ],
+        [
+          61200,
+          240,
+          0
+        ]
+      ],
+      "partSeams": [
+        61200
+      ],
+      "recordingSeams": [
+        61200
+      ],
+      "captions": [
+        [
+          "r2.w1",
+          "I",
+          0,
+          4189,
+          false
+        ],
+        [
+          "r2.w2",
+          "started",
+          5236,
+          9425,
+          false
+        ],
+        [
+          "r2.w3",
+          "Superscribe",
+          10473,
+          14662,
+          false
+        ],
+        [
+          "r2.w4",
+          "as",
+          15709,
+          19898,
+          false
+        ],
+        [
+          "r2.w5",
+          "a",
+          20945,
+          25135,
+          false
+        ],
+        [
+          "r2.w6",
+          "dictation",
+          26182,
+          30371,
+          false
+        ],
+        [
+          "r2.w7",
+          "tool",
+          31418,
+          35607,
+          false
+        ],
+        [
+          "r2.w8",
+          "that",
+          36655,
+          40844,
+          false
+        ],
+        [
+          "r2.w9",
+          "supports",
+          41891,
+          46080,
+          false
+        ],
+        [
+          "r2.w10",
+          "time",
+          47127,
+          51316,
+          false
+        ],
+        [
+          "r2.w11",
+          "tracking.",
+          52364,
+          57600,
+          false
+        ],
+        [
+          "w24",
+          "Now",
+          66960,
+          71760,
+          true
+        ],
+        [
+          "w25",
+          "it",
+          72960,
+          77760,
+          false
+        ],
+        [
+          "w26",
+          "does",
+          78960,
+          83760,
+          false
+        ],
+        [
+          "w27",
+          "both.",
+          84960,
+          90960,
+          false
+        ]
+      ],
+      "sources": [
+        [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          0,
+          61200
+        ],
+        [
+          "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          210240,
+          240000
+        ]
+      ],
+      "parts": [
+        {
+          "id": "A1",
+          "sourceKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "kept": [
+            [
+              0,
+              61200
+            ]
+          ]
+        },
+        {
+          "id": "B3",
+          "sourceKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          "kept": [
+            [
+              210240,
+              240000
+            ]
+          ]
+        }
+      ],
+      "pauseIds": [
+        "pause-after-w23",
+        "pause-after-r2.w17"
+      ]
+    },
+    {
+      "id": "pause-beside-region-end",
+      "project": "reference-recordings.voxclip",
+      "clip": {
+        "id": "clip-recordings",
+        "startWordId": "r2.w1",
+        "endWordId": "r2.w21",
+        "title": null,
+        "origin": "manual",
+        "aiResultId": null,
+        "aiClipIndex": null,
+        "selected": true
+      },
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [],
+        "cutPauseIds": [
+          "pause-after-r2.w17"
+        ],
+        "corrections": {}
+      },
+      "totalSamples": 432000,
+      "outputSamples": 117600,
+      "kept": [
+        [
+          288000,
+          374400
+        ],
+        [
+          400800,
+          432000
+        ]
+      ],
+      "cuts": [
+        [
+          0,
+          288000
+        ],
+        [
+          374400,
+          400800
+        ]
+      ],
+      "fades": [
+        [
+          0,
+          0,
+          240
+        ],
+        [
+          86400,
+          240,
+          0
+        ]
+      ],
+      "partSeams": [],
+      "recordingSeams": [],
+      "captions": [
+        [
+          "r2.w1",
+          "I",
+          0,
+          4189,
+          false
+        ],
+        [
+          "r2.w2",
+          "started",
+          5236,
+          9425,
+          false
+        ],
+        [
+          "r2.w3",
+          "Superscribe",
+          10473,
+          14662,
+          false
+        ],
+        [
+          "r2.w4",
+          "as",
+          15709,
+          19898,
+          false
+        ],
+        [
+          "r2.w5",
+          "a",
+          20945,
+          25135,
+          false
+        ],
+        [
+          "r2.w6",
+          "dictation",
+          26182,
+          30371,
+          false
+        ],
+        [
+          "r2.w7",
+          "tool",
+          31418,
+          35607,
+          false
+        ],
+        [
+          "r2.w8",
+          "that",
+          36655,
+          40844,
+          false
+        ],
+        [
+          "r2.w9",
+          "supports",
+          41891,
+          46080,
+          false
+        ],
+        [
+          "r2.w10",
+          "time",
+          47127,
+          51316,
+          false
+        ],
+        [
+          "r2.w11",
+          "tracking.",
+          52364,
+          57600,
+          false
+        ],
+        [
+          "r2.w12",
+          "It",
+          64800,
+          66720,
+          false
+        ],
+        [
+          "r2.w13",
+          "became",
+          67200,
+          69120,
+          false
+        ],
+        [
+          "r2.w14",
+          "my",
+          69600,
+          71520,
+          false
+        ],
+        [
+          "r2.w15",
+          "personal",
+          72000,
+          73920,
+          false
+        ],
+        [
+          "r2.w16",
+          "time",
+          74400,
+          76320,
+          false
+        ],
+        [
+          "r2.w17",
+          "tracker.",
+          76800,
+          79200,
+          false
+        ],
+        [
+          "r2.w18",
+          "It's",
+          93600,
+          98400,
+          false
+        ],
+        [
+          "r2.w19",
+          "a",
+          99600,
+          104400,
+          false
+        ],
+        [
+          "r2.w20",
+          "reporting",
+          105600,
+          110400,
+          false
+        ],
+        [
+          "r2.w21",
+          "tool.",
+          111600,
+          117600,
+          false
+        ]
+      ],
+      "sources": [
+        [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          0,
+          86400
+        ],
+        [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          112800,
+          144000
+        ]
+      ],
+      "parts": [
+        {
+          "id": "A",
+          "sourceKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "kept": [
+            [
+              0,
+              86400
+            ],
+            [
+              112800,
+              144000
+            ]
+          ]
+        }
+      ],
+      "pauseIds": [
+        "pause-after-w23",
+        "pause-after-r2.w17"
+      ]
+    },
+    {
+      "id": "44100-on-48000-with-companion-edits",
+      "project": "two-recordings.voxclip",
+      "clip": null,
+      "edits": {
+        "pauseThresholdSeconds": 0.5,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [
+          "r2.w2"
+        ],
+        "cutPauseIds": [
+          "pause-after-r2.w1"
+        ],
+        "corrections": {
+          "r2.w1": "Report"
+        }
+      },
+      "totalSamples": 240001,
+      "outputSamples": 113581,
+      "kept": [
+        [
+          0,
+          102000
+        ],
+        [
+          192000,
+          203554
+        ],
+        [
+          239974,
+          240001
+        ]
+      ],
+      "cuts": [
+        [
+          102000,
+          192000
+        ],
+        [
+          203554,
+          239974
+        ]
+      ],
+      "fades": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          102000,
+          0,
+          240
+        ],
+        [
+          113554,
+          13,
+          0
+        ]
+      ],
+      "partSeams": [],
+      "recordingSeams": [
+        102000
+      ],
+      "captions": [
+        [
+          "w1",
+          "Opening",
+          5926,
+          21600,
+          false
+        ],
+        [
+          "w2",
+          "continues",
+          72000,
+          96000,
+          false
+        ],
+        [
+          "r2.w1",
+          "Report",
+          102005,
+          106354,
+          true
+        ]
+      ],
+      "sources": [
+        [
+          "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+          0,
+          102000
+        ],
+        [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          0,
+          11554
+        ],
+        [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          47974,
+          48001
+        ]
+      ],
+      "parts": [],
+      "pauseIds": [
+        "pause-after-w1",
+        "pause-after-r2.w1"
+      ]
+    },
+    {
+      "id": "44100-on-48000-companion-clip",
+      "project": "two-recordings.voxclip",
+      "clip": {
+        "id": "clip-recordings",
+        "startWordId": "r2.w1",
+        "endWordId": "r2.w2",
+        "title": null,
+        "origin": "manual",
+        "aiResultId": null,
+        "aiClipIndex": null,
+        "selected": true
+      },
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [],
+        "cutPauseIds": [],
+        "corrections": {}
+      },
+      "totalSamples": 240001,
+      "outputSamples": 48001,
+      "kept": [
+        [
+          192000,
+          240001
+        ]
+      ],
+      "cuts": [
+        [
+          0,
+          192000
+        ]
+      ],
+      "fades": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "partSeams": [],
+      "recordingSeams": [],
+      "captions": [
+        [
+          "r2.w1",
+          "Reporting",
+          5,
+          4354,
+          false
+        ],
+        [
+          "r2.w2",
+          "tool",
+          45714,
+          47946,
+          false
+        ]
+      ],
+      "sources": [
+        [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          0,
+          48001
+        ]
+      ],
+      "parts": [
+        {
+          "id": "A",
+          "sourceKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "kept": [
+            [
+              0,
+              48001
+            ]
+          ]
+        }
+      ],
+      "pauseIds": [
+        "pause-after-w1",
+        "pause-after-r2.w1"
+      ]
+    }
+  ]
+}

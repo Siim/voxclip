@@ -253,7 +253,7 @@ internal sealed class TimelineClock
     {
         Plan = plan; Scope = scope;
         Clip = project.Edits.Clips.FirstOrDefault(clip => clip.Id == scope);
-        Words = project.Transcript?.Words ?? [];
+        Words = ProjectClock.Build(project).Words;
         CutWordIds = project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal);
         var duration = plan.TotalSamples / plan.SampleRate;
         var bounds = Clip is { } clip ? StoryClips.Times(clip, Words) : [new TimeRange(0, duration)];

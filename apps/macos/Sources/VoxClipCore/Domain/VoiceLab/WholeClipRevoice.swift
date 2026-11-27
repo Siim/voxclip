@@ -253,7 +253,7 @@ public struct WholeClipScript: Codable, Equatable, Sendable {
                     // Split at the widest gap, the earliest on a tie.
                     widest = -Double.infinity
                     for j in left..<right {
-                        let gap: Double = cutPauseIds.contains("pause-after-" + words[j].id) ? 0 : words[j + 1].start - reached[j]
+                        let gap: Double = cutPauseIds.contains(pauseId(after: words[j].id)) ? 0 : words[j + 1].start - reached[j]
                         if gap > widest { widest = gap; split = j }
                     }
                 }

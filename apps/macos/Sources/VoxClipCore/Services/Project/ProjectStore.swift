@@ -61,6 +61,14 @@ public actor JSONProjectStore: ProjectStore {
                     project.transcript!.words[index].text = EditingPrimitives.nfc(project.transcript!.words[index].text)
                 }
             }
+            if var spoken = project.media.spokenSources {
+                for index in spoken.indices {
+                    for word in spoken[index].transcript.words.indices {
+                        spoken[index].transcript.words[word].text = EditingPrimitives.nfc(spoken[index].transcript.words[word].text)
+                    }
+                }
+                project.media.spokenSources = spoken
+            }
             project.edits.corrections = project.edits.corrections.mapValues(EditingPrimitives.nfc)
             try ProjectValidation.validateModel(project)
             let cleaned = cleanReferences(project)
@@ -72,8 +80,9 @@ public actor JSONProjectStore: ProjectStore {
 
     public static func encode(_ project: Project) throws -> Data {
         var snapshot = try ProjectMigrations.forWriting(pruneAIResults(cleanReferences(project).project))
-        let words = snapshot.transcript?.words ?? []
-        let pauses = try detectPauses(words, thresholdSeconds: snapshot.edits.pauseThresholdSeconds)
+        let clock = ProjectClock.build(snapshot)
+        let words = clock.words
+        let pauses = try clock.pauses(thresholdSeconds: snapshot.edits.pauseThresholdSeconds)
         let cutWords = Set(snapshot.edits.cutWordIds), cutPauses = Set(snapshot.edits.cutPauseIds)
         snapshot.edits.cutWordIds = words.map(\.id).filter { cutWords.contains($0) }
         snapshot.edits.cutPauseIds = pauses.map(\.id).filter { cutPauses.contains($0) }
@@ -186,9 +195,10 @@ public actor JSONProjectStore: ProjectStore {
     public static func cleanReferences(_ project: Project) -> (project: Project, warnings: [String]) {
         var result = project
         var warnings: [String] = []
-        let words = project.transcript?.words ?? []
+        let clock = ProjectClock.build(project)
+        let words = clock.words
         let wordIDs = Set(words.map(\.id))
-        let pauses = (try? detectPauses(words, thresholdSeconds: project.edits.pauseThresholdSeconds)) ?? []
+        let pauses = (try? clock.pauses(thresholdSeconds: project.edits.pauseThresholdSeconds)) ?? []
         let pauseIDs = Set(pauses.map(\.id))
         func warn(_ category: String, _ count: Int) { if count > 0 { warnings.append("Dropped \(count) invalid \(category) reference(s)") } }
         result.edits.cutWordIds = project.edits.cutWordIds.filter(wordIDs.contains)

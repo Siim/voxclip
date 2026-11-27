@@ -128,7 +128,7 @@ public static class TimelineEdits
             var name = reducer.Apply(edit);
             var result = reducer.Project;
             if (result != project)
-                result = (result.SchemaVersion < 4 ? ContextDemoProject.UpgradeToV4(result) : result) with { SchemaVersion = TimelineEditFields.Version };
+                result = (result.SchemaVersion < 4 ? ContextDemoProject.UpgradeToV4(result) : result) with { SchemaVersion = Math.Max(result.SchemaVersion, TimelineEditFields.Version) };
             return new TimelineEditResult.Applied(result, name);
         }
         catch (Refusal refusal) { return new TimelineEditResult.Refused(new(refusal.Message)); }

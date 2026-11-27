@@ -38,7 +38,7 @@ public struct TimelineEditRequest: Sendable, Equatable {
     public func applying(to project: Project, scope: String?) throws -> (project: Project, undoName: String) {
         let plan = try RenderCallerInputs.editPlan(project: project, clipID: scope)
         let items = TimelineItems.layout(project: project, plan: plan, scope: scope, axis: .edited).items
-        let words = project.transcript?.words ?? []
+        let words = ProjectClock.build(project).words
         let command = try command(itemID: { name in
             if let exact = items.first(where: { TimelineDecisions.id($0.id, project: project, scope: scope) == name }) { return exact.id }
             let matches = items.filter { $0.id.value == name }

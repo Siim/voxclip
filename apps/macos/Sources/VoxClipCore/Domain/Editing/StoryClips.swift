@@ -8,6 +8,7 @@ extension ClipRange {
 }
 
 enum StoryClips {
+    static let maxTakeReasonScalars = 160
     static func indices(_ ranges: [(String, String)], words: [TimedWord]) -> [ClosedRange<Int>]? {
         let ids = Dictionary(words.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
         let result = ranges.compactMap { start, end -> ClosedRange<Int>? in
@@ -23,7 +24,8 @@ enum StoryClips {
         guard let parts = clip.parts else { return clip.kind == nil }
         guard (2...12).contains(parts.count), Set(parts.map(\.id)).count == parts.count,
               parts.allSatisfy({ part in
-                  guard ProjectValidation.matches(part.id, EditingLimits.clipIDPattern) else { return false }
+                  guard ProjectValidation.matches(part.id, EditingLimits.clipIDPattern),
+                        (part.takeReason?.unicodeScalars.count ?? 0) <= maxTakeReasonScalars else { return false }
                   guard let face = part.reframe else { return true }
                   return face.mode == ReframeSettings.faceMode && face.zoom == 1 &&
                       [face.centerX, face.centerY].allSatisfy { $0.map { (0...1).contains($0) } == true }
@@ -51,11 +53,17 @@ enum StoryClips {
     }
 
     static func validate(_ project: Project) throws {
-        let words = project.transcript?.words ?? []
+        let clock = ProjectClock.build(project)
+        let words = clock.words
         let stories = project.edits.clips.filter { $0.parts != nil }
         try ProjectValidation.require(project.schemaVersion >= 6 || (project.schemaVersion == 5) == !stories.isEmpty, "Invalid story clip project version")
         for clip in project.edits.clips {
             try ProjectValidation.require(valid(clip, words: words), "Invalid story clip parts or source hull")
+            try ProjectValidation.require(project.schemaVersion == ProjectMigrations.currentVersion || clip.playParts.allSatisfy { $0.takeReason == nil },
+                                          "Version reasons require project version 7")
+            if clock.regions.count > 1 {
+                try ProjectValidation.require(clip.playParts.allSatisfy { clock.containsRange(startWordId: $0.startWordId, endWordId: $0.endWordId) }, "A part comes from one recording.")
+            }
             if clip.parts != nil { try validatePlacement(clip, project: project, words: words) }
         }
         for clip in project.ai.results.flatMap(\.clips) {
@@ -63,6 +71,9 @@ enum StoryClips {
             if let parts = clip.parts {
                 let ranges = indices(parts.map { ($0.startWordId, $0.endWordId) }, words: words)
                 try ProjectValidation.require((2...12).contains(parts.count) && ranges != nil, "Invalid AI clip parts")
+                if clock.regions.count > 1 {
+                    try ProjectValidation.require(parts.allSatisfy { clock.containsRange(startWordId: $0.startWordId, endWordId: $0.endWordId) }, "A part comes from one recording.")
+                }
             }
         }
     }

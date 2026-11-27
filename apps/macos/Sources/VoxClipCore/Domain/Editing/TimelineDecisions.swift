@@ -8,7 +8,7 @@ public enum TimelineDecisions {
         let spans = TimelineEntries(project, clock: clock).values
         let track = project.music.first { $0.clipId == scope }
         let music = track.map { $0.segments ?? clock.bed($0).map { [$0] } ?? [] } ?? []
-        let words = project.transcript?.words ?? []
+        let words = clock.words
         func word(at time: Double, end: Bool = false) -> JSONValue {
             let index = end ? words.lastIndex { $0.start < time } : words.firstIndex { $0.end > time }
             return index.map { .number(Double($0)) } ?? .null

@@ -18,7 +18,7 @@ public static class TimelineDecisions
         var effects = project.ClipEffects.Select(ClipEffect.Parse).ToDictionary(effect => effect.Id, StringComparer.Ordinal);
         var track = project.Music.FirstOrDefault(item => item.ClipId == scope);
         var music = track?.Segments ?? (track is not null && clock.Bed(track) is { } bed ? [bed] : []);
-        var words = project.Transcript?.Words ?? [];
+        var words = clock.Words;
         int? Word(double time, bool end = false)
         {
             for (var offset = 0; offset < words.Count; offset++)

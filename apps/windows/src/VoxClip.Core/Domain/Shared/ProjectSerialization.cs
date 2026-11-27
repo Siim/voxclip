@@ -7,19 +7,26 @@ namespace VoxClip.Core.Domain.Shared;
 /// <summary>Versioned project encoding boundary; architecture §3 and editing §10. Store implementation adds reference cleanup and atomic I/O.</summary>
 public static class ProjectSerialization
 {
+    internal const int CurrentVersion = 7;
     /// <summary>Read a project with source-generated metadata; unknown keys are refused except inside extensions and merge patches.</summary>
-    public static Project Deserialize(string json)
+    public static Project Deserialize(string json) => Deserialize(json, CurrentVersion);
+
+    internal static Project Deserialize(string json, int maximumSupportedVersion)
     {
         try
         {
             using var document = JsonDocument.Parse(json);
+            if (maximumSupportedVersion < CurrentVersion && document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number &&
+                version.TryGetInt32(out var number) && number > maximumSupportedVersion)
+                throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
             VoxClip.Core.Services.Project.ProjectValidation.Validate(document.RootElement, normalizeWordText: true);
             if (document.RootElement.GetProperty("schemaVersion").GetInt32() >= 3) ValidateV3EnumWire(document.RootElement);
             var project = JsonSerializer.Deserialize(json, ProjectJsonContext.Default.Project) ?? throw new JsonException("Missing project.");
             project = project with {
-                Transcript = project.Transcript is { } transcript ? transcript with {
-                    Words = transcript.Words.Select(word => word with { Text = EditingAlgorithms.Nfc(word.Text) }).ToArray()
-                } : null,
+                Transcript = project.Transcript is { } transcript ? Normalize(transcript) : null,
+                Media = project.Media with { SpokenSources = project.Media.SpokenSources?.Select(source => source with
+                    { Transcript = Normalize(source.Transcript) }).ToArray() },
                 Edits = project.Edits with {
                     Corrections = project.Edits.Corrections.ToDictionary(pair => pair.Key, pair => EditingAlgorithms.Nfc(pair.Value), StringComparer.Ordinal)
                 }
@@ -32,6 +39,10 @@ public static class ProjectSerialization
             throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "/: invalid project document", exception);
         }
     }
+    private static Transcript.Transcript Normalize(Transcript.Transcript transcript) => transcript with
+    {
+        Words = transcript.Words.Select(word => word with { Text = EditingAlgorithms.Nfc(word.Text) }).ToArray()
+    };
     private static void ValidateV3EnumWire(JsonElement root)
     {
         static JsonElement RequireKind(JsonElement element, string key, JsonValueKind kind)
@@ -80,17 +91,23 @@ public static class ProjectSerialization
     /// <summary>UTF8-compatible JSON with stable timestamps and LF terminator; source word doubles retain round-trip precision.</summary>
     public static string Serialize(Project project)
     {
-        project = StoryClips.ForWriting(TimelineEditFields.Promoting(project));
+        project = ForWriting(project);
         Validate(project);
         var json = JsonSerializer.Serialize(project, ProjectJsonContext.Default.Project) + "\n";
         VoxClip.Core.Services.Project.ProjectValidation.Validate(json);
         return json;
     }
+
+    internal static Project ForWriting(Project project) =>
+        project.Media.SpokenSources is not null && project.SchemaVersion is >= 1 and < CurrentVersion
+            ? (project.SchemaVersion < 4 ? ContextDemoProject.UpgradeToV4(project) : project) with { SchemaVersion = CurrentVersion }
+            : StoryClips.ForWriting(TimelineEditFields.Promoting(project));
+
     /// <summary>Validate supported format, voice policy, context/motion invariants and immutable word timings.</summary>
     public static void Validate(Project project)
     {
-        if (project.SchemaVersion > TimelineEditFields.Version) throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
-        if (project.Format != "voxclip-project" || project.SchemaVersion is < 1 or > TimelineEditFields.Version)
+        if (project.SchemaVersion > CurrentVersion) throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
+        if (project.Format != "voxclip-project" || project.SchemaVersion is < 1 or > CurrentVersion)
             throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Invalid project format.");
         if (project.Transcript is { } transcript)
         {
@@ -104,6 +121,7 @@ public static class ProjectSerialization
                 previous = word.Start;
             }
         }
+        ProjectClock.Validate(project);
         VoiceLabProject.Validate(project);
         ContextDemoProject.Validate(project);
         VoxClip.Core.Domain.Music.MusicProject.Validate(project);

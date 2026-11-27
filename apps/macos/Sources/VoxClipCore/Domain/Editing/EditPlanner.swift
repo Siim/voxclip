@@ -47,7 +47,8 @@ public func buildStoryPlan(_ state: EditState, clip: ClipRange, duration: Double
     guard zip(sorted, sorted.dropFirst()).allSatisfy({ $0.endSample <= $1.startSample }) else {
         throw VoxClipError.projectUnreadable("Story parts overlap on the source sample grid")
     }
-    return EditPlan(sampleRate: sampleRate, totalSamples: total, cuts: complement(sorted, total: total), kept: kept, partSeams: seams)
+    return EditPlan(sampleRate: plans[0].sampleRate, totalSamples: total, cuts: complement(sorted, total: total),
+                    kept: kept, partSeams: seams, recordingRegions: plans[0].recordingRegions)
 }
 
 func complement(_ ordered: [MediaInterval], total: Int64) -> [MediaInterval] {
@@ -76,14 +77,15 @@ extension EditPlan {
         cuts.first { Double($0.startSample) / sampleRate <= time && time < Double($0.endSample) / sampleRate }
     }
 
-    static func makeFadeParts(kept: [MediaInterval], totalSamples: Int64, sampleRate: Double) -> [FadePart] {
+    static func makeFadeParts(kept: [MediaInterval], totalSamples: Int64, sampleRate: Double, regions: [MediaInterval]) -> [FadePart] {
         guard sampleRate.isFinite, sampleRate > 0 else { return [] }
         let fadeLength = Int64(min(Double(Int64.max / 2), max(0, EditingPrimitives.jsRound(0.005 * sampleRate))))
         var offset: Int64 = 0
         return kept.map { interval in
             let fade = min(fadeLength, interval.count / 2)
-            let result = FadePart(outputStart: offset, length: interval.count, fadeIn: interval.startSample > 0 ? fade : 0,
-                                  fadeOut: interval.endSample < totalSamples ? fade : 0)
+            let atStart = interval.startSample <= 0 || regions.contains { $0.startSample == interval.startSample }
+            let atEnd = interval.endSample >= totalSamples || regions.contains { $0.endSample == interval.endSample }
+            let result = FadePart(outputStart: offset, length: interval.count, fadeIn: atStart ? 0 : fade, fadeOut: atEnd ? 0 : fade)
             offset += interval.count
             return result
         }
@@ -132,6 +134,80 @@ public func clipTimes(_ words: [TimedWord], clip: ClipRange, startIndex: Int, en
     try clipTimes(words, startIndex: startIndex, endIndex: endIndex, leadIn: clip.leadInSeconds)
 }
 
+func scopedClipTimes(_ state: EditState, bounds: ClosedRange<Int>, leadIn: Double?) throws -> TimeRange {
+    guard let clock = state.projectClock, clock.regions.count > 1 else {
+        return try clipTimes(state.transcript.words, startIndex: bounds.lowerBound, endIndex: bounds.upperBound, leadIn: leadIn)
+    }
+    let (region, range) = try localClipTimes(state.transcript.words, bounds: bounds, leadIn: leadIn, clock: clock)
+    let offset = Double(region.offsetSamples) / Double(clock.sampleRate)
+    return TimeRange(start: range.start + offset, end: range.end + offset)
+}
+
+private func localClipTimes(_ words: [TimedWord], bounds: ClosedRange<Int>, leadIn: Double?, clock: ProjectClock) throws -> (ProjectClock.Region, TimeRange) {
+    let first = bounds.lowerBound, last = bounds.upperBound
+    guard let region = clock.region(of: words[first].id), region == clock.region(of: words[last].id) else {
+        throw VoxClipError.projectUnreadable("A part comes from one recording.")
+    }
+    let start = first > 0 && clock.region(of: words[first - 1].id) == region ? first - 1 : first
+    let end = last + 1 < words.count && clock.region(of: words[last + 1].id) == region ? last + 1 : last
+    let local = words[start...end].map { word in
+        var word = word
+        word.start = recordingLocalTime(word.start, region: region, rate: Double(clock.sampleRate))
+        word.end = recordingLocalTime(word.end, region: region, rate: Double(clock.sampleRate))
+        return word
+    }
+    let times = try clipTimes(local, startIndex: first - start, endIndex: last - start, leadIn: leadIn)
+    return (region, TimeRange(start: times.start, end: min(times.end, Double(region.durationSamples) / Double(clock.sampleRate))))
+}
+
+private func recordingLocalTime(_ time: Double, region: ProjectClock.Region, rate: Double) -> Double {
+    region.offsetSamples == 0 ? time : (EditingPrimitives.jsRound(time * rate) - Double(region.offsetSamples)) / rate
+}
+
+func buildScopedEditPlan(_ segments: [EditSegment], state: EditState, activeClip: ClipRange?, duration: Double, rate: Double) throws -> EditPlan {
+    guard let clock = state.projectClock, clock.regions.count > 1 else {
+        return try buildEditPlan(segments, duration: duration, sampleRate: rate, pauseKeepSeconds: state.pauseKeepSeconds)
+    }
+    let rate = Double(clock.sampleRate)
+    let scope = try clipIndices(activeClip, words: state.transcript.words).map {
+        try localClipTimes(state.transcript.words, bounds: $0, leadIn: activeClip?.leadInSeconds, clock: clock)
+    }
+    var kept: [MediaInterval] = []
+    for region in clock.regions where scope == nil || scope?.0 == region {
+        let offset = Double(region.offsetSamples) / rate
+        let end = Double(region.endSample) / rate
+        let duration = Double(region.durationSamples) / rate
+        var local = segments.compactMap { segment -> EditSegment? in
+            guard segment.kind != .range, offset <= segment.start, segment.start < end,
+                  segment.kind != .pause || segment.end <= end else { return nil }
+            var segment = segment
+            segment.start = recordingLocalTime(segment.start, region: region, rate: rate)
+            segment.end = recordingLocalTime(segment.end, region: region, rate: rate)
+            return segment
+        }
+        if let (_, range) = scope {
+            local.append(EditSegment(id: "clip-head", kind: .range, start: 0, end: range.start, cut: true))
+            local.append(EditSegment(id: "clip-tail", kind: .range, start: range.end, end: duration, cut: true))
+        }
+        let plan = try buildEditPlan(local, duration: duration, sampleRate: rate, pauseKeepSeconds: state.pauseKeepSeconds)
+        kept += plan.kept.map { MediaInterval(startSample: $0.startSample + Int64(region.offsetSamples), endSample: $0.endSample + Int64(region.offsetSamples)) }
+    }
+    let total = Int64(clock.totalSamples)
+    return EditPlan(sampleRate: rate, totalSamples: total, cuts: complement(kept, total: total), kept: kept, partSeams: [],
+                    recordingRegions: clock.sampleRegions)
+}
+
+func recordingSeamSamples<Piece>(_ pieces: [Piece], regions: [MediaInterval], source: (Piece) -> Int64, output: (Piece) -> Int64) -> [Int64] {
+    guard regions.count > 1 else { return [] }
+    var previous: Int?
+    return pieces.compactMap { piece in
+        let sample = source(piece)
+        let current = regions.firstIndex { $0.startSample <= sample && sample < $0.endSample }
+        defer { previous = current }
+        return previous != nil && current != nil && previous != current ? output(piece) : nil
+    }
+}
+
 func clipIndices(_ clip: ClipRange?, words: [TimedWord]) -> ClosedRange<Int>? {
     guard let clip, let ranges = clip.playPartIndices(in: words), ranges.count == 1 else { return nil }
     return ranges.first
@@ -149,7 +225,7 @@ public func buildSegments(_ state: EditState, activeClip: ClipRange?) throws -> 
         EditSegment(id: $0.id, kind: .pause, start: $0.start, end: $0.end, cut: true)
     }
     if let ranges, ranges.count == 1, let bounds = ranges.first {
-        let times = try clipTimes(words, startIndex: bounds.lowerBound, endIndex: bounds.upperBound, leadIn: activeClip?.leadInSeconds)
+        let times = try scopedClipTimes(state, bounds: bounds, leadIn: activeClip?.leadInSeconds)
         if times.start > 0 { segments.append(EditSegment(id: "clip-head", kind: .range, start: 0, end: times.start, cut: true)) }
         let end = max(times.end, words.last?.end ?? times.end) + 3600
         if end > times.end { segments.append(EditSegment(id: "clip-tail", kind: .range, start: times.end, end: end, cut: true)) }
@@ -266,8 +342,9 @@ public func buildEditPlan(_ segments: [EditSegment], duration: Double, sampleRat
 }
 
 public func captionCopy(_ segments: [EditSegment], plan: EditPlan) -> [CaptionWord] {
-    if !plan.partSeams.isEmpty {
-        let offsets = [0] + plan.partSeams + [plan.outputSamples]
+    let seams = plan.captionSeams
+    if !seams.isEmpty {
+        let offsets = [0] + seams + [plan.outputSamples]
         var result: [CaptionWord] = [], keptIndex = 0
         for (start, end) in zip(offsets, offsets.dropFirst()) {
             let first = keptIndex

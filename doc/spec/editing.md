@@ -161,6 +161,10 @@ Preview and `voxclip-cli export --clip` on both platforms use the same part orde
 
 Schema v5 carries story clips and their AI suggestion metadata (`parts` as word ranges, and `notInTake` of at most 200 characters). Without a story clip, writers keep the legacy suggestion fields and do not write v5. Removing the last story clip returns the document to v4. Legacy documents do not upgrade merely by loading and saving.
 
+With [spoken recordings](../adr/R54-spoken-recordings-on-one-project-clock.md), each part (or an ordinary clip) must use words from one recording. A story's hull can span several recordings; it is still not a playback range. Part IDs and framing stay with their slot when **Use version** replaces its words, and an optional `takeReason` (up to 160 characters, v7 only) records why a version was chosen. A part edit that would stop paid voice work selects and announces a copy, for example **Clip 1 copy**, without altering the original.
+
+Add, move, remove and trim a part are named Undo steps. Adding inserts after the requested part, or appends; moving with no preceding part places it first. **Add recording** promotes a known companion. **Remove recording** refuses while a part, cut, correction, suggestion or anchored item still uses the region. It leaves the companion and its file alone. Removing the last spoken companion returns the project to v6 and clears comparison reasons, not parts.
+
 ### 2.6 EditSegment (planner input)
 
 ```text
@@ -197,6 +201,14 @@ EditPlan {
 The macOS canonical initializer takes `sampleRate`, `totalSamples`, `cuts` and `kept`; output samples and joins are derived from the kept intervals. The legacy initializer with explicit derived values is deprecated and asserts their agreement in DEBUG builds. Decoding still normalizes stale derived fields from kept intervals without changing the wire format.
 
 On Windows, construction, record copies and decoding silently normalize supplied output samples and joins from the kept intervals, sample rate and source bounds in both Debug and Release. Supplied derived fields never override those values, regardless of initializer order.
+
+`ProjectClock` is the source side of this mapping for a project with spoken companions. It joins the immutable local transcripts in clock order on the primary sample grid and exposes the regions, guard gaps and clock end for planning. Companion IDs are qualified (`r2.w1`); the primary transcript and all its IDs stay exact. `resolve`/`sourceTime` map a clock sample to a recording key and a local sample on the primary grid, and `mapTime` is the inverse inside that region. Region ends are exclusive and a guard gap resolves to no recording. The edit state uses the joined words and does not make pauses between recordings. The planner and renderer consume the clock separately from the file format.
+
+For a multi-recording project, `totalSamples` is the clock end. The edit and Voice Lab planners plan each recording in its own time on the primary grid, then add its offset to each kept span. A full take keeps regions in clock order; a story keeps its parts in play order. The complement of those spans includes every guard gap. Kept spans stay in project-clock samples so other edit layers still use one axis; a media caller resolves each span's start through `ProjectClock` to get the recording key and local sample.
+
+`TimelinePieces.isRecordingSeam(at:)` (`IsRecordingSeam` on Windows) identifies a change of recording between consecutive pieces in playback order. It also works on a full take with no part seams. The first caption after either kind of seam starts a new page. Fades are unchanged except that a recording's own start and end count as source edges, so a span touching one has no fade on that side.
+
+`shared/fixtures/recordings/plan-cases.json` uses `five-part-a1-b1-b2-a2-b3` as the reference for the recording shortcut vectors; it records the ordered word ranges and the local kept samples for each part. `tools/fixtures/recordings/generate.py` derives these from the existing single-recording oracle.
 
 ### 2.8 CaptionWord
 
@@ -657,6 +669,8 @@ buildSegments(state, activeClip?):        // activeClip = resolved indices or no
 
 Words outside the clip are cut only inside this function. Pauses cut for the full take stay in force inside a clip, so a clip never contains audio that the full take cuts. For example, a cut pause right after the clip's last word shortens the clip's 0.25 s tail to the pause breath. VoxConvo behaves the same way.
 
+With spoken companions, each part or ordinary clip must stay in one region (otherwise: “A part comes from one recording.”). Only words and pauses from that region take part in its edge calculations. Lead-in, tail padding, cut reach and `pauseKeepSeconds` cannot enter a guard gap; the gap after the region's last word is a source tail, not a pause. Single-recording projects keep the original planning path and sample counts.
+
 ### 7.2 clipTimes (reference `clips.ts:32-40`)
 
 ```text
@@ -893,7 +907,7 @@ On Windows, steps 1 and 2 probe a candidate only if it has one of two forms, che
 ### 10.4 Loading and validation
 
 - Schema-pattern checks have no wall-clock deadline: a valid project must not fail to open because the machine is busy. Windows uses non-backtracking regexes with an explicit infinite match timeout on both raw and model validation paths, preserving the schema's accepted patterns. Untyped load failures become `projectUnreadable`; cancellation and existing typed project and Voice Lab errors keep their meaning.
-- `format` must be `voxclip-project`. A file with a higher `schemaVersion` MUST NOT be edited ("made with a newer VoxClip"). Older versions are migrated in memory and written as the current version.
+- `format` must be `voxclip-project`. A file with a higher `schemaVersion` MUST NOT be edited ("made with a newer VoxClip"). Writers preserve the version unless the features in the project require another one. V7 is used only with `media.spokenSources`.
 - The file must decode strictly into the typed project model, and the transcript invariants (2.2) must hold. Otherwise it is rejected as damaged (`projectUnreadable`). Strict decoding is the runtime form of schema validation (architecture 2.1): unknown keys are rejected except under `extensions`, required keys must be present (explicit `null` included), and the schema's enum, pattern, range and uniqueness rules are checked in code. No JSON Schema engine runs in the apps; the test suites validate every file the apps write with a real JSON Schema 2020-12 validator.
 - References are then checked against the transcript and the derived pauses. Unknown ids in `cutWordIds`, `cutPauseIds` or `corrections` are dropped. So are clips with an unknown word id or with start after end, corrections on non-`word` items, corrections equal to the transcribed text, an `activeClipId` that names no clip (set to null), `aiResultId` values that resolve to nothing (set to null together with `aiClipIndex`), and `share.captions` entries whose key is neither `full` nor an existing clip id. Each drop is reported in the open log, and the cleaned state is what the next save writes.
 - `media.source.durationSeconds` and `audio.sampleRate` feed `buildEditPlan`. A null `audio` means rate 48000.

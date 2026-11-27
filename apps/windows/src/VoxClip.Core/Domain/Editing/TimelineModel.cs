@@ -19,6 +19,7 @@ public sealed class TimelinePieces
     public IReadOnlyList<TimelinePiece> Pieces { get; }
     private readonly IReadOnlyList<TimelinePiece> sourcePieces;
     private readonly HashSet<double> partSeams = [];
+    private readonly HashSet<double> recordingSeams = [];
     public TimelinePieces(IEnumerable<TimelinePiece> pieces)
     {
         Pieces = pieces.ToArray();
@@ -31,6 +32,7 @@ public sealed class TimelinePieces
         {
             case RenderTimeline.Legacy legacy:
                 partSeams.UnionWith(legacy.Plan.PartSeams.Select(seam => seam / legacy.Plan.SampleRate));
+                recordingSeams.UnionWith(legacy.Plan.RecordingSeams.Select(seam => seam / legacy.Plan.SampleRate));
                 long output = 0;
                 foreach (var interval in legacy.Plan.Kept)
                 {
@@ -43,6 +45,7 @@ public sealed class TimelinePieces
                 break;
             case RenderTimeline.VoiceLab voice:
                 partSeams.UnionWith(voice.Plan.PartSeams.Select(seam => seam / voice.Plan.SampleRate));
+                recordingSeams.UnionWith(voice.Plan.RecordingSeams.Select(seam => seam / voice.Plan.SampleRate));
                 foreach (var piece in voice.Plan.Pieces)
                 {
                     if (piece.OutputEndSample <= piece.OutputStartSample) continue;
@@ -62,6 +65,8 @@ public sealed class TimelinePieces
     public TimeRange? SourceSpan => Pieces.Count == 0 ? null : new(sourcePieces[0].Source.Start, Math.Max(sourcePieces[0].Source.Start, sourcePieces[^1].Source.End));
     /// <summary>Whether this play-order piece begins a new part, even if its source is adjacent.</summary>
     public bool IsPartSeam(int index) => index >= 0 && index < Pieces.Count && partSeams.Contains(Pieces[index].Edited.Start);
+    /// <summary>Whether the piece begins in a different recording from its predecessor in play order.</summary>
+    public bool IsRecordingSeam(int index) => index >= 0 && index < Pieces.Count && recordingSeams.Contains(Pieces[index].Edited.Start);
     public bool IsSeam(int index) => index > 0 && index < Pieces.Count && (IsPartSeam(index) || Math.Abs(Pieces[index].Source.Start - Pieces[index - 1].Source.End) > 1e-6);
     public IReadOnlyList<double> Seams => Enumerable.Range(0, Pieces.Count).Where(IsSeam).Select(index => Pieces[index].Edited.Start).ToArray();
     public IReadOnlyList<TimeRange> Gaps(TimeRange span, double minimum = .02)

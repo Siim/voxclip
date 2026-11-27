@@ -1,0 +1,242 @@
+{
+  "format": "voxclip-project",
+  "schemaVersion": 7,
+  "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+  "title": "Synthetic clip controls wire fixture",
+  "createdAt": "2026-10-25T09:12:03Z",
+  "modifiedAt": "2026-10-25T09:31:47Z",
+  "savedBy": {
+    "app": "VoxClip",
+    "version": "0.1.0",
+    "platform": "macos"
+  },
+  "media": {
+    "source": {
+      "absolutePath": "/synthetic/DJI_0007.MOV",
+      "relativePath": "DJI_0007.MOV",
+      "sizeBytes": 9437184,
+      "durationSeconds": 2.125,
+      "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+      "video": {
+        "width": 1920,
+        "height": 1080,
+        "frameRate": 30,
+        "rotationDegrees": 0
+      },
+      "audio": {
+        "sampleRate": 48000,
+        "channels": 1
+      }
+    },
+    "additionalSources": [
+      {
+        "absolutePath": "/synthetic/DJI_0010.MOV",
+        "relativePath": "DJI_0010.MOV",
+        "sizeBytes": 9437184,
+        "durationSeconds": 1.0000226757369615,
+        "contentKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "video": {
+          "width": 1920,
+          "height": 1080,
+          "frameRate": 30,
+          "rotationDegrees": 0
+        },
+        "audio": {
+          "sampleRate": 44100,
+          "channels": 1
+        }
+      },
+      {
+        "absolutePath": "/synthetic/DJI_0006.MOV",
+        "relativePath": "DJI_0006.MOV",
+        "sizeBytes": 9437184,
+        "durationSeconds": 1.0000226757369615,
+        "contentKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "video": {
+          "width": 1920,
+          "height": 1080,
+          "frameRate": 30,
+          "rotationDegrees": 0
+        },
+        "audio": {
+          "sampleRate": 44100,
+          "channels": 1
+        }
+      }
+    ],
+    "spokenSources": [
+      {
+        "sourceKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "offsetSeconds": 4,
+        "wordIdPrefix": "r2.",
+        "gainDb": -1.8,
+        "transcript": {
+          "schemaVersion": 1,
+          "words": [
+            {
+              "id": "w1",
+              "text": "Reporting",
+              "kind": "word",
+              "start": 0.00011337868480725624,
+              "end": 0.09070294784580499,
+              "rawStart": 2.2675736961451248e-05,
+              "rawEnd": 0.09297052154195011,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w2",
+              "text": "tool",
+              "kind": "word",
+              "start": 0.9523809523809523,
+              "end": 0.9988662131519275,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ],
+          "language": "en",
+          "languageProbability": 0.99,
+          "durationSeconds": 1.0000226757369615,
+          "engine": {
+            "id": "elevenlabs",
+            "modelId": "scribe_v2",
+            "modelSha256": null,
+            "engineVersion": "scribe_v2",
+            "locale": null
+          },
+          "verbatim": true,
+          "refined": true,
+          "pipelineVersion": 1,
+          "rawKey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "createdAt": "2026-10-25T09:12:41Z"
+        }
+      }
+    ]
+  },
+  "transcript": {
+    "schemaVersion": 1,
+    "words": [
+      {
+        "id": "w1",
+        "text": "Opening",
+        "kind": "word",
+        "start": 0.123456789,
+        "end": 0.45,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w2",
+        "text": "continues",
+        "kind": "word",
+        "start": 1.5,
+        "end": 2.0,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 2.125,
+    "engine": {
+      "id": "elevenlabs",
+      "modelId": "scribe_v2",
+      "modelSha256": null,
+      "engineVersion": "scribe_v2",
+      "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+    "createdAt": "2026-10-25T09:12:41Z"
+  },
+  "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [
+      "r2.w2"
+    ],
+    "cutPauseIds": [
+      "pause-after-r2.w1"
+    ],
+    "corrections": {
+      "r2.w1": "Report"
+    },
+    "clips": [
+      {
+        "id": "clip-main",
+        "startWordId": "w1",
+        "endWordId": "r2.w2",
+        "title": "Two recordings",
+        "origin": "manual",
+        "aiResultId": null,
+        "aiClipIndex": null,
+        "selected": true,
+        "kind": "story",
+        "parts": [
+          {
+            "id": "first",
+            "startWordId": "r2.w1",
+            "endWordId": "r2.w2",
+            "reframe": {
+              "mode": "face",
+              "zoom": 1,
+              "centerX": 0.3,
+              "centerY": 0.5
+            },
+            "takeReason": "A clearer opening"
+          },
+          {
+            "id": "second",
+            "startWordId": "w1",
+            "endWordId": "w2"
+          }
+        ]
+      }
+    ],
+    "activeClipId": "clip-main"
+  },
+  "captions": {
+    "styleId": "vox-bold",
+    "overrides": {},
+    "position": null,
+    "positionByAspect": {}
+  },
+  "export": {
+    "aspect": "9:16",
+    "quality": "standard",
+    "srt": false,
+    "folder": null
+  },
+  "share": {
+    "captions": {
+      "full": "Today we shipped the clipper. Thanks"
+    }
+  },
+  "ai": {
+    "results": []
+  },
+  "voiceLab": {
+    "segments": [],
+    "assets": [],
+    "cleanAudio": {
+      "mode": "off",
+      "assetId": null,
+      "mix": null
+    },
+    "voices": [],
+    "videoAssets": []
+  },
+  "extensions": {}
+}
