@@ -313,8 +313,8 @@ extension HeavyMediaTests {
     let input = directory.appendingPathComponent("story.voxclip")
     let output = directory.appendingPathComponent("story.mp4")
     try await JSONProjectStore().save(project, to: input)
-    let result = try runCLI(["export", "--open", input.path, "--clip", "story", "--style", "off", "--export", output.path, "--json"], directory: directory)
-    try #require(result.status == 0, "\(result.stderr)")
+    let result = try runCLI(["export", "--open", input.path, "--clip", "story", "--style", "off", "--export", output.path, "--json"], directory: directory, timeout: 100)
+    try #require(result.status == 0, "CLI error: \(result.stderr.prefix(400)); watchdog: \(result.watchdogFired)")
     #expect(FileManager.default.fileExists(atPath: output.path))
 }
 

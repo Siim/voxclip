@@ -105,8 +105,11 @@ public enum ClipPicture {
             var previous: [Crop.Part] = []
             var firstCenter: (Double, Double)?
             for (partIndex, time) in zip(parts.indices, times) {
-                guard let source = clock.localTime(time.start), let video = videos.first(where: { $0.contentKey == source.key })?.video,
-                      let plan = FaceFollowCrop.plan(sentences.filter { time.start <= $0.time && $0.time < time.end }.map { (time: $0.time, face: $0.face?.rect) },
+                let frames = sentences.filter { time.start <= $0.time && $0.time < time.end }
+                guard let region = clock.region(of: parts[partIndex].startWordId),
+                      let video = videos.first(where: { $0.contentKey == region.key })?.video,
+                      frames.contains(where: { $0.face != nil }),
+                      let plan = FaceFollowCrop.plan(frames.map { (time: $0.time, face: $0.face?.rect) },
                                                      sourceAspect: sourceAspect(video), targetAspect: 9.0 / 16.0) else { continue }
                 let center = ((plan.centerX * 1000).rounded() / 1000, (plan.centerY * 1000).rounded() / 1000)
                 let reframe = ReframeSettings.face(x: center.0, y: center.1)
