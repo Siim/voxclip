@@ -32,19 +32,22 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
     {
         await NativeTest.RequireAsync(windows: mp4);
         var ct = TestContext.Current.CancellationToken;
-        var first = Path.Combine(FixtureLoader.SharedRoot, "fixtures/media/t4-recording-A.mp4");
-        var second = Path.Combine(FixtureLoader.SharedRoot, "fixtures/media/t4-recording-B.mp4");
-        var media = await new FfmpegMediaProbe().ProbeAsync(first, ct);
+        var first = RecordingStoryFixture.MediaPath("0007");
+        var second = RecordingStoryFixture.MediaPath("0010");
+        var probe = new FfmpegMediaProbe();
+        var media = await probe.ProbeAsync(first, ct);
+        var other = await probe.ProbeAsync(second, ct);
         var parts = new[] { (true, .5), (false, .75), (false, 2.5), (true, 2.25), (false, 1.5) };
         static long Samples(double seconds) => (long)Math.Round(seconds * Rate);
         var offset = Samples(6);
-        RecordingRenderSource primary = new("first", "A", first, 0, Samples(5), 0, 0);
-        RecordingRenderSource companion = new("second", "B", second, offset, Samples(3), -6, 0);
+        RecordingRenderSource primary = new("first", "0007", first, 0, Samples(6), 0, 0);
+        RecordingRenderSource companion = new("second", "0010", second, offset, Samples(6), -6, other.Video!.RotationDegrees);
+        Assert.Equal(90, companion.RotationDegrees);
         var kept = parts.Select(part => {
             var start = Samples(part.Item2) + (part.Item1 ? offset : 0);
             return new MediaInterval(start, start + Rate / 2);
         }).ToArray();
-        var plan = new EditPlan(Rate, Samples(9), [], kept, Samples(2.5), []);
+        var plan = new EditPlan(Rate, Samples(12), [], kept, Samples(2.5), []);
         var snapshot = new ComposeSnapshot(media, plan, null, new(new(320, 180), 30, 500_000))
         { SpanSources = parts.Select(part => part.Item1 ? companion : primary).ToArray() };
         var directory = Directory.CreateTempSubdirectory("voxclip-recording-story-");
@@ -60,6 +63,11 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
                 using var firstAudio = new AudioDecoder(first, 2);
                 using var secondAudio = new AudioDecoder(second, 2);
                 using var renderedAudio = new AudioDecoder(path, 2);
+                using var sources = new RecordingVideo(first, hardware: false);
+                using var exported = mp4 ? new VideoDecoder(path, hardware: false) : null;
+                var composer = new FrameComposer(new TestRasterizer(), FixtureLoader.SharedRoot);
+                var composed = AllocateFrame(snapshot.Output.Size);
+                var timeline = new TimelineCursor(plan);
                 var rendered = new float[Samples(2.5) * 2];
                 renderedAudio.Read(rendered, rendered.Length / 2, ct);
                 for (var partIndex = 0; partIndex < parts.Length; partIndex++)
@@ -85,8 +93,24 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
                     if (!mp4)
                     {
                         var rms = Math.Sqrt(Enumerable.Range(2400, 7200).Average(index => Math.Pow(rendered[(cursor + index) * 2], 2)));
-                        Assert.InRange(rms, isCompanion ? .040 : .080, isCompanion ? .050 : .100);
+                        var referenceRms = Math.Sqrt(Enumerable.Range(2400, 7200).Average(index =>
+                            Math.Pow(original[(int)Math.Round(index * (double)decoder.SampleRate / Rate) * 2], 2)));
+                        var gain = Math.Pow(10, (isCompanion ? companion.GainDb : primary.GainDb) / 20);
+                        Assert.InRange(rms / referenceRms, gain * .95, gain * 1.05);
                     }
+
+                    const double intoPart = 6 / 30d;
+                    var time = partIndex / 2d + intoPart;
+                    var reference = sources.Read(isCompanion ? companion : primary, start + intoPart, ct);
+                    var expectedCounter = RecordingFrameCounter(reference, rotated: false);
+                    Assert.InRange(expectedCounter, (int)Math.Round((start + intoPart) * 30) - 1, (int)Math.Round((start + intoPart) * 30) + 1);
+                    var (recording, localTime) = timeline.Picture(snapshot, timeline.Source(time));
+                    var decoded = sources.Read(recording, localTime, ct);
+                    if (exported is null) composer.Compose(decoded, composed, snapshot, time, false, ct);
+                    var output = exported?.ReadAt(time, false, ct) ?? composed;
+                    var actualCounter = RecordingFrameCounter(output, rotated: isCompanion);
+                    Assert.True(Math.Abs(actualCounter - expectedCounter) <= 1,
+                        $"Part {partIndex + 1}: expected frame {expectedCounter}, got {actualCounter}.");
                 }
                 return true;
             }, ct);
@@ -101,6 +125,22 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
             }
         }
         finally { directory.Delete(true); }
+    }
+
+    private static int RecordingFrameCounter(PixelBuffer frame, bool rotated)
+    {
+        var counter = 0;
+        for (var bit = 0; bit < 8; bit++)
+        {
+            var sourceX = 37 + 9 * bit;
+            const double sourceY = 61.5;
+            var column = (int)(rotated ? (256 - sourceY) / 256 * frame.Width : sourceX);
+            var row = (int)(rotated ? sourceX / 144d * frame.Height : sourceY);
+            var pixel = frame.Pixels.Span.Slice(row * frame.Stride + column * 4, 3);
+            var luma = .114 * pixel[0] + .587 * pixel[1] + .299 * pixel[2];
+            if (luma > 145) counter |= 1 << bit;
+        }
+        return counter;
     }
 
     [Theory]
