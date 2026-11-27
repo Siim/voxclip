@@ -1,0 +1,17 @@
+{
+  "name": "Five parts from two recordings",
+  "parts": [[1, 1, 2], [0, 0, 1], [0, 2, 3], [1, 2, 3], [0, 4, 5]],
+  "expected": {
+    "//resources/asset/@id": ["picture", "picture-r2"],
+    "//resources/asset/@format": ["picture-format", "picture-r2-format"],
+    "//resources/asset/@hasAudio": ["1", "1"],
+    "//format[@id='picture-r2-format']/@width": ["256"],
+    "//format[@id='picture-r2-format']/@frameDuration": ["1/24s"],
+    "//sequence/@duration": ["5s"],
+    "//spine/asset-clip/@ref": ["picture-r2", "picture", "picture", "picture-r2", "picture"],
+    "//spine/asset-clip/@name": ["0010 · part 1", "0007 · part 2", "0007 · part 3", "0010 · part 4", "0007 · part 5"],
+    "//spine/asset-clip/@offset": ["0s", "1s", "2s", "3s", "4s"],
+    "//spine/asset-clip/@start": ["1s", "0s", "2s", "2s", "4s"],
+    "//audio[@role='dialogue']/@ref": ["picture-r2", "picture", "picture", "picture-r2", "picture"]
+  }
+}

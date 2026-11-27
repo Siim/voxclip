@@ -37,7 +37,7 @@ public enum ClipPicture {
 
     /// The clip as its opening scan sees it: nil when the clip is gone or its first item is cut.
     public static func openingClip(_ project: Project, clipID: String) -> FrameClip? {
-        guard let transcript = project.transcript, let range = project.edits.clips.first(where: { $0.id == clipID }),
+        guard let transcript = ProjectClock.build(project).transcript, let range = project.edits.clips.first(where: { $0.id == clipID }),
               let first = range.playPartIndices(in: transcript.words)?.first,
               let clip = FrameClip(words: transcript.words, first: first.lowerBound, last: first.upperBound,
                                    cutWordIds: Set(project.edits.cutWordIds)),
@@ -78,10 +78,15 @@ public enum ClipPicture {
 
     /// "9:16 follows your face": one static crop centre for 9:16 and 1:1.
     public struct Crop: Sendable, Equatable {
+        public struct Part: Sendable, Equatable {
+            public let id: String
+            public let previous: ReframeSettings?
+        }
         public var centerX: Double
         public var centerY: Double
         /// The crop it replaced (the row's Undo).
         public var previous: ReframeSettings?
+        public var parts: [Part] = []
         /// The shape the row names: 9:16 when it is exported, else 1:1.
         public var shape: AspectRatio
     }
@@ -89,13 +94,50 @@ public enum ClipPicture {
     /// The crop centred on the median measured face (`FaceFollowCrop`). Nil without a face in `sentences` or without a
     /// 9:16 or 1:1 shape among `shapes`.
     public static func crop(_ project: Project, clipID: String, sentences: [FrameObservation], shapes: [AspectRatio]) -> (project: Project, crop: Crop)? {
-        guard shapes.contains(.portrait) || shapes.contains(.square), sentences.contains(where: { $0.face != nil }),
+        guard shapes.contains(.portrait) || shapes.contains(.square), sentences.contains(where: { $0.face != nil }) else { return nil }
+        let shape: AspectRatio = shapes.contains(.portrait) ? .portrait : .square
+        if project.media.spokenSources != nil, let index = project.edits.clips.firstIndex(where: { $0.id == clipID }),
+           let parts = project.edits.clips[index].parts {
+            let clock = ProjectClock.build(project)
+            let times = StoryClips.times(project.edits.clips[index], words: clock.words)
+            let videos = [project.media.source] + project.media.additionalSources
+            var result = project
+            var previous: [Crop.Part] = []
+            var firstCenter: (Double, Double)?
+            for (partIndex, time) in zip(parts.indices, times) {
+                let frames = sentences.filter { time.start <= $0.time && $0.time < time.end }
+                guard let region = clock.region(of: parts[partIndex].startWordId),
+                      let video = videos.first(where: { $0.contentKey == region.key })?.video,
+                      frames.contains(where: { $0.face != nil }),
+                      let plan = FaceFollowCrop.plan(frames.map { (time: $0.time, face: $0.face?.rect) },
+                                                     sourceAspect: sourceAspect(video), targetAspect: 9.0 / 16.0) else { continue }
+                let center = ((plan.centerX * 1000).rounded() / 1000, (plan.centerY * 1000).rounded() / 1000)
+                let reframe = ReframeSettings.face(x: center.0, y: center.1)
+                guard parts[partIndex].reframe != reframe else { continue }
+                previous.append(.init(id: parts[partIndex].id, previous: parts[partIndex].reframe))
+                result.edits.clips[index].parts?[partIndex].reframe = reframe
+                if firstCenter == nil { firstCenter = center }
+            }
+            guard let firstCenter else { return nil }
+            return (result, Crop(centerX: firstCenter.0, centerY: firstCenter.1, previous: nil, parts: previous, shape: shape))
+        }
+        guard
               let plan = FaceFollowCrop.plan(sentences.map { (time: $0.time, face: $0.face?.rect) },
                                              sourceAspect: sourceAspect(project.media.source.video), targetAspect: 9.0 / 16.0),
               let controls = ClipControlsProject.controls(for: clipID, in: project) else { return nil }
         let x = (plan.centerX * 1000).rounded() / 1000, y = (plan.centerY * 1000).rounded() / 1000
         guard let next = settingControls(clipID, in: project, { $0.reframe = .face(x: x, y: y) }) else { return nil }
-        return (next, Crop(centerX: x, centerY: y, previous: controls.reframe, shape: shapes.contains(.portrait) ? .portrait : .square))
+        return (next, Crop(centerX: x, centerY: y, previous: controls.reframe, shape: shape))
+    }
+
+    public static func restorePartCrops(_ previous: [Crop.Part], clipID: String, in project: Project) -> Project? {
+        guard let index = project.edits.clips.firstIndex(where: { $0.id == clipID }), var parts = project.edits.clips[index].parts else { return nil }
+        for entry in previous {
+            if let part = parts.firstIndex(where: { $0.id == entry.id }) { parts[part].reframe = entry.previous }
+        }
+        var result = project
+        result.edits.clips[index].parts = parts
+        return result
     }
 
     // MARK: The screens

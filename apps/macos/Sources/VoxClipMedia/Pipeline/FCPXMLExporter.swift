@@ -26,7 +26,8 @@ public enum FCPXMLExporter {
                                cleanupRegistry: URL? = nil) async throws -> Prepared {
         if let reason = FCPXML.unsupportedReason(render) { throw VoxClipError.exportFailed(reason) }
         let destination = output.standardizedFileURL.resolvingSymlinksInPath()
-        let sources = [render.sourceURL, render.music?.assetURL].compactMap { $0 }.map { $0.standardizedFileURL.resolvingSymlinksInPath() }
+        let sources = ([render.sourceURL, render.music?.assetURL].compactMap { $0 } + render.recordings.map(\.url))
+            .map { $0.standardizedFileURL.resolvingSymlinksInPath() }
         guard destination.pathExtension.lowercased() == "fcpxml", !sources.contains(destination) else {
             throw VoxClipError.exportFailed("Choose a separate .fcpxml file for the editable timeline")
         }
@@ -58,6 +59,12 @@ public enum FCPXMLExporter {
             var voice: FCPXML.Media?
             var pictures: [String: FCPXML.Media] = [:]
             var spans: [FCPXML.PictureSpan]?
+            let pictureIDs = Dictionary(uniqueKeysWithValues: render.recordings.map { ($0.key, FCPXML.pictureID(for: $0)) })
+            for recording in render.recordings where !recording.region.prefix.isEmpty {
+                guard let id = pictureIDs[recording.key] else { continue }
+                guard FileManager.default.fileExists(atPath: recording.url.path) else { throw VoxClipError.recordingMissing(recording.region.label) }
+                pictures[id] = FCPXML.Media(url: recording.url, probe: try await probe.probe(recording.url))
+            }
             if let input = render.voiceLab, input.prepared.outputPlan.requiresSyntheticRendering {
                 let rendered = try await VoiceLabAudioRenderer.stage(request: render, scratchRoot: staging.url)
                 let voiceProbe = try await probe.probe(rendered.mixedAudioURL)
@@ -65,7 +72,8 @@ public enum FCPXMLExporter {
                     FCPXML.Media(url: try companion(rendered.mixedAudioURL, suffix: "voice.caf"), probe: voiceProbe)
                 }
                 var base = try CompositionVideoSpan.build(render).map {
-                    FCPXML.PictureSpan(source: $0.source.start.seconds..<$0.source.end.seconds,
+                    FCPXML.PictureSpan(assetID: $0.recordingKey.flatMap { pictureIDs[$0] } ?? "picture",
+                                       source: $0.localSource.start.seconds..<$0.localSource.end.seconds,
                                        edited: $0.output.start.seconds..<$0.output.end.seconds)
                 }
                 let plan = input.prepared.outputPlan

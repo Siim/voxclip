@@ -330,7 +330,7 @@ public enum ClipControlsProject {
 
     /// The clip's source hull, not its playback range or duration.
     public static func sourceSpan(of clipId: String, in project: Project) -> ClosedRange<Double>? {
-        guard let clip = project.edits.clips.first(where: { $0.id == clipId }), let words = project.transcript?.words,
+        guard let clip = project.edits.clips.first(where: { $0.id == clipId }), let words = ProjectClock.build(project).transcript?.words,
               let ranges = clip.playPartIndices(in: words),
               let first = ranges.map(\.lowerBound).min(), let last = ranges.map(\.upperBound).max(),
               words[last].end > words[first].start else { return nil }

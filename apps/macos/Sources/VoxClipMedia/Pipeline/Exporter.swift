@@ -239,6 +239,7 @@ public actor AVExporter: Exporter {
             return try ExportSafety.partialURL(for: url)
         }
         let source = job.render.sourceURL.standardizedFileURL.resolvingSymlinksInPath()
+        let recordings = Set(job.render.recordings.map { $0.url.standardizedFileURL.resolvingSymlinksInPath().path })
         guard destination != source else { throw VoxClipError.exportFailed("The export must not overwrite the source") }
         let srtURL = job.writeSRT ? (job.srtURL ?? destination.deletingPathExtension().appendingPathExtension("srt")).standardizedFileURL.resolvingSymlinksInPath() : nil
         let timing = job.render.speedTiming
@@ -268,6 +269,7 @@ public actor AVExporter: Exporter {
         }
         let allPaths = primary.flatMap { [$0.0, $0.1] } + extras.flatMap { [$0.partial, $0.destination] }
         let normalized = allPaths.map { $0.standardizedFileURL.resolvingSymlinksInPath().path }
+        guard recordings.isDisjoint(with: normalized) else { throw VoxClipError.exportFailed("The export must not overwrite a recording") }
         guard Set(normalized).count == normalized.count, !normalized.contains(source.path) else {
             throw VoxClipError.exportFailed("Export outputs overlap")
         }
@@ -554,7 +556,7 @@ public actor AVExporter: Exporter {
     }
 
     package nonisolated static func canUseSourceOnlyVideo(_ request: RenderRequest) -> Bool {
-        request.voiceLab?.prepared.outputPlan.requiresSyntheticRendering != true &&
+        request.recordings.isEmpty && request.voiceLab?.prepared.outputPlan.requiresSyntheticRendering != true &&
         request.contextDemo?.placements.isEmpty != false &&
         !request.motionCues.contains(where: { $0.clipID == request.motionClipID && $0.isValid }) &&
         request.clipControls?.changesPicture != true && request.clipControls?.shape == nil &&
@@ -833,7 +835,10 @@ public actor AVExporter: Exporter {
         let destination = destination.standardizedFileURL.resolvingSymlinksInPath()
         try ExportSafety.validateDestination(destination)
         _ = try ExportSafety.partialURL(for: destination)
-        guard destination != request.sourceURL.standardizedFileURL.resolvingSymlinksInPath() else { throw VoxClipError.exportFailed("Unsafe audio destination") }
+        guard destination != request.sourceURL.standardizedFileURL.resolvingSymlinksInPath(),
+              !request.recordings.contains(where: { $0.url.standardizedFileURL.resolvingSymlinksInPath() == destination }) else {
+            throw VoxClipError.exportFailed("Unsafe audio destination")
+        }
         if let input = request.voiceLab {
             try Self.preventPaidOverwrite(input, paths: [destination, URL(fileURLWithPath: destination.path + ".partial")])
         }
