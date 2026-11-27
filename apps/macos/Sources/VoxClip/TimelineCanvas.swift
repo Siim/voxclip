@@ -1505,9 +1505,18 @@ enum TrackHeight: String, CaseIterable {
         let font = Self.idFont
         TimelineLane.draw(trackID, font: font, color: DesignValues.nsColor("text.secondary"), x: 10, baseline: bounds.midY + font.xHeight / 2)
         if bounds.width >= 100 {
-            let nameFont = Self.nameFont
-            TimelineLane.draw(name, font: nameFont, color: DesignValues.nsColor("text.tertiary"), x: trackID == "CC" ? 29 : 34, baseline: bounds.midY + nameFont.xHeight / 2)
+            let nameFont = Self.nameFont, x: CGFloat = trackID == "CC" ? 29 : 34
+            // Long lane names ("Zoom, looks & speed") end in an ellipsis before the button; VoiceOver reads the whole name.
+            let fitted = Self.fitted(name, font: nameFont, width: bounds.width - x - (button.isHidden ? 6 : 28))
+            TimelineLane.draw(fitted, font: nameFont, color: DesignValues.nsColor("text.tertiary"), x: x, baseline: bounds.midY + nameFont.xHeight / 2)
         }
+    }
+    private static func fitted(_ text: String, font: NSFont, width: CGFloat) -> String {
+        func fits(_ value: String) -> Bool { (value as NSString).size(withAttributes: [.font: font]).width <= width }
+        guard !fits(text) else { return text }
+        var value = text
+        while !value.isEmpty && !fits(value + "…") { value.removeLast() }
+        return value.trimmingCharacters(in: .whitespaces) + "…"
     }
     override func isAccessibilityElement() -> Bool { trackID == "V1" }
     override func accessibilityLabel() -> String? { "\(trackID) \(name)" }

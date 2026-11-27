@@ -10,9 +10,11 @@ import VoxClipCore
         let name = "Timeline title drag moves once and Undo restores it"
         var project = fixture
         project.edits.activeClipId = nil
-        guard let words = project.transcript?.words, words.count >= 12 else { throw CocoaError(.coderInvalidValue) }
+        // interview-take has nine words over 7 s: the title covers words 2–4 and has room to move a second later.
+        // A fixture problem fails this check instead of aborting the rest of the suite.
+        guard let words = project.transcript?.words, words.count >= 6 else { return .init(name: "\(name): the fixture has too few words", passed: false) }
         let title = ClipEffect(id: "ui-self-test-title", clipId: nil, kind: .title,
-                               start: words[2].start, end: words[9].end, text: "Timeline title", position: .top)
+                               start: words[1].start, end: words[3].end, text: "Timeline title", position: .top)
         project.clipEffects = [title]
         let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
         let canvas = TimelineCanvasView(model: model)
@@ -274,7 +276,8 @@ import VoxClipCore
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         guard let clip = model.activeClip, let number = model.clipNumber(clip.id) else { throw CocoaError(.coderInvalidValue) }
-        let size = NSSize(width: 1056, height: 216)
+        // The compact default panel (eight lanes since #28): V1 and A1 sit in view below the picture lanes.
+        let size = NSSize(width: 1056, height: WorkspaceLayout.timelineCompactDefault)
         // A demo project reads no media: A1 draws a speech envelope made from its words.
         model.waveform = speech(words: model.words, duration: model.sourceDuration)
         // Two cuts inside the clip, so Edited has seams and Source removed ranges, and a
