@@ -62,14 +62,28 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
             {
                 using var firstAudio = new AudioDecoder(first, 2);
                 using var secondAudio = new AudioDecoder(second, 2);
-                using var renderedAudio = new AudioDecoder(path, 2);
                 using var sources = new RecordingVideo(first, hardware: false);
                 using var exported = mp4 ? new VideoDecoder(path, hardware: false) : null;
                 var composer = new FrameComposer(new TestRasterizer(), FixtureLoader.SharedRoot);
                 var composed = AllocateFrame(snapshot.Output.Size);
                 var timeline = new TimelineCursor(plan);
                 var rendered = new float[Samples(2.5) * 2];
-                renderedAudio.Read(rendered, rendered.Length / 2, ct);
+                if (mp4)
+                {
+                    using var renderedAudio = new AudioDecoder(path, 2);
+                    Assert.Equal(rendered.Length / 2, renderedAudio.Read(rendered, rendered.Length / 2, ct));
+                }
+                else
+                {
+                    using var wave = new BinaryReader(File.OpenRead(path));
+                    Assert.Equal(44 + rendered.Length * sizeof(float), wave.BaseStream.Length);
+                    wave.BaseStream.Position = 20;
+                    Assert.Equal(3, wave.ReadUInt16());
+                    Assert.Equal(2, wave.ReadUInt16());
+                    Assert.Equal(Rate, wave.ReadInt32());
+                    wave.BaseStream.Position = 44;
+                    for (var sample = 0; sample < rendered.Length; sample++) rendered[sample] = wave.ReadSingle();
+                }
                 for (var partIndex = 0; partIndex < parts.Length; partIndex++)
                 {
                     var (isCompanion, start) = parts[partIndex];
