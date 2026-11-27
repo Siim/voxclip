@@ -59,7 +59,7 @@ import VoxClipMedia
         let ids = Set(retakes.flatMap { [$0.kept.recording.id, $0.other.recording.id] })
         let labels = rows.filter { ids.contains($0.id) }.compactMap { $0.model?.project.media.source }.map(ProjectClock.label)
         guard let last = labels.last, labels.count >= 2 else { return nil }
-        return labels.dropLast().joined(separator: ", ") + " and \(last) look like takes of the same idea."
+        return labels.dropLast().joined(separator: ", ") + " and \(last) look like versions of the same idea."
     }
     private(set) var scanRunning = false
     private(set) var exporting = false
@@ -155,7 +155,7 @@ import VoxClipMedia
     func combinedBlock(_ app: AppModel, findClip: Bool, count: Int? = nil) -> String? {
         if count == nil, let reason = blocked(app, copyOnly: true) { return reason }
         let count = count ?? selected.count
-        if count == 1 { return "Select two or more recordings to make one clip from them." }
+        if count == 1 { return findClip ? "Select two or more recordings to make one clip from them." : "Select two or more recordings to make one project from them." }
         if count > 6 { return "Select up to six recordings to make one project from them." }
         if let reason = count == 0 ? blocked(app, copyOnly: true) : nil { return reason }
         if findClip, provider(app) == nil { return "Choose an AI connector in Settings › AI." }
@@ -373,8 +373,9 @@ import VoxClipMedia
         do {
             let date = Date()
             let title = combinedTitle(recordings, date: date)
-            let seed = Project(schemaVersion: 4, id: UUID().uuidString.lowercased(), title: title, createdAt: date, modifiedAt: date,
-                               savedBy: first.savedBy, media: first.media, captions: first.captions, export: first.export)
+            let seed = try ContextDemoProject.upgradeToV4(Project(id: UUID().uuidString.lowercased(), title: title,
+                createdAt: date, modifiedAt: date, savedBy: first.savedBy, media: ProjectMedia(source: first.media.source),
+                captions: first.captions, export: first.export))
             let project = try combinedProject(seed, from: recordings, primary: first)
             var url = destination.appendingPathComponent(title).appendingPathExtension("voxclip")
             var suffix = 2
@@ -403,11 +404,14 @@ import VoxClipMedia
                 let final = try rebasedProposal(editor.project, clip: clip, recordings: recordings)
                 if final != editor.project {
                     try await JSONProjectStore().save(final, to: url)
-                    if !Task.isCancelled { combinedEditor = try await openCombined(final, at: url, app: app) }
-                    else { editor.document.replaceProject(final); editor.refresh() }
+                    editor.document.replaceProject(final)
+                    editor.reloadFromDocument(previousProjectID: final.id)
                 }
             } else if !Task.isCancelled { notice = editor.clipError ?? "The project is saved without a clip." }
-        } catch is CancellationError {} catch {
+        } catch is CancellationError {} catch let refusal as RecordingEditRefusal {
+            if !Task.isCancelled { notice = "\(refusal.message) Saved recordings and finished work are kept." }
+        } catch {
+            await app.logFailure(error, context: .projectSave)
             if !Task.isCancelled { notice = "Couldn't finish the combined project. Saved recordings and finished work are kept." }
         }
     }

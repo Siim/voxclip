@@ -2479,6 +2479,10 @@ Opening a video makes it playable at once. On Mac v2, Transcribe is part of the 
 
 The primary reads **✦ Make clips from {n} new · up to ${cap}**. The offer reads “{connector} receives your transcript, recording names and selected still frames. Metered AI sends ask first. Voice and lip sync stay within the ${cap} card cap.” With no connector, keep the primary disabled and show **Choose an AI connector in Settings › AI.** Under **Pick recordings**, **Copy selected without making clips** needs no connector. First-use consent and metered requests are inline during import. The cap comes from the Clips spend-cap setting and stays fixed for the card. See [the footage spec](spec/footage.md).
 
+Under **Pick recordings**, show **✦ Make one clip from these {n} · up to ${cap}**. Its offer reads “{connector} receives the transcripts of the {n} recordings, their names and selected still frames, to pick the best version of each line. Metered AI sends ask first.” With one recording, disable it and say “Select two or more recordings to make one clip from them.” With no connector, say “Choose an AI connector in Settings › AI.” and offer **Make one project from these** for free.
+
+When ranking finds retakes, name the recordings that look like versions of the same idea and make the one-clip action the primary. The **retakes merged** fold also offers **Or make one clip from the best parts of each take**. The combined project is saved before any AI send. Show the **Best versions** story proposal with **Keep**, **Undo**, and **Change…**. The free project opens without a clip. In the Outline, the **✦** chip starts **Best versions** directly.
+
 ---
 
 ## 8. Export and share

@@ -2039,7 +2039,6 @@ extension EditorModel {
                     outcome = .finished
                     guard !result.clips.isEmpty else { clipError = Self.noClipsMatched; return }
                     var next = project
-                    next.ai.results.append(result)
                     let ranges = result.clips.enumerated().map { position, clip in
                         let parts = clip.parts?.enumerated().map { index, part in
                             ClipPart(id: "part-\(index + 1)", startWordId: part.startWordId, endWordId: part.endWordId, takeReason: part.takeReason)
@@ -2048,6 +2047,14 @@ extension EditorModel {
                                          title: clip.title, origin: .ai, aiResultId: result.id, aiClipIndex: position, parts: parts,
                                          kind: selectedPreset == .bestTakes && (parts?.count ?? 0) > 1 ? .story : nil)
                     }
+                    if selectedPreset == .bestTakes {
+                        for index in result.clips.indices {
+                            result.clips[index].parts = result.clips[index].parts?.map {
+                                ClipWordRange(startWordId: $0.startWordId, endWordId: $0.endWordId)
+                            }
+                        }
+                    }
+                    next.ai.results.append(result)
                     // One undo step: the result arrives as suggestions, not kept clips.
                     guard capabilities.edit, let state = editState() else { return }
                     if history?.state != state { history = EditHistory(state: state) }
