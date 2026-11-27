@@ -1,6 +1,7 @@
 #if DEBUG
 import AppKit
 import Testing
+import VoxClipCore
 @testable import VoxClip
 
 extension MenuShortcutTests {
@@ -91,6 +92,16 @@ extension MenuShortcutTests {
             #expect(RecordingVersionKey(code: code, modifiers: []) == action)
             #expect(RecordingVersionKey(code: code, modifiers: [.command]) == nil)
         }
+    }
+
+    @Test func documentedRecordingLineShortcutIsUniqueInTheMap() throws {
+        let repository = try SharedResources.locate().root.deletingLastPathComponent()
+        let design = try String(contentsOf: repository.appendingPathComponent("doc/design.md"), encoding: .utf8)
+        let map = try #require(design.components(separatedBy: "### 11.2 Map").dropFirst().first)
+        let rows = map.prefix(upTo: map.range(of: "\n### ")?.lowerBound ?? map.endIndex)
+            .split(separator: "\n").filter { $0.hasPrefix("|") }
+        let matches = rows.filter { $0.contains("⌥⌘Y") }
+        #expect(matches.count == 1 && matches.first?.contains("Show Other Versions of This Line") == true)
     }
 
     /// VX moved Export into the right panel's job: File › Export… keeps ⌘E, alone, and calls the panel's entry
