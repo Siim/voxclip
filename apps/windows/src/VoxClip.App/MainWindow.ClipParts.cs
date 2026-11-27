@@ -150,8 +150,57 @@ public sealed partial class MainWindow
         ObserveRecordingRows(host, (page, model) =>
         {
             host.Children.Clear();
+            if (model.ActiveClip is null && model.HasSeveralRecordings)
+            {
+                var primary = model.RecordingRegions[0];
+                host.Children.Add(Ui.Text($"{model.RecordingRegions.Count} spoken recordings of the same idea"));
+                host.Children.Add(Ui.Text($"{model.SharedRecordingLines(primary.Key)} of {primary.Label}'s {model.RecordingTakes(primary.Key).Count} lines are also said in another recording.", "HelperText"));
+                foreach (var region in model.RecordingRegions)
+                {
+                    var takes = model.RecordingTakes(region.Key);
+                    var duration = EditorViewModel.RecordingTime((double)region.DurationSamples / model.RecordingClock!.SampleRate);
+                    var title = $"Start from {region.Label} · {duration} · {takes.Count} lines";
+                    var reason = model.StartFromDisabledReason(region.Key);
+                    var start = Ui.Button(title, () => page.StartFromRecording(region.Key));
+                    start.IsEnabled = reason is null;
+                    start.Content = RecordingStyle.Label(host, region, title);
+                    AutomationProperties.SetName(start, title);
+                    AutomationProperties.SetHelpText(start, reason ?? "");
+                    host.Children.Add(start);
+                    if ((reason ?? EditorViewModel.RecordingOmission(takes)) is { } detail) host.Children.Add(Ui.Text(detail, "HelperText"));
+                    if (reason?.EndsWith("Locate it to use its words.", StringComparison.Ordinal) == true)
+                        host.Children.Add(Ui.Button("Locate…", () => page.LocateRecording(region.Key)));
+                }
+                foreach (var source in model.RecordingCompanions)
+                {
+                    var label = VoxClip.Core.Domain.Editing.ProjectClock.Label(source);
+                    host.Children.Add(new Button { Content = $"Start from {label}", IsEnabled = false });
+                    host.Children.Add(Ui.Text(model.RecordingUnavailable(source.ContentKey) ?? "", "HelperText"));
+                    if (model.RecordingUnavailable(source.ContentKey)?.EndsWith("Locate it to use its words.", StringComparison.Ordinal) == true)
+                        host.Children.Add(Ui.Button("Locate…", () => page.LocateRecording(source.ContentKey)));
+                    else host.Children.Add(Ui.Button("Transcribe on this PC", () => page.TranscribeCompanion(source)));
+                }
+                var bestReason = page.FindClips.BestVersionsDisabledReason;
+                var best = new Button { Content = $"✦ Make one clip from the best parts of these {model.RecordingRegions.Count} recordings", IsEnabled = bestReason is null };
+                AutomationProperties.SetName(best, $"Make one clip from the best parts of these {model.RecordingRegions.Count} recordings");
+                AutomationProperties.SetHelpText(best, bestReason ?? "");
+                best.Click += async (_, _) => await page.FindClips.ShowAsync(best, bestVersions: true);
+                host.Children.Add(best);
+                if (bestReason is not null) host.Children.Add(Ui.Text(bestReason, "HelperText"));
+            }
             if (model.ActiveClip is not null)
             {
+                foreach (var omitted in model.OmittedRecordingLines)
+                {
+                    var words = string.Join(" ", model.Words.Skip(model.Index(omitted.Take.StartWordId))
+                        .Take(model.Index(omitted.Take.EndWordId) - model.Index(omitted.Take.StartWordId) + 1).Select(model.DisplayText));
+                    var reason = model.RecordingUnavailable(omitted.Take.Key);
+                    host.Children.Add(Ui.Text($"{omitted.Label} · {words}", "HelperText"));
+                    var putBack = Ui.Button("Put Back", () => model.PutBackRecordingLine(omitted));
+                    putBack.IsEnabled = reason is null && model.CanEditParts;
+                    host.Children.Add(putBack);
+                    if (reason is not null) host.Children.Add(Ui.Text(reason, "HelperText"));
+                }
                 var recordings = model.RecordingRegions.Skip(1).Select(region => (region.Key, region.Label, Region: (VoxClip.Core.Domain.Editing.ProjectClock.Region?)region))
                     .Concat(model.RecordingCompanions.Select(source => (source.ContentKey, VoxClip.Core.Domain.Editing.ProjectClock.Label(source), Region: (VoxClip.Core.Domain.Editing.ProjectClock.Region?)null)));
                 foreach (var (key, label, region) in recordings)
@@ -169,6 +218,7 @@ public sealed partial class MainWindow
                         var menu = new MenuFlyout();
                         AddMenuItem("Use whole recording as a part", () => model.UseWholeRecordingAsPart(key), button.IsEnabled);
                         AddMenuItem("Show in transcript", () => { model.ChooseRecordingView(new(RecordingViewKind.Recording, key)); page.RevealRecordingStart(); }, true);
+                        AddMenuItem($"Start a New Clip from {label}", () => page.StartFromRecording(key), model.StartFromDisabledReason(key) is null);
                         var removeReason = model.RemoveRecordingReason(key);
                         AddMenuItem($"Remove recording {label}", () => model.RemoveRecording(key), removeReason is null && model.CanEditParts);
                         var more = new DropDownButton { Content = "More", Flyout = menu };
