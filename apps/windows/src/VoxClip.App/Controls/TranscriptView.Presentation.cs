@@ -100,7 +100,9 @@ public sealed partial class TranscriptView
         var gutter = (Grid)grid.Children[0];
         Canvas.SetZIndex(gutter, 1);
         var timecode = (TextBlock)gutter.Children[0];
-        timecode.Text = item.Timecode + (item.Speaker is null ? "" : "\n" + item.Speaker);
+        var offset = model.HasSeveralRecordings && model.RecordingOf(item.StartIndex) is { } recording
+            ? (double)recording.OffsetSamples / model.RecordingClock!.SampleRate : 0;
+        timecode.Text = FormatTakeTime(model.Words[item.StartIndex].Start - offset) + (item.Speaker is null ? "" : "\n" + item.Speaker);
         timecode.FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"];
         timecode.Foreground = Brush("VcGutterTextBrush");
         var glyphs = (Canvas)gutter.Children[1];
@@ -150,7 +152,7 @@ public sealed partial class TranscriptView
                     Margin = new(3, 0, 4, 0), Foreground = Brush("VcTextPrimaryBrush") };
                 AutomationProperties.SetName(label, $"Part {piece.Part}");
                 paragraph.Inlines.Add(new InlineUIContainer { Child = new Border { Child = label, BorderThickness = new(1),
-                    CornerRadius = new(4), BorderBrush = StoryPartStyle.Brush(this, piece.Part), Margin = new(0, 0, 4, 0) } });
+                    CornerRadius = new(4), BorderBrush = PartBrush(parts[piece.Part - 1]), Margin = new(0, 0, 4, 0) } });
             }
             Inline inline;
             if (piece.Kind == TranscriptPieceKind.Fold)
@@ -238,7 +240,7 @@ public sealed partial class TranscriptView
         {
             foreach (var group in visual.Display.Where(display => display.Piece.Part > 0).GroupBy(display => display.Piece.Part))
             {
-                var color = StoryPartStyle.Brush(this, group.Key).Color;
+                var color = PartBrush(model.ClipParts[group.Key - 1]).Color;
                 foreach (var rect in group.SelectMany(display => visual.Overlay.Rectangles(display.Inline))) visual.Overlay.PartBand(rect, color);
             }
         }
@@ -365,4 +367,7 @@ public sealed partial class TranscriptView
         var total = Math.Max(0, (int)Math.Floor(seconds));
         return total >= 3600 ? $"{total / 3600}:{total / 60 % 60:00}:{total % 60:00}" : $"{total / 60}:{total % 60:00}";
     }
+
+    private SolidColorBrush PartBrush(ClipPartRow part) => model?.StoryRecordingRegions.Count > 1 && part.Recording is { } region
+        ? RecordingStyle.Brush(this, region, part.RecordingShade) : StoryPartStyle.Brush(this, part.Number);
 }

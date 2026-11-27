@@ -4,7 +4,7 @@ using VoxClip.Core.Domain.VoiceLab;
 namespace VoxClip.App.ViewModels;
 
 internal sealed record ClipPartRow(ClipPart Part, int Number, int First, int Last, string Excerpt, double Start, double End,
-    ProjectClock.Region? Recording = null, double RecordingOffset = 0)
+    ProjectClock.Region? Recording = null, double RecordingOffset = 0, bool RecordingShade = false)
 {
     internal string Id => Part.Id;
     internal string TakeTime => $"{EditorViewModel.Duration(Start - RecordingOffset)}–{EditorViewModel.Duration(End - RecordingOffset)}";
@@ -66,14 +66,18 @@ public sealed partial class EditorViewModel
 
     private void RefreshClipParts()
     {
+        ProjectClock.Region? previous = null;
+        var shade = false;
         ClipParts = ActiveClip?.PlayParts.Select((part, index) =>
         {
             var first = Index(part.StartWordId);
             var last = Index(part.EndWordId);
             var recording = RecordingOf(first);
+            shade = recording == previous && !shade;
+            previous = recording;
             return first < 0 || last < first ? null : new ClipPartRow(part, index + 1, first, last,
                 string.Join(" ", Words.Skip(first).Take(Math.Min(8, last - first + 1)).Select(DisplayText)), Words[first].Start, Words[last].End,
-                recording, recording is null ? 0 : (double)recording.OffsetSamples / RecordingClock!.SampleRate);
+                recording, recording is null ? 0 : (double)recording.OffsetSamples / RecordingClock!.SampleRate, shade);
         }).OfType<ClipPartRow>().ToArray() ?? [];
         if (ClipParts.All(part => part.Id != selectedPartId)) selectedPartId = null;
     }

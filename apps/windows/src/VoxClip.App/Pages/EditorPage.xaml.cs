@@ -365,7 +365,10 @@ public sealed partial class EditorPage : Page
         CaptionDrag.Position(position.EditedTime);
         captions?.UpdatePosition(position.EditedTime, sourceTime);
         if (previewStop is { } stop && (stop.OnEditedAxis ? position.EditedTime : sourceTime) >= stop.Time && preview is not null)
-        { previewStop = null; _ = RunAsync(() => SourceTransportAsync(token => preview.PauseAsync(token)), "Preview"); }
+        {
+            previewStop = null;
+            _ = RunAsync(auditioningRecording ? StopRecordingAuditionAsync : () => SourceTransportAsync(token => preview.PauseAsync(token)), "Preview");
+        }
         if (changed) Transcript.RefreshVisuals();
     }
     private void PlaybackFaulted(object? sender, Exception exception)
@@ -613,6 +616,7 @@ public sealed partial class EditorPage : Page
     }
     private async Task SeekSourceAsync(double source)
     {
+        await StopRecordingAuditionAsync();
         // Every seek is a transport action, which ends an open correction first (design §4.2).
         await playback.EndCorrectionAsync(ViewModel);
         previewStop = null;

@@ -172,7 +172,9 @@ public sealed partial class EditorViewModel
         var previous = selectedPartId;
         selectedPartId = select ?? previous;
         if (!ReplaceProject(applied.Project, applied.UndoName)) { selectedPartId = previous; return false; }
-        if ((applied.Announcement ?? announcement) is { } feedback) Announce(feedback);
+        if (edit is RecordingEdit.SwapTake && applied.Announcement is not null && ActiveClip is { } copy)
+            Announce($"Made {copy.Title ?? ActiveClipLabel} to keep the lip sync");
+        else if ((applied.Announcement ?? announcement) is { } feedback) Announce(feedback);
         return true;
     }
 
@@ -215,6 +217,13 @@ public sealed partial class EditorViewModel
     private static RecordingEdit.SwapTake VersionEdit(string clipId, string partId, RecordingVersion version) =>
         new(clipId, partId, version.FirstId, version.LastId);
 
+    internal Project? RecordingVersionPreview(string partId, RecordingVersion version) => ActiveClip is { } clip &&
+        RecordingUnavailable(version.Recording.Key) is null &&
+        RecordingEdits.Apply(VersionEdit(clip.Id, partId, version), project) is RecordingEditResult.Applied applied ? applied.Project : null;
+
+    internal string? RecordingVersionDisabledReason(string partId, RecordingVersion version) => RecordingUnavailable(version.Recording.Key) ??
+        (ActiveClip is { } clip && RecordingEdits.Apply(VersionEdit(clip.Id, partId, version), project) is RecordingEditResult.Refused refused ? refused.Message : null);
+
     internal string? RecordingVersionCopyReason(ClipPartRow part, RecordingVersion version)
     {
         if (ActiveClip is not { } clip || RecordingEdits.Apply(VersionEdit(clip.Id, part.Id, version), project) is not RecordingEditResult.Applied applied ||
@@ -250,8 +259,28 @@ public sealed partial class EditorViewModel
     internal IReadOnlyList<MediaReference> RecordingCompanions => (project.Media.AdditionalSources ?? [])
         .Where(reference => RecordingRegions.All(region => region.Key != reference.ContentKey)).ToArray();
 
-    internal string? AddRecordingReason => !HasTranscript ? "Transcribe the first recording before adding another."
-        : IsReadOnly || isLeaving ? "This project isn't editable." : Busy ? "Finish the current job before adding a recording." : null;
+    internal string? AddRecordingReason => IsReadOnly || isLeaving ? "This project is read-only."
+        : !HasTranscript ? "Transcribe the first recording before adding another."
+        : RecordingRegions.Count >= 6 ? "A project can have up to six spoken recordings."
+        : Busy ? "Finish the current job before adding a recording." : null;
+
+    internal string? RemoveRecordingReason(string key) => RecordingEdits.Apply(new RecordingEdit.RemoveSpokenSource(key), project) is RecordingEditResult.Refused refused
+        ? refused.Message : null;
+
+    internal bool RemoveRecording(string key) => AddRecordingReason is null || RecordingRegions.Count >= 6
+        ? ApplyRecordingEdit(new RecordingEdit.RemoveSpokenSource(key)) : false;
+
+    internal string[] ProposalRecordingReasons(ClipRange clip)
+    {
+        var suggestions = project.Ai.Results.FirstOrDefault(result => result.Id == clip.AiResultId)?.Clips;
+        var proposal = clip.AiClipIndex is { } index && suggestions is not null && index >= 0 && index < suggestions.Count ? suggestions[index] : null;
+        return clip.PlayParts.Select((part, partIndex) =>
+        {
+            var reason = part.TakeReason ?? proposal?.Parts?.FirstOrDefault(candidate => candidate.StartWordId == part.StartWordId && candidate.EndWordId == part.EndWordId)?.TakeReason;
+            var label = RecordingClock?.RegionOf(part.StartWordId)?.Label;
+            return string.IsNullOrWhiteSpace(reason) ? null : string.Join(" · ", new[] { $"Part {partIndex + 1}", label, reason }.OfType<string>());
+        }).OfType<string>().ToArray();
+    }
 
     internal bool AddSpokenRecording(MediaReference source, Transcript transcript)
     {
