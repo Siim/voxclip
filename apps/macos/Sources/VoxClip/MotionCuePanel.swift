@@ -31,9 +31,7 @@ import VoxClipCore
                         .accessibilityAddTraits(.isHeader)
                     cueControls
                     keyframeControls
-                    note(reduceMotion
-                        ? "Reduce Motion: preview stays still. Export includes your authored motion."
-                        : "Smooth pan and zoom. Apply to update preview and export.")
+                    note(guidance).columnLayoutEvidence("motion.note", text: guidance)
                     note("Original audio and source word timings stay unchanged.")
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
@@ -50,10 +48,18 @@ import VoxClipCore
         .transaction { if reduceMotion { $0.animation = nil } }
     }
 
+    private var guidance: String { Self.guidance(reduceMotion: reduceMotion) }
+
+    static func guidance(reduceMotion: Bool) -> String {
+        reduceMotion
+            ? "Reduce Motion: preview stays still. Export includes your authored motion."
+            : "Raise Zoom, then Horizontal and Vertical choose what stays in view. Apply, then play the cue to see it."
+    }
+
     private var cueControls: some View {
         VStack(alignment: .leading, spacing: 4) {
             Picker("Cue", selection: Binding(get: { editing.draft.original?.id ?? "" }, set: {
-                editing.selectCue($0, model: model)
+                editing.chooseCue($0, model: model)
             })) {
                 Text("New motion cue").tag("")
                 ForEach(model.clipMotionCues) { cue in
@@ -70,13 +76,15 @@ import VoxClipCore
 
     private var keyframeControls: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Picker("Keyframe", selection: $editing.selectedFrame) {
+            Picker("Keyframe", selection: Binding(get: { editing.selectedFrame }, set: {
+                editing.selectFrame($0, model: model)
+            })) {
                 ForEach(editing.draft.keyframes.indices, id: \.self) { index in
-                    Text("\(index + 1) · \(editing.draft.keyframes[index].progress * 100, specifier: "%.0f")%")
-                        .tag(index)
+                    Text(editing.keyframeLabel(index)).tag(index)
                 }
             }
             .frame(height: 24)
+            .accessibilityHint("Shows this keyframe's moment in the paused viewer.")
             .accessibilityIdentifier("voxclip.motion.keyframe")
             if editing.draft.keyframes.indices.contains(editing.selectedFrame) {
                 frameControls
@@ -96,13 +104,11 @@ import VoxClipCore
 
     private var frameControls: some View {
         VStack(spacing: 4) {
-            frameRow("Position", field: .progress, range: 0...1, step: 0.001)
+            frameRow(.progress, range: 0...1, step: 0.001)
                 .disabled(editing.selectedFrame == 0 || editing.selectedFrame == editing.draft.keyframes.count - 1)
-            frameRow("Zoom", field: .scale, range: 1...MotionCue.maximumScale, step: 0.01)
-            frameRow("Horizontal", field: .anchorX, range: 0...1, step: 0.01)
-                .accessibilityHint("Zero keeps the left edge; one hundred percent keeps the right edge. Visible when zoomed in.")
-            frameRow("Vertical", field: .anchorY, range: 0...1, step: 0.01)
-                .accessibilityHint("Zero keeps the top edge; one hundred percent keeps the bottom edge. Visible when zoomed in.")
+            frameRow(.scale, range: 1...MotionCue.maximumScale, step: 0.01)
+            frameRow(.anchorX, range: 0...1, step: 0.01)
+            frameRow(.anchorY, range: 0...1, step: 0.01)
         }
     }
 
@@ -147,12 +153,14 @@ import VoxClipCore
         }.frame(height: 24)
     }
 
-    private func frameRow(_ title: String, field: MotionCueEditing.FrameField, range: ClosedRange<Double>, step: Double) -> some View {
-        HStack(spacing: 8) {
-            Text(title).foregroundStyle(DesignValues.color("text.secondary")).frame(width: 64, alignment: .leading)
+    private func frameRow(_ field: MotionCueEditing.FrameField, range: ClosedRange<Double>, step: Double) -> some View {
+        let title = field.title
+        return HStack(spacing: 8) {
+            Text(title).foregroundStyle(DesignValues.color("text.secondary")).frame(width: 80, alignment: .leading)
             Slider(value: Binding(get: { editing.frameValue(field) }, set: { editing.setFrameValue(field, to: $0) }),
                    in: range, step: step) { Text(title) }
                 .labelsHidden().accessibilityValue("\(Int(editing.frameValue(field) * 100)) percent")
+                .accessibilityHint(field.hint)
             Text("\(editing.frameValue(field) * 100, specifier: "%.0f")%")
                 .frame(width: 36, alignment: .trailing)
         }.frame(height: 24)

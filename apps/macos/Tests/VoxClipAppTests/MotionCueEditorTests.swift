@@ -244,7 +244,7 @@ private actor MotionCueTestSettings: SettingsStore {
         #expect(model.app.shell.panelJob(for: model) == .motion && model.activeClip?.id == run.clipID)
         let editing = try #require(model.motionCueEditing)
         #expect(editing.draft.original == second)
-        editing.setFrameValue(.scale, to: 1.15)
+        editing.setFrameValue(.scale, to: 1.25)
         #expect(editing.apply(model: model))
         let manualRevision = editing.draft.cue
         model.makeItUndo("zoom-1", in: run)
@@ -395,6 +395,50 @@ private actor MotionCueTestSettings: SettingsStore {
         #expect(await settle(host) { DebugRightColumn.texts(in: host)["motion.status"] == nil })
         editing.setFrameValue(.scale, to: try #require(editing.draft.original?.keyframes[editing.selectedFrame].scale))
         #expect(!editing.apply(model: model) && editing.status == "No unapplied changes.")
+    }
+
+    private func reaches(_ done: () -> Bool) async -> Bool {
+        for _ in 0..<200 where !done() { await Task.yield() }
+        return done()
+    }
+
+    @Test func keyframesNameTheirMomentAndChoosingOneShowsItInThePausedViewer() async throws {
+        let model = try editor(); defer { model.close() }
+        // A new cue's middle keyframe zooms as far as Make it postable's zooms do.
+        #expect(try #require(model.motionCueDraft()).keyframes.map(\.scale) == [1, 1.15, 1])
+        let value = try draft(model, start: 11, end: 13)
+        #expect(model.applyMotionCue(value))
+        let shell = WorkspaceShell(app: model.app)
+        #expect(model.openMotionCueJob(id: value.id, in: shell))
+        let editing = try #require(model.motionCueEditing)
+        #expect(editing.draft.keyframes.indices.map(editing.keyframeLabel) == ["1 · start", "2 · 50%", "3 · end"])
+        #expect(MotionCueEditing.FrameField.progress.title == "Time in cue")
+        // Opening shows the selected keyframe; each choice moves the paused viewer inside the cue.
+        #expect(await reaches { model.sourceTime == 12 })
+        editing.selectFrame(2, model: model)
+        #expect(await reaches { model.sourceTime > 12.9 } && model.sourceTime < 13)
+        editing.selectFrame(0, model: model)
+        #expect(await reaches { model.sourceTime < 11.1 } && model.sourceTime > 11)
+        model.isPlaying = true
+        editing.selectFrame(1, model: model)
+        for _ in 0..<50 { await Task.yield() }
+        #expect(editing.selectedFrame == 1 && model.sourceTime < 11.1)
+        model.isPlaying = false
+
+        // An applied zoom on the end keyframe is in the paused frame without playing.
+        editing.selectFrame(2, model: model)
+        editing.setFrameValue(.scale, to: 1.2)
+        #expect(editing.apply(model: model) && editing.selectedFrame == 2)
+        #expect(await reaches { model.sourceTime > 12.9 })
+        let saved = try #require(model.project.motionCues.first)
+        #expect(saved.transform(atSourceTime: model.sourceTime).scale > 1.18)
+
+        let host = NSHostingView(rootView: PanelHost(model: model, shell: shell, width: 404, height: 522).environment(model.app))
+        host.frame = CGRect(x: 0, y: 0, width: 404, height: 522)
+        #expect(MotionCuePanel.guidance(reduceMotion: false)
+            == "Raise Zoom, then Horizontal and Vertical choose what stays in view. Apply, then play the cue to see it.")
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        #expect(await settle(host) { DebugRightColumn.texts(in: host)["motion.note"] == MotionCuePanel.guidance(reduceMotion: reduceMotion) })
     }
 
     @Test(arguments: [false, true])

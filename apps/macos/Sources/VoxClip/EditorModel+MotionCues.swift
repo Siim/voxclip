@@ -87,9 +87,49 @@ struct TimelineMotionCue: Equatable {
             status = model.motionCueValidation(draft) ?? Self.nothingToApply
             return false
         }
+        let frame = selectedFrame
         selectCue(draft.id, model: model)
+        // Stay on the keyframe just edited, and show it where its timing may have moved.
+        selectedFrame = min(frame, draft.keyframes.count - 1)
+        showSelectedFrame(model: model)
         status = "Motion cue saved. Undo restores the previous state."
         return true
+    }
+
+    /// The Cue menu: load that cue's draft and show its selected keyframe in the paused viewer.
+    func chooseCue(_ id: String, model: EditorModel) {
+        selectCue(id, model: model)
+        if draft.original != nil { showSelectedFrame(model: model) }
+    }
+
+    /// The Keyframe menu: the paused viewer moves to that keyframe's moment, so its zoom is in view.
+    func selectFrame(_ index: Int, model: EditorModel) {
+        guard draft.keyframes.indices.contains(index) else { return }
+        selectedFrame = index
+        showSelectedFrame(model: model)
+    }
+
+    func showSelectedFrame(model: EditorModel) {
+        guard !model.isPlaying, let moment = keyframeMoment(selectedFrame) else { return }
+        model.seek(source: moment)
+    }
+
+    /// The source second a keyframe happens at, kept a frame inside the cue: its range excludes
+    /// `sourceEnd`, and the frame shown for the start time may begin just before it.
+    func keyframeMoment(_ index: Int) -> Double? {
+        guard draft.keyframes.indices.contains(index), draft.sourceStart.isFinite, draft.sourceEnd.isFinite,
+              draft.sourceEnd > draft.sourceStart else { return nil }
+        let length = draft.sourceEnd - draft.sourceStart
+        let inset = min(0.04, length / 4)
+        let moment = draft.sourceStart + draft.keyframes[index].progress * length
+        return min(draft.sourceEnd - inset, max(draft.sourceStart + inset, moment))
+    }
+
+    func keyframeLabel(_ index: Int) -> String {
+        guard draft.keyframes.indices.contains(index) else { return "" }
+        if index == 0 { return "1 · start" }
+        if index == draft.keyframes.count - 1 { return "\(index + 1) · end" }
+        return "\(index + 1) · \(String(format: "%.0f", draft.keyframes[index].progress * 100))%"
     }
 
     func deleteCue(model: EditorModel) {
@@ -102,7 +142,28 @@ struct TimelineMotionCue: Equatable {
         status = "Motion cue deleted. Undo restores it."
     }
 
-    enum FrameField { case progress, scale, anchorX, anchorY }
+    enum FrameField {
+        case progress, scale, anchorX, anchorY
+
+        var title: String {
+            switch self {
+            case .progress: "Time in cue"
+            case .scale: "Zoom"
+            case .anchorX: "Horizontal"
+            case .anchorY: "Vertical"
+            }
+        }
+
+        /// VoiceOver hints; the row titles are the labels.
+        var hint: String {
+            switch self {
+            case .progress: "When this keyframe happens, from the cue's start to its end."
+            case .scale: "One hundred percent shows the whole picture. Raise it to zoom in."
+            case .anchorX: "Zero keeps the left edge; one hundred percent keeps the right edge. Visible when zoomed in."
+            case .anchorY: "Zero keeps the top edge; one hundred percent keeps the bottom edge. Visible when zoomed in."
+            }
+        }
+    }
 
     func frameValue(_ field: FrameField) -> Double {
         guard draft.keyframes.indices.contains(selectedFrame) else { return 0 }
@@ -158,7 +219,10 @@ extension EditorModel {
         // An existing approval question keeps its ownership and focus until answered.
         guard panelTask?.confirm == nil, let draft = motionCueDraft(id: id) else { return false }
         let previous = motionCueEditing?.returnJob ?? shell.panelJob(for: self)
-        motionCueEditing = MotionCueEditing(draft: draft, returnJob: previous)
+        let editing = MotionCueEditing(draft: draft, returnJob: previous)
+        motionCueEditing = editing
+        // A saved cue opens on its moment, so the viewer shows its zoom. A new cue keeps the playhead it starts at.
+        if draft.original != nil { editing.showSelectedFrame(model: self) }
         shell.choosePanelJob(.motion, for: self)
         if !shell.viewerShown { shell.toggleViewer() }
         focusedPane = .panel
@@ -208,7 +272,7 @@ extension EditorModel {
         let lower = end - start >= MotionCue.minimumDuration ? start : bounds.lowerBound
         let upper = end - start >= MotionCue.minimumDuration ? end : min(bounds.upperBound, lower + 3)
         return MotionCueDraft(cue: MotionCue(id: UUID().uuidString, clipID: clip.id, sourceStart: lower, sourceEnd: upper,
-            keyframes: [MotionKeyframe(progress: 0), MotionKeyframe(progress: 0.5, scale: 1.08), MotionKeyframe(progress: 1)]))
+            keyframes: [MotionKeyframe(progress: 0), MotionKeyframe(progress: 0.5, scale: 1.15), MotionKeyframe(progress: 1)]))
     }
 
     func motionCueValidation(_ draft: MotionCueDraft) -> String? {
