@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, mark an exact timeline range with Snapping off, step the playhead by frame with , and ., scrub on the ruler, and play, title, trim an item to or make a clip from the range (#41).
 - On Windows, seek and preview cuts across recordings, recover left-out lines in order, and turn off automatic recording level matching.
 - On Mac, make one clip from the best lines across card recordings, or combine them in a project without AI; the Outline’s ✦ chip runs Best versions.
 - On Windows, start a clip from one recording, audition and swap individual line versions, and insert lines only another recording says.

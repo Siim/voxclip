@@ -747,7 +747,9 @@ There is no time readout and no "after cuts · source" label; the viewer bar own
 | Playhead | a 2 px `timeline.playhead` line with a 12×7 head above the track. Edited playback jumps over cuts |
 | Clip scope | macOS: hide outside media by default in Source and show only the active clip in the overview. The shared **Show surrounding context** toggle restores the whole-take overview and outside Source media; Edited remains the existing clip output. Full Take stays full. Reset context off when entering a different kept or suggested clip; reselecting the same scope or trimming it keeps the current choice. The toggle is independent of Show cuts and changes no project, Undo, source timing, playback plan or export scope. Windows retains its clip zoom and outside dimming with `timeline.scopeDim` until the preference is ported |
 | Trim handles (clip scope) | 7×36 in `accent.text` at the clip edges, with invisible 24-wide hit regions. Dragging snaps to word boundaries and applies `updateClip` (one undo step, "Trim clip") |
-| Interaction | Click or drag anywhere on the 30 px track to scrub. ⇧-drag snaps to word starts. The hover tooltip names the word under the pointer ("cadence · 0:12.4"). Double-clicking a cut region restores it |
+| Interaction | Windows: click or drag anywhere on the 30 px track to scrub; ⇧-drag snaps to word starts. macOS: click to place the playhead exactly and drag the ruler to scrub (it selects nothing); a drag on the track selects words, or with Snapping off (or ⌥ or N held) keeps an exact, frame-rounded range (below). From 100 pt/s A1 ticks each word's start (from the top) and end (from the bottom) in `timeline.tick`, so a word drag shows what it grabs. The ruler adds 0.5 s, 0.1 s and then frame ticks, 3 pt tall, once they are 6 pt apart. The hover tooltip names the word under the pointer ("cadence · 0:12.4"). Double-clicking a cut region restores it |
+| Exact range (macOS) | A drag with Snapping off, or ⌥ or N held, keeps the range on the take's frame grid, in the recording's own seconds and inside the recording it began in. The band, the ruler's 3 pt bar and the wash draw the range itself; the toolbar reads "0.43 s · 12:04.10–12:04.53" (length in `text.primary`, In and Out in the recording's time in `text.tertiary`). Words wholly inside stay selected underneath, so the transcript highlight matches. A range, a word selection and an item selection replace each other. ⇧-click extends the range or words to the pointer: by frame with Snapping off, by word with it on. With timeline focus I and O set the range's In and Out at the playhead (without a range the other edge is the scope's start or end). Esc clears it. Selection changes add no undo step |
+| Range actions (macOS) | The edit bar after Cut selection: **Play range** (stops at Out), **✦ Ask Claude** (a range of at least 0.1 s, §6.8), **Add title** (over the range), **Trim item to range** (the title, picture, sound or song the range overlaps most; both edges in one "Trim to range" step, as ⌥[ and ⌥] trim to the playhead), **Make clip** (help "Clip edges follow words": each edge snaps to the nearest word start or end; undo "Make clip"). They act on the exact range, else on the selected words. Each is always shown and disabled with its reason, and drops to its icon when the bar is narrow; a shallow timeline lists them in its **Edit** menu. While a range is set **Cut selection** reads **Cut range**, disabled with "Exact cuts are coming. Turn Snapping on to cut words." With nothing selected the bar reads "Drag across the waveform to select words. Turn Snapping off for an exact range." |
 
 **Direct editing on Mac.** From top to bottom: CC Captions (follow the words), T1 Titles & effects, B1 B-roll & pictures, FX Zoom, looks & speed, V1 Video (filmstrip and story parts), A1 Voice (waveform and cuts), S1 Sounds, and M1 Music. Overlapping connected items stack within their lane. Empty lanes keep their label and a hint. Large track height gives the audio lanes more room.
 
@@ -2247,7 +2249,7 @@ The user points at part of the video and says what they want in plain words ("bl
 **Where it opens.** Every entry opens the same inline field in the right panel (a panel job, "Ask Claude", sparkles). It is never a sheet, an alert or a pop-over, and it is offered only when the project can change and an AI is chosen.
 
 - **Selection bar.** "✦ Ask Claude" is the second item of the word selection bar, after ✦ Rewrite as (§4.3) and before Make Clip and the rest, with a divider after it.
-- **Timeline range.** Dragging across empty timeline time marks a range; the timeline toolbar then shows "✦ Ask Claude" for "0:12–0:15". A click anywhere clears the range.
+- **Timeline range.** Dragging across empty timeline time marks a range; the timeline toolbar then shows "✦ Ask Claude" for "0:12–0:15". A click anywhere clears the range. macOS: the exact range (§5.2, Snapping off or ⌥) is the range, and **✦ Ask Claude** sits in the timeline's edit bar (the toolbar in a shallow timeline).
 - **Clip row.** The clip row's ⋯ menu has "Ask Claude…", which asks about the whole clip ("Clip 2").
 
 **The field.** The heading reads "✦ Ask Claude about {label}": the first eight selected words in quotes (with "…" past eight), "Clip {n}", or the time range. Below it:
@@ -2286,7 +2288,7 @@ The user points at part of the video and says what they want in plain words ("bl
 
 **On the timeline.** E1 “Effects”, below M1, draws each effect as a labelled block. On Mac, click a block to edit the saved effect. **Titles & effects** above the tracks lists every effect in the current view, including overlapping blocks, even after reopening a project. It can also add a title at the playhead. Apply commits the text; timing and position controls each make one undoable change. FX Motion remains the lane for pan and zoom.
 
-**Manual cuts and trims on Mac.** Drag across the waveform, check the highlighted words or pauses, then choose **Cut selection**. A drag inside a detected pause selects just that pause; a range across several words includes intervening pauses. **Trim clip** exposes the first and last word and their source edge times, with one-word buttons for moving either edge earlier or later. Dragging a ruler bracket previews the edge the edit will actually save, including the clip’s normal lead or tail. These transcript edits do not split a word at the pointer. In a shallow timeline, the same actions are in its **Edit** menu. Titles, effects, and trims open in the inspector. **Done** returns to the previous panel and puts keyboard focus back on the timeline when it is visible.
+**Manual cuts and trims on Mac.** Drag across the waveform, check the highlighted words or pauses, then choose **Cut selection**. A drag inside a detected pause selects just that pause; a range across several words includes intervening pauses. **Trim clip** exposes the first and last word and their source edge times, with one-word buttons for moving either edge earlier or later. Dragging a ruler bracket previews the edge the edit will actually save, including the clip’s normal lead or tail. These transcript edits do not split a word at the pointer. With Snapping off a drag keeps an exact range instead; it can be played, titled, used to trim an item or to make a clip, but not cut yet. In a shallow timeline, the same actions are in its **Edit** menu. Titles, effects, and trims open in the inspector. **Done** returns to the previous panel and puts keyboard focus back on the timeline when it is visible.
 
 **What Claude can do** (the toolbox, AI spec §18.2):
 
@@ -2626,7 +2628,7 @@ On Mac, **⌥⌘0** chooses All Recordings in the transcript and **⌥⌘1–6**
 | Shuttle back / stop / forward | J / K / L | J / K / L | L again: 1× → 1.5× → 2×. J jumps back 3 s per press. K stops and resets the rate |
 | Back 3 seconds | J | J | J also shuttles back on repeat, as before |
 | Forward 3 seconds | — | — | Viewer bar button only. L is shuttle |
-| Previous / next word | ← / → | ← / → | Moves the caret; the playhead follows when paused |
+| Previous / next word | ← / → | ← / → | Moves the caret; the playhead follows when paused. On the timeline ← → stay word steps; , and . step frames |
 | Extend selection by word | ⇧← / ⇧→ | Shift+← / → | |
 | Previous / next sentence | ⌥← / ⌥→ | Ctrl+← / → | |
 | Go to start / end | ⌘↑ / ⌘↓ (Home / End) | Ctrl+Home / Ctrl+End | |
@@ -2636,7 +2638,7 @@ On Mac, **⌥⌘0** chooses All Recordings in the transcript and **⌥⌘1–6**
 | Volume ±1 dB | ⌃= / ⌃− | — | Selected sound or music item |
 | Add volume keyframe | ⌥K | — | At the playhead in the selected sound or music item |
 | Duplicate / delete item(s) | ⌘D / ⌫ or ⌦ | — | Timeline focus; does not edit words |
-| Nudge by frame / by word | , or . / ⇧, or ⇧. | — | Earlier / later; one undo per press |
+| Nudge by frame / by word | , or . / ⇧, or ⇧. | — | Earlier / later; one undo per press. With no item selected the playhead steps one frame, or with ⇧ to the previous or next word start or end; no undo step |
 | Trim start / end to playhead | ⌥[ / ⌥] | — | One selected item |
 | Snapping / fit / cancel | N / ⇧Z / Esc | — | Esc cancels a drag before clearing item selection |
 | Restore selection | ⇧⌫ | Shift+Backspace | |
@@ -2665,7 +2667,7 @@ On Mac, **⌥⌘0** chooses All Recordings in the transcript and **⌥⌘1–6**
 | Keep / dismiss suggestion | Return / ⌫ on the focused suggestion row | Ctrl+Enter / Delete on the focused row | Plain Enter on Windows selects and previews |
 | Rename clip | Return on a focused kept clip row | F2 | |
 | Remove clip | ⌫ on a focused kept clip row | Delete | One undo step |
-| Set clip start / end at caret | I / O | I / O | |
+| Set clip start / end at caret | I / O | I / O | macOS: with timeline focus I and O set the exact range's In and Out at the playhead instead |
 | Previous / next clip | [ / ] | [ / ] | Kept clips, transcript order |
 | Back to Full take | Esc (transcript, nothing else open) | Esc | Replaces "Preview clip / back to full take" |
 | Home / Full take | ⌘1 / ⌘2 | Ctrl+1 / Ctrl+2 (Alt+Left also selects Home) | Replaces "Inspector tabs" |
