@@ -42,15 +42,17 @@ public sealed class MakeItFramesTests : IDisposable
     internal sealed class TimedFrames : IFrameDecoding
     {
         internal bool Failing { get; init; }
-        public IFrameReader Open(string source, int maximumEdge, double tolerance, CancellationToken ct) => new Reader(Failing);
+        /// <summary>The frame's sRGB colour; mid grey unless a test gives it a cast.</summary>
+        internal (byte Red, byte Green, byte Blue) Color { get; init; } = (128, 128, 128);
+        public IFrameReader Open(string source, int maximumEdge, double tolerance, CancellationToken ct) => new Reader(Failing, Color);
 
-        private sealed class Reader(bool failing) : IFrameReader
+        private sealed class Reader(bool failing, (byte Red, byte Green, byte Blue) color) : IFrameReader
         {
             public DecodedFrame Read(double time, CancellationToken ct)
             {
                 if (failing) throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "stub");
                 var pixels = new byte[320 * 180 * 4];
-                for (var index = 0; index < pixels.Length; index += 4) (pixels[index], pixels[index + 1], pixels[index + 2], pixels[index + 3]) = (128, 128, 128, 255);
+                for (var index = 0; index < pixels.Length; index += 4) (pixels[index], pixels[index + 1], pixels[index + 2], pixels[index + 3]) = (color.Blue, color.Green, color.Red, 255);
                 BinaryPrimitives.WriteInt32LittleEndian(pixels, (int)Math.Round(time * 1000));
                 return new(new PixelBuffer(pixels, 320, 180, 320 * 4), time);
             }
@@ -83,7 +85,8 @@ public sealed class MakeItFramesTests : IDisposable
 
     /// <summary>The passage project in an editor with Make it postable's stub services and a frame pass on stub faces; without
     /// <paramref name="faces"/> the services have no frame pass, as on a PC without the face models.</summary>
-    internal Fixture Make(MakeItFrameAi? ai = null, ClipAutopilotPlan? plan = null, bool faces = true, bool face = true, bool failing = false)
+    internal Fixture Make(MakeItFrameAi? ai = null, ClipAutopilotPlan? plan = null, bool faces = true, bool face = true, bool failing = false,
+        (byte Red, byte Green, byte Blue)? color = null)
     {
         var shared = SharedResources.ResolveRoot();
         var project = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(shared, "fixtures", "voice-lab", "passage-render-v3.voxclip")));
@@ -96,7 +99,7 @@ public sealed class MakeItFramesTests : IDisposable
         editor.MakeIt.Services = !faces ? services : services with
         {
             FramePass = shown => shown.Transcript is { } transcript
-                ? new VideoFramePass(new FrameAnalyzer(new TimedFaces(face), FrameAnalyzer.ScreensWith(new PhoneText()), new TimedFrames { Failing = failing }, cache),
+                ? new VideoFramePass(new FrameAnalyzer(new TimedFaces(face), FrameAnalyzer.ScreensWith(new PhoneText()), new TimedFrames { Failing = failing, Color = color ?? (128, 128, 128) }, cache),
                     "passage.mp4", shown.Media.Source.ContentKey, transcript.Words, line => { lock (lines) lines.Add(line); })
                 : null
         };
@@ -184,6 +187,42 @@ public sealed class MakeItFramesTests : IDisposable
         editor.Undo();
         Assert.Equal(Saved(before), Saved(editor.Project));
         Assert.Equal("Make it postable", editor.UndoActionName);
+    }
+
+    /// <summary>Looks spec §9.6 and §11.6, the regression with a measured Fix (twin of the Mac test): a clip graded by hand (a base look,
+    /// fine-tuning, a grade at 80% and its own Fix) gets Claude's Warm Print at 70% with the Fix measured on its sheet frames' JPEGs, which
+    /// replaces the old Fix; the row says what the Fix did, and its Undo puts back the whole colour state byte for byte, and nothing else.</summary>
+    [Fact]
+    public async Task ClaudesMeasuredFixReplacesAGradedClipsFixAndUndoRestoresItByteForByte()
+    {
+        var plan = Plan() with { ClipLookChoice = new("warmPrint", "Soft light for a memory") { Amount = 70, Fix = true, Alternatives = ["goldenHour"] } };
+        // A warm room: near-neutral greys with more red than blue (the Mac's 0.54, 0.5, 0.475).
+        var (editor, _, _) = Make(plan: plan, color: (138, 128, 121));
+        var tuned = ClipControlsProject.Controls("clip-main", editor.Project)! with
+        {
+            Look = ClipLook.Muted, ColorAdjustments = new(12, -8, 0, 20),
+            ColorGrade = new() { Amount = 80, Exposure = 15, Temperature = 10, Tint = 5, Highlights = -20, Vibrance = 30, Fade = 10 },
+        };
+        Assert.True(editor.ReplaceProject(ClipControlsProject.Setting(tuned, editor.Project), "Fine-tune"));
+        var before = ClipColorState.Of(ClipControlsProject.Controls("clip-main", editor.Project)!);
+        var (savedAdjustments, savedGrade) = (System.Text.Json.JsonSerializer.Serialize(before.Adjustments), System.Text.Json.JsonSerializer.Serialize(before.Grade));
+        var run = await RunAsync(editor);
+        var grade = ClipControlsProject.Controls("clip-main", editor.Project)!.ColorGrade!;
+        Assert.Equal(("warmPrint", 70), (grade.Preset, grade.Amount));
+        Assert.NotEqual(before.Grade!.Fix, grade.Fix);
+        Assert.InRange(grade.Fix.Temperature, -30, -12);
+        var row = run.Rows.Single(item => item.Change == MakeItChange.Look);
+        Assert.Equal(("Claude chose Warm Print at 70%", true), (row.Text, row.Undoable));
+        Assert.Equal("Soft light for a memory · Fix: " + grade.Fix.Summary(), row.Detail);
+        var ran = editor.Project;
+        Assert.True(editor.MakeItUndo(row.Id, run));
+        // Only the colour goes back, and it is the clip's colour before the run, byte for byte.
+        var expected = ClipControlsProject.Setting(before.Applied(ClipControlsProject.Controls("clip-main", ran)!), ran);
+        Assert.Equal(Saved(expected), Saved(editor.Project));
+        var restored = ClipControlsProject.Controls("clip-main", editor.Project)!;
+        Assert.Equal((ClipLook.Muted, before), (restored.Look, ClipColorState.Of(restored)));
+        Assert.Equal((savedAdjustments, savedGrade),
+            (System.Text.Json.JsonSerializer.Serialize(restored.ColorAdjustments), System.Text.Json.JsonSerializer.Serialize(restored.ColorGrade)));
     }
 
     [Fact]
