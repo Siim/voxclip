@@ -1,10 +1,12 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Domain.Frames;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 
@@ -15,7 +17,7 @@ namespace VoxClip.Core.Domain.Autopilot;
 /// <c>ClipAutopilotValidator</c>; shared/fixtures/autopilot pins both.</summary>
 public static partial class ClipAutopilotValidator
 {
-    private sealed class Log
+    internal sealed class Log
     {
         internal readonly List<ClipAutopilotPlan.Repair> Repairs = [];
         internal void Drop(string field, string detail) => Repairs.Add(new(field, true, detail));
@@ -559,24 +561,84 @@ public static partial class ClipAutopilotValidator
 
     private static string LettersLower(string text) => string.Concat(text.ToLowerInvariant().EnumerateRunes().Where(Rune.IsLetter).Select(rune => rune.ToString()));
 
-    /// <summary>The look, read ignoring case and non-letters ("B&amp;W" is bw), with its reason.</summary>
-    private static ClipAutopilotPlan.Look Look(JsonNode? value, ClipAutopilotContext context, Log log)
+    /// <summary>The looks that darken a dim face or its shadows, and the look they become under one (looks spec §9.5).</summary>
+    internal static readonly IReadOnlyList<string> DimFaceLooks = ["moody", "tealAmber"];
+    internal const string DimFaceReplacement = "softSkin";
+
+    /// <summary>The look (looks spec §9.4, §9.5), twin of the Mac <c>ClipAutopilotValidator.look</c>: one the pickers offer, read by its
+    /// ID or label ignoring case and non-letters ("B&amp;W" is bw, "As filmed" is original), with its amount, Fix, alternatives and
+    /// reason. A reply without one keeps As filmed; an unknown one becomes As filmed without its reason. lookAmount: missing keeps 100;
+    /// 0–1 is a fraction; rounded to 5 and kept within 40–100, a strong look within 85; As filmed is 100. lookFix: kept only when a
+    /// frame's light was measured. A dim face turns Moody and Teal &amp; Amber into Soft Skin at its planner amount. lookAlternatives: up
+    /// to two other known looks, in order. Each change is a repair or a drop in <paramref name="log"/>.</summary>
+    internal static ClipAutopilotPlan.Look Look(JsonNode? value, ClipAutopilotContext context, Log log)
     {
         var node = AiJson.Get(value, "look");
         if (node is null) return ClipAutopilotPlan.Look.Original;
-        var key = LettersLower(AiJson.String(node) ?? "");
-        var id = ClipAutopilotWire.Look(key) ?? key switch
-        {
-            "blackandwhite" or "blackwhite" or "monochrome" => ClipLook.Bw,
-            "none" => ClipLook.Original,
-            _ => (ClipLook?)null
-        };
-        if (id is null)
+        var library = context.Prompt.Library;
+        if (LookPreset(AiJson.String(node) ?? "", library) is not { } look)
         {
             log.Repair("look", "unknown look “" + (AiJson.String(node) ?? "") + "”; original");
             return ClipAutopilotPlan.Look.Original;
         }
-        return new(id.Value, Text(AiJson.Get(value, "lookReason"), context.Prompt.Limits.MaxReasonScalars, "lookReason", log));
+        var reason = Text(AiJson.Get(value, "lookReason"), context.Prompt.Limits.MaxReasonScalars, "lookReason", log);
+        var measured = (context.Frames?.Frames ?? []).Select(frame => frame.Observation.Light).OfType<FrameLight>().ToArray();
+        var faces = measured.Select(light => light.FaceMedianLuma).OfType<double>().ToArray();
+        var amount = 100;
+        if (DimFaceLooks.Contains(look.Id) && faces.Length > 0 && ClipColorMeasure.Median(faces) < library.Measure.Light.DimFaceLuma
+            && library.Visible.FirstOrDefault(item => item.Id == DimFaceReplacement) is { } soft)
+        {
+            log.Repair("look", look.Label + " darkens a dim face; " + soft.Label);
+            look = soft;
+            amount = soft.PlannerAmount;
+            reason = reason.Length == 0 ? "Brightened for a dim face" : reason + "; brightened for a dim face";
+        }
+        else if (look.Id != ClipLook.Original.Name() && AiJson.Get(value, "lookAmount") is { } given)
+        {
+            if (AiJson.Number(given) is { } number && double.IsFinite(number))
+            {
+                var points = number is >= 0 and <= 1 ? number * 100 : number;
+                var checkedAmount = Math.Clamp((int)Math.Round(points / 5, MidpointRounding.AwayFromZero) * 5, 40, 100);
+                if (look.Strength == ClipLookStrength.Strong) checkedAmount = Math.Min(checkedAmount, 85);
+                if (checkedAmount != number) log.Repair("lookAmount", number.ToString(CultureInfo.InvariantCulture) + "; " + checkedAmount.ToString(CultureInfo.InvariantCulture));
+                amount = checkedAmount;
+            }
+            else
+            {
+                log.Repair("lookAmount", "not a number; 100");
+            }
+        }
+        var fix = AiJson.Get(value, "lookFix") is JsonValue flag && flag.GetValueKind() == JsonValueKind.True;
+        if (fix && measured.Length == 0)
+        {
+            log.Repair("lookFix", "no measured light; the Fix stays off");
+            fix = false;
+        }
+        var alternatives = new List<string>();
+        var items = AiJson.Get(value, "lookAlternatives") is JsonArray array ? array : [];
+        for (var index = 0; index < items.Count; index++)
+        {
+            var field = $"lookAlternatives[{index.ToString(CultureInfo.InvariantCulture)}]";
+            if (LookPreset(AiJson.String(items[index]) ?? "", library) is not { } found) { log.Drop(field, "not a look"); continue; }
+            if (found.Id == look.Id || alternatives.Contains(found.Id)) { log.Drop(field, "the look itself, or named twice"); continue; }
+            if (alternatives.Count == 2) { log.Drop(field, "more than two alternatives"); continue; }
+            alternatives.Add(found.Id);
+        }
+        return new(look.Id, reason) { Amount = amount, Fix = fix, Alternatives = alternatives };
+    }
+
+    /// <summary>The visible look <paramref name="name"/> names by its ID or label, ignoring case and non-letters, or by an alias.</summary>
+    internal static ClipLookPreset? LookPreset(string name, ClipLookLibrary library)
+    {
+        var key = LettersLower(name);
+        var wanted = key switch
+        {
+            "blackandwhite" or "blackwhite" or "monochrome" => "bw",
+            "none" or "asfilmed" => "original",
+            _ => key,
+        };
+        if (wanted.Length == 0) return null;
+        return library.Visible.FirstOrDefault(look => look.Id.ToLowerInvariant() == wanted || LettersLower(look.Label) == wanted);
     }
 
     /// <summary>A finite rate other than 1 (within 0.005), clamped to the limits (a repair), with its reason.</summary>

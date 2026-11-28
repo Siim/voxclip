@@ -48,7 +48,7 @@ public sealed partial class CliAutopilotTests
                     ["title"] = "Planned " + start, ["hook"] = "A hook", ["cuts"] = new JsonArray(), ["pauseCuts"] = new JsonArray(),
                     ["corrections"] = new JsonArray(), ["rewrites"] = new JsonArray(new JsonObject { ["startWord"] = start + 2, ["endWord"] = start + 4, ["text"] = rewrite, ["reason"] = "a stumble" }),
                     ["captionStyle"] = "vox-bold", ["captionFont"] = "Roboto", ["captionWeight"] = 900, ["captionCase"] = "upper", ["wordsPerCaption"] = 3, ["captionReason"] = "",
-                    ["look"] = "original", ["lookReason"] = "", ["speed"] = 1, ["speedReason"] = "", ["lengthReason"] = "", ["tone"] = "none", ["toneSummary"] = "",
+                    ["look"] = "original", ["lookReason"] = "", ["lookAmount"] = 100, ["lookFix"] = false, ["lookAlternatives"] = new JsonArray(), ["speed"] = 1, ["speedReason"] = "", ["lengthReason"] = "", ["tone"] = "none", ["toneSummary"] = "",
                     ["music"] = new JsonArray(new JsonObject { ["title"] = "Pulse", ["mood"] = "driven", ["prompt"] = "Instrumental, 120 BPM", ["reason"] = "pace", ["underVoiceDb"] = 18 }),
                     ["musicPick"] = 0, ["zooms"] = new JsonArray(), ["postText"] = "Post", ["score"] = start == 0 ? 6 : 8, ["verdict"] = "post", ["scoreReason"] = "",
                     ["questions"] = new JsonArray(), ["frames"] = new JsonObject { ["blur"] = new JsonArray(), ["cover"] = new JsonObject { ["id"] = "", ["reason"] = "" } }

@@ -92,7 +92,7 @@ public sealed class ClipAutopilotTests
         }
         reply["not_in_take"] ??= "";
         reply["musicTrackId"] ??= "";
-        var neutral = new JsonObject { ["corrections"] = new JsonArray(), ["lengthReason"] = "", ["captionReason"] = "", ["look"] = "original", ["lookReason"] = "",
+        var neutral = new JsonObject { ["corrections"] = new JsonArray(), ["lengthReason"] = "", ["captionReason"] = "", ["look"] = "original", ["lookReason"] = "", ["lookAmount"] = 100, ["lookFix"] = false, ["lookAlternatives"] = new JsonArray(),
             ["speed"] = 1, ["speedReason"] = "", ["tone"] = "none", ["toneSummary"] = "",
             ["frames"] = new JsonObject { ["blur"] = new JsonArray(), ["cover"] = new JsonObject { ["id"] = "", ["reason"] = "" } } };
         foreach (var (key, value) in neutral.ToArray()) if (!reply.ContainsKey(key)) reply[key] = value!.DeepClone();
@@ -176,7 +176,7 @@ public sealed class ClipAutopilotTests
     public void PromptFileFillsItsLimitsAndEveryFixturePinsIt()
     {
         var prompt = ClipAutopilotPrompt.Load(Root);
-        Assert.Equal(13, prompt.PromptVersion);
+        Assert.Equal(14, prompt.PromptVersion);
         foreach (var system in new[] { prompt.System, prompt.MomentsSystem })
         {
             Assert.DoesNotContain("{", system, StringComparison.Ordinal);
@@ -185,11 +185,12 @@ public sealed class ClipAutopilotTests
         Assert.Contains("Never more than 3 in a clip", prompt.System, StringComparison.Ordinal);
         Assert.Contains("from 1.05 to 1.2", prompt.System, StringComparison.Ordinal);
         Assert.Contains("from 0.75 to 1.5", prompt.System, StringComparison.Ordinal);
-        Assert.Contains("- original: the footage as filmed\n- muted: ", prompt.System, StringComparison.Ordinal);
+        Assert.Contains("\n- original: As filmed (Natural): ", prompt.System, StringComparison.Ordinal);
+        Assert.Contains("\n- bw: B&W (B&W): ", prompt.System, StringComparison.Ordinal);
         Assert.Contains("Tone\n- The request gives the clip a tone", prompt.System, StringComparison.Ordinal);
         Assert.Contains("Your task: pick the moments", prompt.MomentsSystem, StringComparison.Ordinal);
         Assert.DoesNotContain("Your task: pick the moments", prompt.System, StringComparison.Ordinal);
-        Assert.Equal([ClipLook.Original, ClipLook.Muted, ClipLook.Warm, ClipLook.Bw], prompt.Looks);
+        Assert.Equal(prompt.Library.Visible.Select(look => look.Id), prompt.Looks);
         Assert.Equal((20.0, 45.0, 60.0), (prompt.Limits.MinTargetSeconds, prompt.Limits.MaxTargetSeconds, prompt.Limits.MaxReasonedSeconds));
         Assert.Equal(new ClipAutopilotFont("Roboto", 900), prompt.Defaults.Font);
         Assert.Equal(TimeSpan.FromSeconds(1200), prompt.MinimumTimeout);
@@ -210,19 +211,20 @@ public sealed class ClipAutopilotTests
     public void PromptFileDefectsRefuseToLoad()
     {
         var root = JsonNode.Parse(File.ReadAllText(Path.Combine(Root, ClipAutopilotPrompt.Path)))!.AsObject();
-        _ = new ClipAutopilotPrompt(root.DeepClone().AsObject(), "");
+        var looks = ClipLookLibrary.Load(Root);
+        _ = new ClipAutopilotPrompt(root.DeepClone().AsObject(), "", looks);
         var broken = root.DeepClone().AsObject();
         broken["momentsSchema"] = new JsonObject { ["type"] = "object", ["additionalProperties"] = false, ["required"] = new JsonArray(), ["properties"] = new JsonObject() };
-        Assert.Throws<VoxClipException>(() => new ClipAutopilotPrompt(broken, ""));
+        Assert.Throws<VoxClipException>(() => new ClipAutopilotPrompt(broken, "", looks));
         broken = root.DeepClone().AsObject();
         broken["looks"] = new JsonArray(root["looks"]!.AsArray().Where(item => item!["id"]!.GetValue<string>() != "bw").Select(item => item!.DeepClone()).ToArray());
-        Assert.Throws<VoxClipException>(() => new ClipAutopilotPrompt(broken, ""));
+        Assert.Throws<VoxClipException>(() => new ClipAutopilotPrompt(broken, "", looks));
         broken = root.DeepClone().AsObject();
         broken["system"] = new JsonObject { ["plan"] = new JsonArray("role", "missing"), ["moments"] = new JsonArray("role") };
-        Assert.Throws<VoxClipException>(() => new ClipAutopilotPrompt(broken, ""));
+        Assert.Throws<VoxClipException>(() => new ClipAutopilotPrompt(broken, "", looks));
         broken = root.DeepClone().AsObject();
         broken["sections"]!["role"] = "Use {unknownLimit} rewrites.";
-        Assert.Throws<VoxClipException>(() => new ClipAutopilotPrompt(broken, ""));
+        Assert.Throws<VoxClipException>(() => new ClipAutopilotPrompt(broken, "", looks));
     }
 
     // MARK: Request
@@ -349,7 +351,7 @@ public sealed class ClipAutopilotTests
         var text = plan.ToJson().ToJsonString();
         Assert.Contains("\"case\":\"upper\"", text, StringComparison.Ordinal);
         Assert.Equal(text, ClipAutopilotPlan.FromJson(JsonNode.Parse(text)!.AsObject()).ToJson().ToJsonString());
-        Assert.Throws<VoxClipException>(() => ClipAutopilotPlan.FromJson(JsonNode.Parse(text.Replace("\"version\":4", "\"version\":5", StringComparison.Ordinal))!.AsObject()));
+        Assert.Throws<VoxClipException>(() => ClipAutopilotPlan.FromJson(JsonNode.Parse(text.Replace("\"version\":5", "\"version\":6", StringComparison.Ordinal))!.AsObject()));
     }
 
     [Fact]
@@ -394,7 +396,7 @@ public sealed class ClipAutopilotTests
         var captions = expect["captions"]!;
         Assert.Equal(new ClipAutopilotPlan.Captions(captions["styleId"]!.GetValue<string>(), new(captions["family"]!.GetValue<string>(), captions["weight"]!.GetValue<int>()),
             ClipAutopilotWire.CaptionCase(captions["case"]!.GetValue<string>())!.Value, captions["wordsPerCaption"]!.GetValue<int>(), captions["reason"]?.GetValue<string>() ?? ""), plan.CaptionChoice);
-        Assert.Equal(expect["look"]!.AsArray().Select(item => item!.GetValue<string>()), new[] { plan.ClipLookChoice.Id.Name(), plan.ClipLookChoice.Reason });
+        Assert.Equal(expect["look"]!.AsArray().Select(item => item!.GetValue<string>()), new[] { plan.ClipLookChoice.Id, plan.ClipLookChoice.Reason });
         if (expect["speed"] is null) Assert.Null(plan.SpeedChoice);
         else Assert.Equal(new ClipAutopilotPlan.Speed(expect["speed"]![0]!.GetValue<double>(), expect["speed"]![1]!.GetValue<string>()), plan.SpeedChoice);
         Assert.True(Math.Abs(plan.Seconds - expect["seconds"]!.GetValue<double>()) < 1e-9, $"{plan.Seconds} s");
@@ -430,7 +432,7 @@ public sealed class ClipAutopilotTests
         Assert.Empty(old.Corrections); Assert.Equal(ClipAutopilotPlan.Look.Original, old.ClipLookChoice); Assert.Null(old.SpeedChoice);
         Assert.Equal(0, old.Seconds); Assert.Empty(old.Flags); Assert.Equal("", old.CaptionChoice.Reason);
         Assert.Equal(plan.Cuts, old.Cuts); Assert.Equal(plan.Rewrites, old.Rewrites);
-        json["version"] = 5;
+        json["version"] = 6;
         Assert.Throws<VoxClipException>(() => ClipAutopilotPlan.FromJson(JsonNode.Parse(json.ToJsonString())!.AsObject()));
     }
 
@@ -670,7 +672,7 @@ public sealed class ClipAutopilotTests
         var stub = Stub("not json", Sendable(Reply("overlaps")).ToJsonString());
         var result = await Service().PlanAsync(new(Transcript(), Edits(), new ClipAutopilotMode.Clip(new(0, 29))), stub, "fixture", ct: TestContext.Current.CancellationToken);
         Assert.Equal((1, 2), (result.Plan!.Rewrites.Count, result.Plan.Cuts.Count));
-        Assert.Equal((13, 64), (result.PromptVersion, result.PromptSha256.Length));
+        Assert.Equal((14, 64), (result.PromptVersion, result.PromptSha256.Length));
         Assert.Equal(2, stub.Requests.Count);
         Assert.All(stub.Requests, request => Assert.Equal((Effort.XHigh, LlmFeature.ClipAutopilot), (request.Effort!.Value, request.Feature)));
         Assert.Contains("Your previous reply was not valid JSON", stub.Requests[1].Instruction, StringComparison.Ordinal);
@@ -735,7 +737,7 @@ public sealed class ClipAutopilotTests
         var temporary = Directory.CreateTempSubdirectory("voxclip-autopilot-v12-");
         try
         {
-            foreach (var directory in new[] { "prompts", "caption-styles", "fonts" })
+            foreach (var directory in new[] { "prompts", "caption-styles", "fonts", "looks" })
                 foreach (var source in Directory.EnumerateFiles(Path.Combine(Root, directory), "*.json", SearchOption.AllDirectories))
                 {
                     var destination = Path.Combine(temporary.FullName, Path.GetRelativePath(Root, source));
@@ -745,9 +747,9 @@ public sealed class ClipAutopilotTests
             var path = Path.Combine(temporary.FullName, ClipAutopilotPrompt.Path);
             var version12 = string.Join('\n', File.ReadAllText(path).Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n').Where(line =>
                 !line.StartsWith("    \"takes\":", StringComparison.Ordinal) && !line.StartsWith("  \"takeReason\":", StringComparison.Ordinal)))
-                .Replace("\"promptVersion\": 13", "\"promptVersion\": 12", StringComparison.Ordinal);
+                .Replace("\"promptVersion\": 14", "\"promptVersion\": 12", StringComparison.Ordinal);
             File.WriteAllText(path, version12);
-            Assert.Equal("100976e5dab7d7c7bd2099395e0b6d4fb5b4c51718d21aa3e4aa3dfe2f344672", ClipAutopilotPrompt.Load(temporary.FullName).Sha256);
+            Assert.Equal("e4389159e11d5b47d5d3dd553dea12bc85637f8a493248d904641c89ec3b8ab3", ClipAutopilotPrompt.Load(temporary.FullName).Sha256);
             var catalog = AiTestSupport.Catalog();
             var old = new ClipAutopilotService(new LlmRunner(new MemoryKeys(null), catalog, new Redactor()), catalog, temporary.FullName);
             var current = Service();

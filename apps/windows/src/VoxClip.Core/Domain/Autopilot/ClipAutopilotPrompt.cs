@@ -100,8 +100,11 @@ public sealed partial class ClipAutopilotPrompt
     public ClipAutopilotLimits Limits { get; }
     /// <summary>The fallbacks.</summary>
     public ClipAutopilotDefaults Defaults { get; }
-    /// <summary>The looks in the order the prompt lists them.</summary>
-    public IReadOnlyList<ClipLook> Looks { get; }
+    /// <summary>The looks in the order the prompt lists them: the visible looks of shared/looks/clip-looks.json (looks spec §9.2).</summary>
+    public IReadOnlyList<string> Looks { get; }
+    /// <summary>shared/looks/clip-looks.json: the looks the reply may name, their strengths and planner amounts, and the light thresholds
+    /// the validator's Fix and dim-face rules read.</summary>
+    public ClipLookLibrary Library { get; }
     /// <summary>The clip plan's schema name.</summary>
     public string SchemaName { get; }
     /// <summary>The clip plan's schema.</summary>
@@ -127,7 +130,7 @@ public sealed partial class ClipAutopilotPrompt
     public static ClipAutopilotPrompt Load(string sharedRoot)
     {
         var (document, sha) = ReadShared(sharedRoot, Path);
-        return new(document, sha, AskClaudePrompt.Load(sharedRoot).Stickers);
+        return new(document, sha, ClipLookLibrary.Load(sharedRoot), AskClaudePrompt.Load(sharedRoot).Stickers);
     }
 
     /// <summary>A shared JSON file and the SHA-256 of its bytes with CRLF read as LF, as the Voice Lab prompts are hashed.</summary>
@@ -149,10 +152,11 @@ public sealed partial class ClipAutopilotPrompt
         }
     }
 
-    internal ClipAutopilotPrompt(JsonObject document, string sha256, IReadOnlySet<string>? stickers = null)
+    internal ClipAutopilotPrompt(JsonObject document, string sha256, ClipLookLibrary looks, IReadOnlySet<string>? stickers = null)
     {
+        ArgumentNullException.ThrowIfNull(looks);
         int? Int(JsonNode? node) => AiJson.Number(node) is { } number && number == Math.Round(number) && Math.Abs(number) < int.MaxValue ? (int)number : null;
-        if (Int(document["schemaVersion"]) != 2 || Int(document["promptVersion"]) is not { } version || version < 1 ||
+        if (Int(document["schemaVersion"]) != 3 || Int(document["promptVersion"]) is not { } version || version < 1 ||
             AiJson.String(document["schemaName"]) is not { } name || AiJson.String(document["momentsSchemaName"]) is not { } momentsName ||
             !IsSchema(document["schema"]) || !IsSchema(document["momentsSchema"]) ||
             AiJson.String(document["momentsSchema"]?["properties"]?["clips"]?["items"]?["type"]) != "object" ||
@@ -168,17 +172,19 @@ public sealed partial class ClipAutopilotPrompt
             AiJson.Number(values?["underVoiceDb"]) is not { } under || under < limits.MinUnderVoiceDb || under > limits.MaxUnderVoiceDb ||
             AiJson.Number(values?["zoomScale"]) is not { } scale || scale < limits.MinZoomScale || scale > limits.MaxZoomScale ||
             Int(values?["score"]) is not { } score || score is < 1 or > 10) throw Missing();
-        // The looks the prompt offers are exactly the ones the contract knows, each with a description.
-        var looks = new List<ClipLook>();
+        // The looks the prompt offers are exactly the visible looks of the library, each with the line
+        // tools/looks/generate_prompt_looks.py wrote from it.
+        var visible = looks.Visible.Select(look => look.Id).ToArray();
+        var listed = new List<string>();
         var lookLines = new List<string>();
         foreach (var item in AiJson.Array(document["looks"]))
         {
-            if (ClipAutopilotWire.Look(AiJson.String(item?["id"])) is not { } id || looks.Contains(id) ||
-                AiJson.String(item?["description"]) is not { Length: > 0 } description) throw Missing();
-            looks.Add(id);
-            lookLines.Add("- " + id.Name() + ": " + description);
+            if (AiJson.String(item?["id"]) is not { } id || !visible.Contains(id) || listed.Contains(id) ||
+                AiJson.String(item?["line"]) is not { } line || !line.StartsWith(id + ": ", StringComparison.Ordinal)) throw Missing();
+            listed.Add(id);
+            lookLines.Add("- " + line);
         }
-        if (!looks.ToHashSet().SetEquals(Enum.GetValues<ClipLook>())) throw Missing();
+        if (listed.Count != visible.Length) throw Missing();
         var templateValues = limits.TemplateValues();
         templateValues["looks"] = string.Join("\n", lookLines);
         Stickers = stickers ?? new HashSet<string>(StringComparer.Ordinal);
@@ -213,7 +219,8 @@ public sealed partial class ClipAutopilotPrompt
         TakesReason = document["takeReason"]?.DeepClone();
         Limits = limits;
         Defaults = new(style, new(family, weight), textCase, words, under, scale, score);
-        Looks = looks;
+        Looks = listed;
+        Library = looks;
         SchemaName = name;
         Schema = schema;
         MomentsSchemaName = momentsName;

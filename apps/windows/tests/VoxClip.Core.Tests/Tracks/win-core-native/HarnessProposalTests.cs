@@ -80,6 +80,30 @@ public sealed class HarnessProposalTests
         IEnumerable<string?> Values(string field) => expected.GetProperty(field).EnumerateArray().Select(item => item.GetString());
     }
 
+    /// <summary>Looks spec §8.5: a timeline's look is any look of shared/looks/clip-looks.json at its amount, checked against the file; one
+    /// VoxClip doesn't have refuses the proposal with the reason. Twin of the Mac <c>aTimelinesLookIsALooksFileIDAtItsAmount</c>.</summary>
+    [Fact]
+    public void ATimelinesLookIsALooksFileIdAtItsAmount()
+    {
+        var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/projects/clip-from-long-take.voxclip"));
+        HarnessProposal Proposal(string look)
+        {
+            using var wire = JsonDocument.Parse("{\"clipId\":\"clip-2f1c\",\"reason\":\"Warmer.\",\"look\":" + look + "}");
+            return new HarnessProposal(HarnessTimeline.Read(wire.RootElement), project);
+        }
+        var kept = Proposal("""{"id":"warmPrint","amount":70,"reason":"A memory"}""").Review(project, FixtureLoader.SharedRoot).Project;
+        var controls = Assert.IsType<ProjectClipControls>(ClipControlsProject.Controls("clip-2f1c", kept));
+        Assert.Equal(("warmPrint", 70), (controls.ColorGrade?.Preset, controls.ColorGrade?.Amount ?? 0));
+        Assert.Equal("warmPrint", ClipLookLibrary.Load(FixtureLoader.SharedRoot).Match(controls)?.Look.Id);
+        var classic = Proposal("""{"id":"warm"}""").Review(project, FixtureLoader.SharedRoot).Project;
+        Assert.Equal(ClipLook.Warm, ClipControlsProject.Controls("clip-2f1c", classic)?.Look);
+        Assert.Null(ClipControlsProject.Controls("clip-2f1c", classic)?.ColorGrade);
+        Assert.Equal("Choose one of VoxClip's looks.",
+            Assert.IsAssignableFrom<HarnessException>(Record.Exception(() => Proposal("""{"id":"neonDream"}""").Review(project, FixtureLoader.SharedRoot))).Message);
+        foreach (var bad in new[] { """{"id":"warm print"}""", """{"id":"warm","amount":120}""", """{"id":"warm","fix":true}""" })
+            Assert.IsAssignableFrom<HarnessException>(Record.Exception(() => Proposal(bad)));
+    }
+
     [Fact]
     public void AStoryKeepsPartsInPlayOrderWithoutRenderingARewrite()
     {

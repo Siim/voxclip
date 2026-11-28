@@ -129,11 +129,11 @@ public readonly record struct ClipAutopilotFont(string Family, int Weight);
 
 /// <summary>One clip's complete "Make it postable" plan (ai.md §16): every decision Claude made, already checked against the
 /// transcript, the caption styles and the bundled fonts (<see cref="ClipAutopilotValidator"/>). Word indices are transcript
-/// item positions; every range is inclusive. Twin of the Mac <c>ClipAutopilotPlan</c> (version 4, reads 1 to 4).</summary>
+/// item positions; every range is inclusive. Twin of the Mac <c>ClipAutopilotPlan</c> (version 5, reads 1 to 5).</summary>
 public sealed record ClipAutopilotPlan
 {
     /// <summary>The contract version a plan is written in.</summary>
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
 
     /// <summary>Words to remove, <c>StartWord...EndWord</c>.</summary>
     public sealed record Cut(int StartWord, int EndWord, ClipAutopilotCutKind Kind, string Reason);
@@ -145,11 +145,55 @@ public sealed record ClipAutopilotPlan
     public sealed record Rewrite(int StartWord, int EndWord, string Text, string Reason);
     /// <summary>The caption choices: a built-in style other than off, a font, a case and words per caption.</summary>
     public sealed record Captions(string StyleId, ClipAutopilotFont Font, ClipAutopilotCaptionCase TextCase, int WordsPerCaption, string Reason = "");
-    /// <summary>The clip's colour look with its reason.</summary>
-    public sealed record Look(ClipLook Id, string Reason = "")
+    /// <summary>The clip's look (ai.md §16.2, looks spec §9.1): a look of shared/looks/clip-looks.json by its ID at <see cref="Amount"/>
+    /// (40–100 from the planner; As filmed is always 100), with the measured Fix when <see cref="Fix"/>, up to two
+    /// <see cref="Alternatives"/> the review offers first, and why. A version 4 plan reads with the whole look, no Fix and no alternatives.
+    /// Twin of the Mac <c>ClipAutopilotPlan.Look</c>.</summary>
+    public sealed record Look(string Id, string Reason = "")
     {
+        /// <summary>One of the four base looks, whose IDs are looks of the library.</summary>
+        public Look(ClipLook id, string reason = "") : this(id.Name(), reason) { }
+
         /// <summary>The footage as filmed.</summary>
         public static readonly Look Original = new(ClipLook.Original);
+        /// <summary>The look's strength, 0–100.</summary>
+        public int Amount { get; init; } = 100;
+        /// <summary>Apply the Fix measured on the clip's frames.</summary>
+        public bool Fix { get; init; }
+        /// <summary>Other looks the review offers first.</summary>
+        public IReadOnlyList<string> Alternatives { get; init; } = [];
+        /// <summary>The look as a clip proposal carries it (<c>clip-proposal</c>, <c>harness-timeline</c>): its ID, amount and reason.</summary>
+        public Look ToProposal() => new(Id, Reason) { Amount = Amount };
+
+        /// <summary>Equal IDs, reasons, amounts and Fix, and the same alternatives in order.</summary>
+        public bool Equals(Look? other) => other is not null && Id == other.Id && Reason == other.Reason && Amount == other.Amount
+            && Fix == other.Fix && Alternatives.SequenceEqual(other.Alternatives);
+
+        /// <inheritdoc/>
+        public override int GetHashCode() => HashCode.Combine(Id, Reason, Amount, Fix, Alternatives.Count);
+
+        /// <summary>The Mac encoder's keys: the whole look with no Fix writes what version 4 wrote.</summary>
+        public JsonObject ToJson()
+        {
+            var json = new JsonObject { ["id"] = Id };
+            if (Amount != 100) json["amount"] = Amount;
+            if (Fix) json["fix"] = true;
+            if (Alternatives.Count > 0) json["alternatives"] = new JsonArray([.. Alternatives.Select(item => (JsonNode)item)]);
+            json["reason"] = Reason;
+            return json;
+        }
+
+        /// <summary>A stored look: an ID, a reason, and from version 5 an amount, a Fix and alternatives.</summary>
+        public static Look FromJson(JsonNode look)
+        {
+            var id = look["id"]!.GetValue<string>();
+            if (id.Length == 0) throw new JsonException("No look id");
+            return new(id, look["reason"] is null ? "" : look["reason"]!.GetValue<string>())
+            {
+                Amount = look["amount"] is { } amount ? amount.GetValue<int>() : 100, Fix = look["fix"]?.GetValue<bool>() ?? false,
+                Alternatives = look["alternatives"] is { } items ? [.. items.AsArray().Select(item => item!.GetValue<string>())] : [],
+            };
+        }
     }
     /// <summary>The whole clip played at <c>Rate</c>, never 1.</summary>
     public sealed record Speed(double Rate, string Reason);
@@ -294,7 +338,7 @@ public sealed record ClipAutopilotPlan
     {
         Parts = Parts, Cuts = Cuts, PauseCuts = PauseCuts, Corrections = Corrections, CaptionStyle = CaptionChoice.StyleId,
         Font = CaptionChoice.Font, TextCase = CaptionChoice.TextCase, WordsPerCaption = CaptionChoice.WordsPerCaption,
-        Look = ClipLookChoice, Speed = SpeedChoice, Hook = Hook, Title = Title, PostText = PostText,
+        Look = ClipLookChoice.ToProposal(), Speed = SpeedChoice, Hook = Hook, Title = Title, PostText = PostText,
         CoverTitle = CoverTitle ?? Frames?.CoverChoice?.Title,
         Music = SavedMusicTrackId is { } id ? new(TrackId: id) : PickedMusic is { } music ? new(Brief: music.Prompt) { Shape = music.TimelineShape } : null,
         Effects = Effects, Rewrites = Rewrites
@@ -316,7 +360,7 @@ public sealed record ClipAutopilotPlan
                 ["styleId"] = CaptionChoice.StyleId, ["font"] = new JsonObject { ["family"] = CaptionChoice.Font.Family, ["weight"] = CaptionChoice.Font.Weight },
                 ["case"] = CaptionChoice.TextCase.Name(), ["wordsPerCaption"] = CaptionChoice.WordsPerCaption, ["reason"] = CaptionChoice.Reason
             },
-            ["look"] = new JsonObject { ["id"] = ClipLookChoice.Id.Name(), ["reason"] = ClipLookChoice.Reason },
+            ["look"] = ClipLookChoice.ToJson(),
             ["music"] = Array(MusicChoices, item => item.ToJson()),
             ["zooms"] = Array(Zooms, item =>
             {
@@ -357,9 +401,9 @@ public sealed record ClipAutopilotPlan
         return json;
     }
 
-    /// <summary>Reads a stored plan of version 1 to 4 and upgrades it: version 1 has no corrections, the original look, no speed,
-    /// no stated reasons, no length and no flags; versions 1 and 2 have no tone; versions 1 to 3 have no frame choices. Any other
-    /// version or shape is refused.</summary>
+    /// <summary>Reads a stored plan of version 1 to 5 and upgrades it: version 1 has no corrections, the original look, no speed,
+    /// no stated reasons, no length and no flags; versions 1 and 2 have no tone; versions 1 to 3 have no frame choices; versions 1 to
+    /// 4 have the whole look, no Fix and no alternatives. Any other version or shape is refused.</summary>
     public static ClipAutopilotPlan FromJson(JsonObject json)
     {
         try
@@ -383,7 +427,7 @@ public sealed record ClipAutopilotPlan
                 Rewrites = Items(json["rewrites"]).Select(item => new Rewrite(I(item["startWord"]), I(item["endWord"]), S(item["text"]), S(item["reason"]))).ToArray(),
                 CaptionChoice = new(S(captions["styleId"]), new(S(captions["font"]!["family"]), I(captions["font"]!["weight"])),
                     ClipAutopilotWire.CaptionCase(S(captions["case"])) ?? throw new JsonException(), I(captions["wordsPerCaption"]), captions["reason"] is null ? "" : S(captions["reason"])),
-                ClipLookChoice = look is null ? Look.Original : new(ClipAutopilotWire.Look(S(look["id"])) ?? throw new JsonException(), look["reason"] is null ? "" : S(look["reason"])),
+                ClipLookChoice = look is null ? Look.Original : Look.FromJson(look),
                 SpeedChoice = json["speed"] is { } speed ? new(speed["rate"]!.GetValue<double>(), S(speed["reason"])) : null,
                 MusicChoices = Items(json["music"]).Select(item => new Music(S(item["title"]), S(item["mood"]), S(item["prompt"]), S(item["reason"]),
                     item["underVoiceDb"]!.GetValue<double>()) { TimelineShape = ClipPlanMusicShape.Read(item) }).ToArray(),

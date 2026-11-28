@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Autopilot;
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
@@ -42,8 +43,8 @@ public sealed class ClipAutopilotMotionTests
 
         var (document, hash) = ClipAutopilotPrompt.ReadShared(Root, ClipAutopilotPrompt.Path);
         document.Remove("directionalZooms");
-        var original = new ClipAutopilotPrompt(document, hash);
-        Assert.Equal(13, original.PromptVersion);
+        var original = new ClipAutopilotPrompt(document, hash, ClipLookLibrary.Load(Root));
+        Assert.Equal(14, original.PromptVersion);
         Assert.Contains("from 1.05 to 1.35", original.System, StringComparison.Ordinal);
         Assert.Null(original.Schema["properties"]!["zooms"]!["items"]!["properties"]!["direction"]);
         var series = service.Request(new(Transcript(), Edits(), new ClipAutopilotMode.Series(null)), ConnectorId.Codex);
@@ -117,7 +118,7 @@ public sealed class ClipAutopilotMotionTests
     {
         var (document, hash) = ClipAutopilotPrompt.ReadShared(Root, ClipAutopilotPrompt.Path);
         document["limits"]!["maxZooms"] = 1;
-        var context = Context(new(0, 29)) with { Prompt = new(document, hash) };
+        var context = Context(new(0, 29)) with { Prompt = new(document, hash, ClipLookLibrary.Load(Root)) };
         var plan = Assert.IsType<ClipAutopilotPlan>(ClipAutopilotValidator.Plan(WithZooms(Zoom(27, 29, "zoomOut"), Zoom(2, 6)), context));
         Assert.Equal(27, Assert.Single(plan.Zooms).Word);
         Assert.Contains(plan.Repairs, repair => repair.Field == "zooms[1]" && repair.Dropped && repair.Detail == "more than 1 zooms");
