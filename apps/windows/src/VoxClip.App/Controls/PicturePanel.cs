@@ -69,6 +69,8 @@ internal sealed class PicturePanel : Grid
     private bool syncing;
     private bool amountDragging;
     private bool compareByPointer;
+    private bool hoverWaitsForMove;
+    private bool refocusing;
     private bool shown;
     private string? block;
     private string? renderedClip;
@@ -255,9 +257,15 @@ internal sealed class PicturePanel : Grid
         {
             var point = args.GetCurrentPoint(tiles).Position;
             if (point.X >= 0 && point.Y >= 0 && point.X < tiles.ActualWidth && point.Y < tiles.ActualHeight) return;
-            hovered = null; hover.Stop(); Model.EndPreview();
+            hovered = null; hover.Stop(); hoverWaitsForMove = false; Model.EndPreview();
         };
         tiles.PointerCanceled += (_, _) => { hovered = null; hover.Stop(); Model.EndPreview(); };
+        tiles.AddHandler(PointerMovedEvent, new PointerEventHandler((_, _) =>
+        {
+            if (!hoverWaitsForMove) return;
+            hoverWaitsForMove = false;
+            if (hovered is not null) { hover.Stop(); hover.Start(); }
+        }), true);
         tiles.LosingFocus += (_, args) => { if (args.NewFocusedElement is not DependencyObject next || !InputState.DescendsFrom(next, tiles)) Model.EndPreview(); };
         tiles.AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
         {
@@ -517,16 +525,40 @@ internal sealed class PicturePanel : Grid
         var key = model.Blocked + "|" + model.Category + "|" + string.Join(",", list.Select(tile => tile.Look.Id + tile.Status)) + "|" + Ui.HighContrast + "|" + model.Playing + "|" + model.HoverReason;
         if (key == tilesKey) { UpdateThumbnails(); _ = RefreshThumbnailsAsync(); return; }
         tilesKey = key;
-        // The same looks keep their items, so keyboard focus stays on the tile just applied.
-        if (!tiles.Items.OfType<GridViewItem>().Select(item => item.Tag as string).SequenceEqual(list.Select(tile => tile.Look.Id)))
-        {
-            tiles.Items.Clear();
-            foreach (var tile in list) tiles.Items.Add(NewTile(tile.Look.Id, model));
-        }
+        if (!tiles.Items.OfType<GridViewItem>().Select(item => item.Tag as string).SequenceEqual(list.Select(tile => tile.Look.Id))) Reorder(list, model);
         for (var index = 0; index < list.Count; index++) if (tiles.Items[index] is GridViewItem item) Fill(item, list[index], model);
         SizeTiles();
         UpdateThumbnails();
         _ = RefreshThumbnailsAsync();
+    }
+
+    /// <summary>Puts the chip's tiles in order, keeping each look's item. Choosing a starter in Suggested moves it up after Claude's looks
+    /// (looks spec §3.2), so the tile that had focus gets it back (Enter on Warm leaves focus on Warm), and a pointer resting on the
+    /// grid, now over another look, previews it only once it moves.</summary>
+    private void Reorder(IReadOnlyList<PictureTile> list, PicturePanelModel model)
+    {
+        var focused = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as GridViewItem;
+        var focusState = focused?.FocusState ?? FocusState.Unfocused;
+        var kept = tiles.Items.OfType<GridViewItem>().Where(item => item.Tag is string).ToDictionary(item => (string)item.Tag, StringComparer.Ordinal);
+        var focusedId = focused is not null && kept.ContainsValue(focused) ? focused.Tag as string : null;
+        tiles.Items.Clear();
+        foreach (var tile in list) tiles.Items.Add(kept.GetValueOrDefault(tile.Look.Id) ?? NewTile(tile.Look.Id, model));
+        if (hovered is not null) { hovered = null; hover.Stop(); hoverWaitsForMove = true; }
+        if (focusedId is null || !kept.TryGetValue(focusedId, out var again) || !tiles.Items.Contains(again)) return;
+        Refocus(again, focusState == FocusState.Unfocused ? FocusState.Programmatic : focusState);
+    }
+
+    /// <summary>Focus back on a tile after a reorder, without previewing the look it already shows.</summary>
+    private void Refocus(GridViewItem item, FocusState state)
+    {
+        bool Focus()
+        {
+            refocusing = true;
+            try { return item.Focus(state); }
+            finally { refocusing = false; }
+        }
+        tiles.UpdateLayout();
+        if (!Focus()) DispatcherQueue.TryEnqueue(() => { if (tiles.Items.Contains(item)) Focus(); });
     }
 
     private GridViewItem NewTile(string id, PicturePanelModel model)
@@ -536,10 +568,11 @@ internal sealed class PicturePanel : Grid
         item.PointerEntered += (_, args) =>
         {
             if (args.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse) return;
-            hovered = id; hover.Stop(); hover.Start();
+            hovered = id; hover.Stop();
+            if (!hoverWaitsForMove) hover.Start();
         };
         // Arrows move focus and preview on the paused viewer; Enter or Space is the grid's item click.
-        item.GotFocus += (_, _) => { if (item.FocusState == FocusState.Keyboard) model.PreviewLook(id); };
+        item.GotFocus += (_, _) => { if (item.FocusState == FocusState.Keyboard && !refocusing) model.PreviewLook(id); };
         return item;
     }
 

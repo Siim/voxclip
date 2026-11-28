@@ -422,6 +422,20 @@ public sealed class PicturePanelTests
         Assert.True(picture.BeginCompare());
     }
 
+    /// <summary>Looks spec §3.2: the current look follows As filmed and Claude's looks in Suggested, so choosing a later starter moves its
+    /// tile up. The panel keeps each look's item and gives the tile that had focus its focus back.</summary>
+    [Fact]
+    public void ChoosingAStarterMovesItsTileUpInSuggested()
+    {
+        var (_, picture, _) = Open();
+        Assert.Equal(3, picture.Tiles.ToList().FindIndex(tile => tile.Look.Id == "warm"));
+        Assert.Equal(PictureApplyOutcome.Applied, picture.Apply("warm"));
+        Assert.Equal(["original", "warm", "naturalBoost", "softSkin", "goldenHour", "warmPrint", "softBW", "cleanPop"], picture.Tiles.Select(tile => tile.Look.Id));
+        var panel = File.ReadAllText(Path.Combine(Path.GetDirectoryName(SharedResources.ResolveRoot())!, "apps", "windows", "src", "VoxClip.App", "Controls", "PicturePanel.cs"));
+        Assert.Contains("kept.GetValueOrDefault(tile.Look.Id) ?? NewTile(", panel);
+        Assert.Contains("Refocus(again,", panel);
+    }
+
     [Fact]
     public void ClaudesPickStaysFindableAfterAHandChange()
     {
