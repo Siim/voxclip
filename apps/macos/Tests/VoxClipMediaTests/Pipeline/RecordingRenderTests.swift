@@ -87,6 +87,29 @@ extension HeavyMediaTests {
         }
     }
 
+    /// "Don't match level" changes a recording's gain, not the timeline: the preview rebuilds its mix instead of
+    /// keeping the old one under a caption-only update.
+    @MainActor @Test func recordingGainChangeRebuildsThePreviewMix() async throws {
+        var project = try await Self.recordingStoryProject()
+        let render = try Self.recordingRender(project)
+        let preview = PreviewPlayerController()
+        defer { preview.close() }
+        try await preview.load(render)
+        let first = try #require(preview.player.currentItem)
+        let gain = try #require(project.media.spokenSources?.first?.gainDb)
+        project.media.spokenSources?[0].gainDb = gain - 6
+        let quieter = try Self.recordingRender(project)
+        #expect(quieter.timeline == render.timeline && quieter.recordings != render.recordings)
+        try await preview.update(quieter)
+        let item = try #require(preview.player.currentItem as? LeasedPlayerItem)
+        #expect(item !== first)
+        let count = quieter.timeline.outputSamples
+        let previewPCM = try await Self.interleavedPCM(item.renderGraph, count: count)
+        let exportPCM = try await Self.interleavedPCM(try await CompositionBuilder().build(quieter), count: count)
+        let matches = previewPCM == exportPCM
+        #expect(matches, "the preview plays the old gain")
+    }
+
     @MainActor @Test func recordingSelfCheckFindsWrongPictureAndQuietSpeech() async throws {
         var project = try await Self.recordingStoryProject()
         project.edits.corrections["r2.w1"] = "Companion"

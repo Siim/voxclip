@@ -365,6 +365,55 @@ extension HeavyMediaTests {
     #expect(visible.first?.wrongPictureLabel == seam.seam.from)
 }
 
+/// Pan and zoom (Make it postable adds zooms) is part of the exported picture, so the check zooms the candidate
+/// frames the same way: a take shot like a closer view of the right one is not a wrong picture, and a wrong
+/// recording under a zoom is still found.
+@Test func recordingCheckZoomsCandidatesLikeTheExport() async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let project = try await Self.recordingStoryProject()
+    let primary = URL(fileURLWithPath: project.media.source.absolutePath), primaryKey = project.media.source.contentKey
+    let output = OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 1_000_000)
+    let plan = try RenderCallerInputs.editPlan(project: project, clipID: "story")
+    let render = try RenderCallerInputs.prepare(RenderRequest(sourceURL: primary, plan: plan, output: output),
+        project: project, clipID: "story", dataRoot: directory)
+    let edit = try ExportCheckExpectation.edit(render: render, state: nil)
+    let spans = try CompositionVideoSpan.build(render)
+    let zoom = [MotionKeyframe(progress: 0, scale: MotionCue.maximumScale), MotionKeyframe(progress: 1, scale: MotionCue.maximumScale)]
+    func zoomed(into seam: ExportCheckExpectation.RecordingBoundary) throws -> (RenderRequest, ExportCheckExpectation.Edit) {
+        let span = try #require(spans.first { $0.recordingKey == seam.toKey && $0.output.start.seconds == seam.seam.at })
+        var request = render, single = edit
+        request.motionClipID = "story"
+        request.motionCues = [MotionCue(id: "zoom", clipID: "story", sourceStart: span.source.start.seconds,
+                                        sourceEnd: span.source.end.seconds, keyframes: zoom)]
+        single.recordingBoundaries = [seam]
+        return (request, single)
+    }
+    let exporter = AVExporter(cleanupRegistry: directory.appendingPathComponent("Scratch"))
+    // The closer take: the primary recording zoomed the same way throughout.
+    let closer = directory.appendingPathComponent("closer.mp4")
+    var take = RenderRequest(sourceURL: primary, plan: EditPlan(sampleRate: 48_000, totalSamples: 288_000,
+        kept: [MediaInterval(startSample: 0, endSample: 288_000)]), output: output)
+    take.motionClipID = "take"
+    take.motionCues = [MotionCue(id: "closer", clipID: "take", sourceStart: 0, sourceEnd: 6, keyframes: zoom)]
+    _ = try await exporter.export(.init(render: take, outputURL: closer, loudness: .off)) { _ in }
+
+    let intoPrimary = try #require(edit.recordingBoundaries.first { $0.toKey == primaryKey })
+    let (zoomedStory, single) = try zoomed(into: intoPrimary)
+    var story = zoomedStory
+    let export = directory.appendingPathComponent("zoomed-story.mp4")
+    _ = try await exporter.export(.init(render: story, outputURL: export, loudness: .off)) { _ in }
+    let other = try #require(story.recordings.firstIndex { $0.key != primaryKey })
+    story.recordings[other] = .init(region: story.recordings[other].region, url: closer)
+    let similar = try await RecordingExportCheck.measure(export: export, render: story, edit: single)
+    #expect(similar.count == 1 && similar.first?.wrongPictureLabel == nil)
+
+    let intoOther = try #require(edit.recordingBoundaries.first { $0.toKey != primaryKey })
+    let (wrong, wrongEdit) = try zoomed(into: intoOther)
+    let found = try await RecordingExportCheck.measure(export: closer, render: wrong, edit: wrongEdit)
+    #expect(found.first?.wrongPictureLabel == intoOther.seam.from)
+}
+
 @Test func cliProtectsAnUnusedSpokenRecordingFromExport() async throws {
     let directory = try cliDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

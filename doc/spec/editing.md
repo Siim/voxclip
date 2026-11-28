@@ -655,7 +655,7 @@ The Windows story render test compares framing at the opening and each part seam
 
 On Mac, preview and export use the same plan and resolve each kept span to its recording and local sample. Each recording keeps its own picture orientation and framing. The filmstrip, waveform and frame analysis read each recording's cache; cover choices and reframe observations stay on the project clock. An unresolved or changed recording stops the render: “0010 is missing. Locate it to use its words.”
 
-The Mac measures integrated loudness over spoken words when adding a recording. It stores the difference from the primary, rounded to 0.1 dB and limited to ±12 dB. The composition decodes each kept audio span to a common 48 kHz stereo grid before applying the gain, music and ducking; the final social loudness pass does not change. Final Cut Pro XML references a separate asset per used recording and starts each span at that recording's local time. The export check compares each recording seam's picture and warns when the adjacent speech differs by more than 3 LU.
+The Mac measures integrated loudness over spoken words when adding a recording. It stores the difference from the primary, rounded to 0.1 dB and limited to ±12 dB. The composition decodes each kept audio span to a common 48 kHz stereo grid before applying the gain, music and ducking; the final social loudness pass does not change. Final Cut Pro XML references a separate asset per used recording and starts each span at that recording's local time. The export check compares each recording seam's picture with every recording's frame under the same crop and pan and zoom, and warns when the adjacent speech differs by more than 3 LU.
 
 ### 7.1 buildSegments
 

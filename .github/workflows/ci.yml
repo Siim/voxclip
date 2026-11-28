@@ -226,7 +226,8 @@ jobs:
       # Runs after a Swift test failure too, with the Release CLI built above.
       - name: Canonical macOS CLI E2E (Release)
         if: ${{ !cancelled() && steps.release_cli.outcome == 'success' }}
-        timeout-minutes: 25
+        # Most of this step is compiling every test target in Release before the E2E filter runs (about 22 minutes on hosted runners).
+        timeout-minutes: 40
         shell: bash
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared

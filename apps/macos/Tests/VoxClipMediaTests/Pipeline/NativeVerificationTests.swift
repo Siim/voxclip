@@ -271,6 +271,37 @@ private actor FailingCaptionRasterizer: CaptionRasterizer {
     #expect(abs(preview.editedTime - 0.75) < 0.001)
 }
 
+/// A one-recording story's face-cropped parts (ADR-R48) keep their crops when a caption edit reuses the
+/// composition, and a crop change on its own reaches the preview without a timeline change.
+@Test @MainActor func previewCaptionUpdatesKeepPartCrops() async throws {
+    let source = try await NativeMediaFixtures.shared.file()
+    // Two parts: source 0–0.9 s (face-cropped) plays at 0–0.9 s, source 1.1–2 s at 0.9–1.8 s.
+    let plan = EditPlan(sampleRate: 48000, totalSamples: 96000,
+        kept: [MediaInterval(startSample: 0, endSample: 43200), MediaInterval(startSample: 52800, endSample: 96000)])
+    var request = RenderRequest(sourceURL: source, plan: plan, output: OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 2_000_000))
+    request.partReframes = [.init(source: .init(start: 0, end: 0.9), reframe: .face(x: 0.2, y: 0.5))]
+    let preview = PreviewPlayerController()
+    defer { preview.close() }
+    try await preview.load(request)
+    let asset = try #require(preview.player.currentItem?.asset)
+    func partCrop(at seconds: Double) -> ReframeSettings? {
+        let time = CMTime(seconds: seconds, preferredTimescale: 600)
+        let instruction = preview.player.currentItem?.videoComposition?.instructions.first { $0.timeRange.containsTime(time) }
+        return (instruction as? RenderInstruction)?.partReframe
+    }
+    #expect(partCrop(at: 0.5) == .face(x: 0.2, y: 0.5))
+    let word = CaptionWord(id: "word", text: "Tere", start: 0.25, end: 1.5)
+    request.captions = CaptionTrack(pages: [CaptionPage(index: 0, words: [word], start: 0.25, end: 1.5, fontPx: 20,
+        block: CaptionRect(x: 0, y: 0, width: 100, height: 20), visual: CaptionRect(x: 0, y: 0, width: 100, height: 20))])
+    try await preview.update(request)
+    #expect(preview.player.currentItem?.asset === asset)
+    #expect(partCrop(at: 0.5) == .face(x: 0.2, y: 0.5), "a caption edit drops the part's face crop")
+    #expect(partCrop(at: 1.5) == nil)
+    request.partReframes = [.init(source: .init(start: 0, end: 0.9), reframe: .face(x: 0.7, y: 0.5))]
+    try await preview.update(request)
+    #expect(partCrop(at: 0.5) == .face(x: 0.7, y: 0.5), "a crop change never reaches the preview")
+}
+
 @Test(.timeLimit(.minutes(1))) func srtSidecarUsesEditedPageTimesAndUTF8() async throws {
     let source = try await NativeMediaFixtures.shared.file()
     let directory = try outputDirectory()
