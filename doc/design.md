@@ -503,7 +503,7 @@ At window widths below 1100 the capsule is icon-only: the scissors with the coun
   - `AppBarSeparator`.
   - **Find clips** (Ctrl+Shift+K).
   - **Viewer**, an `AppBarToggleButton` (Ctrl+Shift+I). Its checked state is restyled to the subtle fill, so it is not a second accent block.
-  - **⋯** with: Rewrite {scope} (Ctrl+R; "Rewrite selection", "Rewrite clip {n}" or "Rewrite full take", with "…" when the send asks first; §6.3), Make clip (Ctrl+K), Show cut words (Ctrl+Shift+H), Show pauses, Find (Ctrl+F), Undo (Ctrl+Z), Redo (Ctrl+Y), Save project as…, Show project file, Transcribe again…, Keyboard shortcuts (F1).
+  - **⋯** with: Fix cut edges (always listed; disabled with its reason as help text: "All cut edges are in the quiet", "Waveform still loading" or "Reconnect {recording} to fix its cut edges"; §6.8, editing.md §5.10), Rewrite {scope} (Ctrl+R; "Rewrite selection", "Rewrite clip {n}" or "Rewrite full take", with "…" when the send asks first; §6.3), Make clip (Ctrl+K), Show cut words (Ctrl+Shift+H), Show pauses, Find (Ctrl+F), Undo (Ctrl+Z), Redo (Ctrl+Y), Save project as…, Show project file, Transcribe again…, Keyboard shortcuts (F1).
 - **Export** is a separate `AccentButtonStyle` button outside the `CommandBar`: 40 high, padding 0,16, radius 6. It reads "Export video…" or "Export clip…" (Ctrl+E). Its accessible name adds ", contains AI-modified speech" when the scope does. It is disabled with the tooltip "Keep at least one word before exporting." when nothing can be exported, and with "Keep this clip to export it." when a suggestion is selected.
 
 ### 3.6 Right column
@@ -2293,6 +2293,8 @@ The user points at part of the video and says what they want in plain words ("bl
 - With a cut word selected whose edge sits on a quiet point: "Cut edge: quiet point · **Use word edge**" (one undo step, "Use word edge"). Its reverse reads "Cut edge: word edge · **Use quiet point**" ("Use quiet point"); when it can't run it stays, disabled, with the reason beside it: "No quiet point near this edge", "Waveform still loading", "Reconnect {recording} to fix its cut edges", or "Kept beside a voice patch" when paid voice work sits beside the edge.
 - Otherwise, while older cuts could move: "{N} cuts can land in the quiet · **Fix cut edges**" ("1 cut can…"). One click, no sheet, one undo step "Fix cut edges"; the row then reads "Moved {N} cut edges into the quiet · {K} kept beside voice patches" (the second part only when K > 0) until the next edit.
 - In a narrow bar the drag hint and a reason give way first. A shallow timeline's **Edit** menu lists the same actions. Edit ▸ **Fix Cut Edges** is always in the menu bar.
+
+**Cut edges on Windows** (the same seat, rows, copy, reasons and undo names as on Mac). A new cut lands in the quiet in its own undo step, whichever command made it. The timeline toolbar shows the one cut edge row after the selection's length, behind a divider, in its secondary text with a borderless action: the selected cut's "Cut edge: quiet point · **Use word edge**" or "Cut edge: word edge · **Use quiet point**", the result line of Fix cut edges, or "{N} cuts can land in the quiet · **Fix cut edges**". A disabled action keeps its reason beside it; below 1100 wide the reason gives way to the row's tooltip. The command row's **⋯** always lists **Fix cut edges** (§3.5).
 
 **What Claude can do** (the toolbox, AI spec §18.2):
 
