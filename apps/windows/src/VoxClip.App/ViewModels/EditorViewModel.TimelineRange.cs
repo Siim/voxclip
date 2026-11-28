@@ -44,6 +44,7 @@ public sealed partial class EditorViewModel
     internal const string TimelineCutRangeReason = "Exact cuts are coming. Turn Snapping on to cut words.";
     internal const string TimelineMakeClipHelp = "Clip edges follow words";
     internal const string TimelineAlreadyCutReason = "Everything selected is already cut.";
+    internal const string TimelinePlayRangeCutReason = "This range is all cut, so nothing plays.";
     private const string TimelineNotReady = "The timeline is not ready to edit.";
 
     private TimelineExactRange? exactRange;
@@ -318,8 +319,24 @@ public sealed partial class EditorViewModel
         }
     }
 
-    /// <summary>Why Play range can't run, or null.</summary>
-    internal string? TimelinePlayRangeReason => TimelineActionRange is null ? TimelineRangeHint : null;
+    /// <summary>Why Play range can't run, or null: nothing is selected, or nothing of the range plays in the scope's edit (all of it is
+    /// cut).</summary>
+    internal string? TimelinePlayRangeReason => TimelineActionRange is not { } range ? TimelineRangeHint
+        : TimelineRangePlays(range) ? null : TimelinePlayRangeCutReason;
+
+    /// <summary>Whether any of <paramref name="range"/> (project clock) plays in the plan the preview plays the scope with. The edit bar
+    /// asks on every redraw; the plan only changes with the edit state.</summary>
+    private bool TimelineRangePlays(TimeRange range)
+    {
+        if (state is not { } current) return false;
+        if (playRangeCache is { } cached && ReferenceEquals(cached.State, current) && cached.Range == range) return cached.Plays;
+        bool plays;
+        try { plays = TimelineRangePlayback(new RenderTimeline.Legacy(ExportRenderInput.Plan(ExportRenderInput.Media(project), current)), range) is not null; }
+        catch (VoxClipException) { plays = true; }
+        playRangeCache = (current, range, plays);
+        return plays;
+    }
+    private (EditState State, TimeRange Range, bool Plays)? playRangeCache;
 
     /// <summary>Where Play range seeks and stops on the preview's render <paramref name="timeline"/>, both on its edited clock: In
     /// mapped as a start and Out as an end, so a stop at a story part's end is that part's end even when the next part plays earlier
@@ -334,7 +351,7 @@ public sealed partial class EditorViewModel
     /// <summary>Play range: from In, stopping at Out.</summary>
     internal bool PlayTimelineRange()
     {
-        if (TimelineActionRange is not { } range) return false;
+        if (TimelinePlayRangeReason is not null || TimelineActionRange is not { } range) return false;
         EndCorrection();
         TimelineRangePlayRequested?.Invoke(this, range);
         return true;

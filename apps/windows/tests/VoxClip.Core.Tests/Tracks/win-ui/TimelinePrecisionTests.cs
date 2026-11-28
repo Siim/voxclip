@@ -363,6 +363,28 @@ public sealed class TimelinePrecisionTests
     }
 
     [Fact]
+    public void PlayRangeIsDisabledWithItsReasonWhenNothingInTheRangePlays()
+    {
+        var model = Model();
+        var played = 0;
+        model.TimelineRangePlayRequested += (_, _) => played++;
+        // Inside cut word 14, and words 14–15 selected: both cut, so nothing plays.
+        model.SetExactRange(14.1, 14.7, 14.1);
+        Assert.Equal(EditorViewModel.TimelinePlayRangeCutReason, model.TimelinePlayRangeReason);
+        Assert.False(model.PlayTimelineRange());
+        model.Select(model.Index("t14"));
+        model.Select(model.Index("t15"), true);
+        Assert.Equal(EditorViewModel.TimelinePlayRangeCutReason, model.TimelinePlayRangeReason);
+        Assert.False(model.PlayTimelineRange());
+        Assert.Equal(0, played);
+        // A range that reaches a kept word plays.
+        model.SetExactRange(14.1, 16.2, 14.1);
+        Assert.Null(model.TimelinePlayRangeReason);
+        Assert.True(model.PlayTimelineRange());
+        Assert.Equal(1, played);
+    }
+
+    [Fact]
     public void ADisabledCutSelectionSaysWhy()
     {
         var model = Model();
