@@ -233,11 +233,11 @@ public enum AgentTurns {
 
     private static func diff(_ before: Project, _ after: Project) throws -> [AgentPatch] {
         guard before.id == after.id else { throw Refusal.wrongProject }
-        let old = try ProjectValidation.map(document(before)), new = try ProjectValidation.map(document(after))
+        let old = try ProjectValidation.map(document(before), at: "/"), new = try ProjectValidation.map(document(after), at: "/")
         var patches: [AgentPatch] = []
         for root in AgentPatchPath.roots.sorted() {
             if root == "voiceLab" {
-                let older = try ProjectValidation.map(old[root]), newer = try ProjectValidation.map(new[root])
+                let older = try ProjectValidation.map(old[root], at: root), newer = try ProjectValidation.map(new[root], at: root)
                 for key in AgentPatchPath.voiceUses.sorted() { AgentPatchPath.diff(older[key], newer[key], path: "/\(root)/\(key)", into: &patches) }
             } else {
                 AgentPatchPath.diff(old[root], new[root], path: "/\(root)", into: &patches)
@@ -251,7 +251,7 @@ public enum AgentTurns {
         var project = project.schemaVersion < 4 ? try ContextDemoProject.upgradeToV4(project) : project
         project.agentThread = nil
         let data = try ProjectJSON.encoder().encode(project)
-        var wire = try ProjectValidation.map(ProjectJSON.decoder().decode(JSONValue.self, from: data))
+        var wire = try ProjectValidation.map(ProjectJSON.decoder().decode(JSONValue.self, from: data), at: "/")
         for root in AgentPatchPath.optionalCollections where wire[root] == nil { wire[root] = .array([]) }
         return .object(wire)
     }

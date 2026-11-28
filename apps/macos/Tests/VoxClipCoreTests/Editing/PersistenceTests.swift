@@ -17,6 +17,46 @@ private actor SettingsDebounceClock {
 }
 
 @Suite(.offlineFixtures) struct EditingPersistence {
+    @Test func cutEdgesOpenTheV8FrameWithoutAThread() throws {
+        var project = try project()
+        #expect(project.schemaVersion == 1 && project.edits.cutWordIds.contains("w2"))
+        project.edits.cutEdges = ["w2": 0.66]
+        let v8 = try ProjectJSON.encode(project)
+        let reloaded = try ProjectJSON.decode(v8)
+        #expect(reloaded.schemaVersion == 8 && reloaded.agentThread == nil && reloaded.edits.cutEdges == ["w2": 0.66])
+        #expect(try ProjectJSON.encode(reloaded) == v8)
+        #expect(throws: VoxClipError.projectTooNew) {
+            try ProjectMigrations.checkVersion(ProjectJSON.decoder().decode(JSONValue.self, from: v8), maximumSupportedVersion: 7)
+        }
+        var restored = reloaded
+        restored.edits.cutEdges = [:]
+        let left = try ProjectJSON.encode(restored)
+        #expect(try ProjectJSON.decode(left).schemaVersion == TimelineEditFields.version)
+        #expect(try #require(JSONSerialization.jsonObject(with: left) as? [String: Any])["agentThread"] == nil)
+        var document = try #require(JSONSerialization.jsonObject(with: v8) as? [String: Any])
+        document["schemaVersion"] = 6
+        #expect(throws: (any Error).self) { try ProjectJSON.decode(JSONSerialization.data(withJSONObject: document)) }
+    }
+
+    @Test func aSpokenProjectLeavesV8AtV7AndKeepsAThreadAtV8() throws {
+        var spoken = try ProjectJSON.decode(FixtureLoader.data("fixtures/recordings/two-recordings.voxclip"))
+        let v7 = try ProjectJSON.encode(spoken)
+        var words = try #require(spoken.transcript?.words)
+        words[1].start = 0.5
+        spoken.transcript?.words = words
+        spoken.edits.cutWordIds = ["w2", "r2.w2"]
+        spoken.edits.cutEdges = ["w2": 0.48]
+        let cut = try ProjectJSON.decode(ProjectJSON.encode(spoken))
+        #expect(cut.schemaVersion == 8 && cut.agentThread == nil)
+        var restored = cut
+        restored.edits.cutEdges = [:]
+        #expect(try ProjectJSON.decode(ProjectJSON.encode(restored)).schemaVersion == 7)
+        restored.agentThread = AgentThread(id: "th-kept")
+        let threaded = try ProjectJSON.decode(ProjectJSON.encode(restored))
+        #expect(threaded.schemaVersion == 8)
+        #expect(try ProjectJSON.decode(v7).schemaVersion == 7)
+    }
+
     @Test func agentThreadPromotesOnlyOnUse() throws {
         let original = try ContextDemoProject.upgradeToV4(project())
         let legacy = try ProjectJSON.encode(original)

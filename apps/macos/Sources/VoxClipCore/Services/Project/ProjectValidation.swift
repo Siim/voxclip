@@ -38,8 +38,8 @@ enum ProjectValidation {
         let isV6 = isV8 || hasSpokenSources || wireVersion == .number(6)
         let isV5 = isV6 || wireVersion == .number(5)
         let isV4 = isV5 || wireVersion == .number(4)
-        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab" + (isV8 ? " agentThread" : ""), optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""), at: "/")
-        if isV8 { try AgentThreadWire.validate(root["agentThread"]) }
+        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : "") + (isV8 ? " agentThread" : ""), at: "/")
+        if let thread = root["agentThread"] { try AgentThreadWire.validate(thread) }
         if let clipStyle = root["clipStyle"] {
             let style = try object(clipStyle, required: "preset captions music maxLengthSec shapes rewording captionPicks", optional: "tone", at: "clipStyle")
             for (key, pick) in try map(style["captionPicks"], at: "clipStyle/captionPicks") {
@@ -100,7 +100,11 @@ enum ProjectValidation {
                 try transcriptWire(fields["transcript"], at: "\(path)/transcript")
             }
         }
-        let edits = try object(root["edits"], required: "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId", at: "edits")
+        let edits = try object(root["edits"], required: "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId", optional: isV8 ? "cutEdges" : "", at: "edits")
+        for (id, seconds) in try edits["cutEdges"].map({ try map($0, at: "edits/cutEdges") }) ?? [:] {
+            guard case .number(let value) = seconds, value.isFinite, value >= 0 else { try fail("expected seconds", at: "edits/cutEdges") }
+            try text(id, pattern: idPattern, at: "edits/cutEdges")
+        }
         for (index, clip) in try array(edits["clips"], at: "edits/clips").enumerated() {
             let path = "edits/clips/\(index)"
             if !isV5, case .object(let fields) = clip, fields["parts"] != nil || fields["kind"] != nil {

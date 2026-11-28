@@ -429,9 +429,12 @@ public struct ProjectEdits: Codable, Sendable, Equatable {
     public var clips: [ClipRange]
     /// activeClipId; doc/architecture.md §3; shared/schemas/project.schema.json
     public var activeClipId: String?
+    /// Cut edges seated in the quiet (editing §5.10): the later word's clock id at a kept/cut boundary to that recording's
+    /// local seconds, sample-rounded. Schema v8 only; omitted when empty.
+    public var cutEdges: [String: Double]
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(pauseThresholdSeconds: Double = 1.0, pauseKeepSeconds: Double = 0.15, cutWordIds: [String] = [], cutPauseIds: [String] = [], corrections: [String: String] = [:], clips: [ClipRange] = [], activeClipId: String? = nil) {
+    public init(pauseThresholdSeconds: Double = 1.0, pauseKeepSeconds: Double = 0.15, cutWordIds: [String] = [], cutPauseIds: [String] = [], corrections: [String: String] = [:], clips: [ClipRange] = [], activeClipId: String? = nil, cutEdges: [String: Double] = [:]) {
         self.pauseThresholdSeconds = pauseThresholdSeconds
         self.pauseKeepSeconds = pauseKeepSeconds
         self.cutWordIds = cutWordIds
@@ -439,6 +442,7 @@ public struct ProjectEdits: Codable, Sendable, Equatable {
         self.corrections = corrections
         self.clips = clips
         self.activeClipId = activeClipId
+        self.cutEdges = cutEdges
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -449,6 +453,7 @@ public struct ProjectEdits: Codable, Sendable, Equatable {
         case corrections
         case clips
         case activeClipId
+        case cutEdges
     }
 
     public init(from decoder: any Decoder) throws {
@@ -460,6 +465,7 @@ public struct ProjectEdits: Codable, Sendable, Equatable {
         self.corrections = try values.decode([String: String].self, forKey: .corrections)
         self.clips = try values.decode([ClipRange].self, forKey: .clips)
         self.activeClipId = try values.decode(Optional<String>.self, forKey: .activeClipId)
+        self.cutEdges = try values.decodeIfPresent([String: Double].self, forKey: .cutEdges) ?? [:]
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -471,6 +477,7 @@ public struct ProjectEdits: Codable, Sendable, Equatable {
         try values.encode(self.corrections, forKey: .corrections)
         try values.encode(self.clips, forKey: .clips)
         try values.encode(self.activeClipId, forKey: .activeClipId)
+        if !self.cutEdges.isEmpty { try values.encode(self.cutEdges, forKey: .cutEdges) }
     }
 
 }
