@@ -13,13 +13,18 @@ public struct FrameObservation: Codable, Sendable, Equatable {
     public var textRects: [ClipEffect.Rect]
     /// Screen-like rectangles with dense text, and dense text clusters: the basis of blur suggestions.
     public var screens: [FrameScreen]
+    /// The frame's light (looks spec §9.3, analysis version 3), measured on a small picture of it; nil when the analyzer had
+    /// no thresholds to measure with.
+    public var light: FrameLight?
 
-    public init(time: Double, faceCount: Int = 0, face: FrameFace? = nil, textRects: [ClipEffect.Rect] = [], screens: [FrameScreen] = []) {
+    public init(time: Double, faceCount: Int = 0, face: FrameFace? = nil, textRects: [ClipEffect.Rect] = [], screens: [FrameScreen] = [],
+                light: FrameLight? = nil) {
         self.time = time
         self.faceCount = faceCount
         self.face = face
         self.textRects = textRects
         self.screens = screens
+        self.light = light
     }
 
     /// A clear look at the speaker: a face with open eyes, good capture quality and, when Vision measured it, facing the
@@ -231,8 +236,9 @@ public enum FrameScreens {
 /// The analysis of one clip: its sentence frames, its opening scan and how long each took.
 public struct FrameAnalysis: Codable, Sendable, Equatable {
     /// 2: faces from `VNDetectFaceRectanglesRequest` revision 3 with continuous yaw and pitch (2026-11-08); a version-1
-    /// cache holds Vision's coarse revision-2 pose and is never read.
-    public static let version = 2
+    /// cache holds Vision's coarse revision-2 pose and is never read. 3: each frame's light (looks spec §9.3, 2026-11-28);
+    /// a version-2 cache has none and is never read.
+    public static let version = 3
     public var version: Int = FrameAnalysis.version
     public var contentKey: String
     /// One frame per sampled sentence, in time order (`FrameSampling.sentenceSamples`).

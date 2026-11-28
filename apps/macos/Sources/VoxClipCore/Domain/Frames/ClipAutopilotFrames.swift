@@ -50,10 +50,11 @@ public struct ClipAutopilotFrames: Sendable, Equatable {
     }
 
     /// The frames of `sheet` for a clip that plays `clipStart...clipEnd` (source seconds), with the images when `images`.
-    /// Facing is judged against `pitchBaseline`, the recording's typical pitch (`FrameFace.pitchBaseline`).
-    public init(sheet: FrameSheet, clipStart: Double, clipEnd: Double, images: Bool, pitchBaseline: Double?) {
+    /// Facing is judged against `pitchBaseline`, the recording's typical pitch (`FrameFace.pitchBaseline`); each measured
+    /// frame's light line uses `light`'s thresholds (looks spec §9.3).
+    public init(sheet: FrameSheet, clipStart: Double, clipEnd: Double, images: Bool, pitchBaseline: Double?, light: ClipColorMeasure.Light? = nil) {
         let observations = sheet.frames.map(\.observation)
-        self.init(summary: sheet.summary(pitchBaseline: pitchBaseline), images: images ? sheet.images : [],
+        self.init(summary: sheet.summary(pitchBaseline: pitchBaseline, light: light), images: images ? sheet.images : [],
                   blur: ClipFrameCandidates.blur(observations, clipStart: clipStart, clipEnd: clipEnd),
                   cover: ClipFrameCandidates.cover(sheet.frames, pitchBaseline: pitchBaseline), frames: sheet.frames,
                   estimatedImageTokens: images ? sheet.estimatedImageTokens : 0)

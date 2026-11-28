@@ -59,7 +59,9 @@ struct AnalyzeFrames: AsyncParsableCommand {
             }
             let contentKey = project.media.source.contentKey
             let cache = noCache ? nil : FrameAnalysisCache(locations: DataLocations())
-            let analyzer = FrameAnalyzer(cache: cache)
+            // Each sentence frame's light, as the app measures it, so a cache the CLI writes serves the app too.
+            let light = (try? SharedResources.locate()).flatMap { try? ClipLookLibrary.load(shared: $0) }?.measure
+            let analyzer = FrameAnalyzer(cache: cache, light: light)
             var extra: [String: JSONValue] = [:]
             var passBaseline: Double?
             if videoPass {

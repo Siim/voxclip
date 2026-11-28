@@ -19,11 +19,12 @@ public struct FrameSheet: Sendable, Equatable {
     /// The images as the request carries them.
     public var images: [LLMImage] { frames.map(\.image) }
 
-    /// The summary block: a header line, then one line per frame, facing judged against `pitchBaseline`.
-    public func summary(pitchBaseline: Double?) -> String {
+    /// The summary block: a header line, then one line per frame, facing judged against `pitchBaseline`, and each measured
+    /// frame's light line from `light`'s thresholds (looks spec §9.3) when given.
+    public func summary(pitchBaseline: Double?, light: ClipColorMeasure.Light? = nil) -> String {
         guard !frames.isEmpty else { return "" }
         let header = "Frames measured on this computer (one per sentence; rects are x,y,w,h of the picture, top-left origin):"
-        return ([header] + frames.map { $0.summaryLine(pitchBaseline: pitchBaseline) }).joined(separator: "\n")
+        return ([header] + frames.map { $0.summaryLine(pitchBaseline: pitchBaseline, light: light) }).joined(separator: "\n")
     }
 
     /// The JPEG bytes the images add to a request (before base64).
@@ -31,8 +32,8 @@ public struct FrameSheet: Sendable, Equatable {
 
     /// The estimated input tokens of the images and of the summary (`AITokenPolicy`'s bytes per token).
     public var estimatedImageTokens: Int { frames.map { Self.imageTokens(width: $0.image.width, height: $0.image.height) }.reduce(0, +) }
-    public func estimatedSummaryTokens(pitchBaseline: Double?) -> Int {
-        Int(ceil(Double(summary(pitchBaseline: pitchBaseline).utf8.count) / 2.2))
+    public func estimatedSummaryTokens(pitchBaseline: Double?, light: ClipColorMeasure.Light? = nil) -> Int {
+        Int(ceil(Double(summary(pitchBaseline: pitchBaseline, light: light).utf8.count) / 2.2))
     }
 
     public static func imageTokens(width: Int, height: Int) -> Int {
@@ -57,9 +58,9 @@ public struct FrameSheetFrame: Sendable, Equatable {
     /// "Frame 3 at 12.40 s".
     public static func label(index: Int, time: Double) -> String { "Frame \(index) at \(FrameSheetFrame.seconds(time)) s" }
 
-    /// "F3 12.40 s: face at 0.42,0.18,0.20,0.36, eyes open, quality 0.62, facing camera; screen with text at …", facing
-    /// judged against `pitchBaseline`.
-    public func summaryLine(pitchBaseline: Double?) -> String {
+    /// "F3 12.40 s: face at 0.42,0.18,0.20,0.36, eyes open, quality 0.62, facing camera; screen with text at …, light: even",
+    /// facing judged against `pitchBaseline`; the light line only for a measured frame and with `light`'s thresholds.
+    public func summaryLine(pitchBaseline: Double?, light: ClipColorMeasure.Light? = nil) -> String {
         var parts: [String] = []
         let frame = observation
         if let face = frame.face {
@@ -76,6 +77,7 @@ public struct FrameSheetFrame: Sendable, Equatable {
             parts.append("\(screen.framed ? "screen" : "dense text") with \(screen.textBoxes) text boxes at \(Self.rect(screen.rect))")
         }
         if frame.screens.isEmpty, !frame.textRects.isEmpty { parts.append("\(frame.textRects.count) text boxes") }
+        if let light, let measured = frame.light { parts.append(measured.line(light)) }
         return "F\(index) \(Self.seconds(frame.time)) s: " + parts.joined(separator: ", ")
     }
 
