@@ -27,10 +27,15 @@ extension AgentChatSession {
             guard !stopping, !Task.isCancelled else { return }
             guard tool != .proposeTimeline || snapshot == project else { throw HarnessError.invalid("stale: the words changed") }
             candidate = project
+            let firstOffer = turn.offers.count
             if let proposal = result.proposal {
                 let change = try apply(proposal, result: result, basis: basis, to: candidate, turn: &turn, revision: revision)
                 candidate = change.project
                 run.claims += change.revised
+            }
+            if tool == .offer {
+                let offerID = "\(turn.id)-o\(turn.offers.count + 1)"
+                turn.offers.append(try AgentOfferCatalog.make(id: offerID, fields: result.fields, project: candidate))
             }
             if tool == .check { turn.check = Self.readCheck(result.fields["checks"] ?? .null) }
             if tool == .readFrames {
@@ -40,7 +45,12 @@ extension AgentChatSession {
                                     data: jpeg, width: 0, height: 0)
                 }
             }
-            output = .object(result.fields)
+            var fields = result.fields
+            if turn.offers.count > firstOffer {
+                fields["offerId"] = nil
+                fields["offers"] = AgentChatPrompt.json(Array(turn.offers.dropFirst(firstOffer)))
+            }
+            output = .object(fields)
             let refusal = result.fields["refusals"]?.aiArray.last?[ai: "reason"].aiString
             if refusal != nil || run.refusedTool == call.tool {
                 run.refusal = refusal
@@ -76,6 +86,19 @@ extension AgentChatSession {
             if revision == nil, let change = try AgentTurns.change(from: edited, to: review.project,
                 id: "\(turn.id)-c\(turn.changes.count + 1)", label: labels.indices.contains(index) ? labels[index].aiString ?? timeline.reason : timeline.reason,
                 undoName: "Agent edit") { turn.changes.append(change) }
+            let oldClips = Set(edited.edits.clips.map(\.id))
+            let target = timeline.clipId.isEmpty ? review.project.edits.clips.first(where: { !oldClips.contains($0.id) })?.id : timeline.clipId
+            if let target {
+                for action in result.fields["pricedActions"]?.aiArray ?? [] where action[ai: "timelineIndex"].aiInt == index {
+                    guard let actionKind = action[ai: "kind"].aiString else { continue }
+                    let kind = actionKind == "generateIllustration" ? "illustration" : actionKind
+                    let fields: [String: JSONValue] = ["kind": .string(kind), "target": .string(target),
+                        "brief": action[ai: "prompt"], "quote": action[ai: "price"]]
+                    if let offer = try? AgentOfferCatalog.make(id: "\(turn.id)-o\(turn.offers.count + 1)", fields: fields, project: review.project) {
+                        turn.offers.append(offer)
+                    }
+                }
+            }
             edited = review.project
         }
         if mode == .claude { turn.wasKept = true }

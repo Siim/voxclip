@@ -68,7 +68,10 @@ def populate(schema):
     })
     defs['agentOffer'] = obj({'id': identifier, 'kind': choice('generateMusic', 'revoice', 'illustration', 'lipSync', 'makeItPostable'),
                               'label': text, 'quoteUSD': {**text, 'pattern': r'^[0-9]+\.[0-9]{2}$'},
-                              'state': choice('offered', 'bought', 'declined', 'failed')}, {'assetId': nullable(text)})
+                              'state': choice('offered', 'bought', 'declined', 'failed')}, {
+        'assetId': nullable(text), 'target': nullable(text), 'brief': nullable(text),
+        'words': nullable({'type': 'array', 'maxItems': 500, 'items': text}),
+    })
     defs['agentEvent'] = obj({'kind': choice('hand', 'keep', 'undo', 'redo', 'bought'), 'undoName': text,
                               'target': text, 'at': ref('timestamp')}, {'patch': nullable(patch)})
     schema['properties']['agentThread'] = {**ref('agentThread'), 'description': 'Present only in schema v8. Core validates patch semantics, distinct ids, and the 2 MiB thread cap.'}

@@ -83,8 +83,13 @@ public struct AgentTurn: Codable, Sendable, Equatable {
         public var quoteUSD: String
         public var state: State
         public var assetId: String?
-        public init(id: String, kind: Kind, label: String, quoteUSD: String, state: State = .offered, assetId: String? = nil) {
+        public var target: String?
+        public var brief: String?
+        public var words: [String]?
+        public init(id: String, kind: Kind, label: String, quoteUSD: String, state: State = .offered, assetId: String? = nil,
+                    target: String? = nil, brief: String? = nil, words: [String]? = nil) {
             self.id = id; self.kind = kind; self.label = label; self.quoteUSD = quoteUSD; self.state = state; self.assetId = assetId
+            self.target = target; self.brief = brief; self.words = words
         }
     }
 

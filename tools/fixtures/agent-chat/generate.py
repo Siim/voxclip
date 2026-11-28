@@ -161,3 +161,36 @@ cases = [
 (ROOT / "agent-chat/suggestion-cases.json").write_text(
     json.dumps(dict(projects=projects, cases=cases), ensure_ascii=False, indent=2) + "\n"
 )
+
+replays = ROOT / "agent-chat/replays"
+replays.mkdir(exist_ok=True)
+
+
+def call(tool, **args):
+    return dict(tool=tool, args=args)
+
+
+def step(say, *calls, done=True):
+    return dict(say=say, calls=calls, done=done)
+
+
+paid = "fixtures/projects/clip-from-long-take.voxclip"
+paid_clip = json.loads((ROOT.parent / paid).read_text())["edits"]["clips"][0]
+target = paid_clip["id"]
+words = [paid_clip["startWordId"], paid_clip["endWordId"]]
+brief = "A restrained piano bed"
+spend = dict(project=paid, request="Show me what these changes would cost.", replies=[
+    step("Getting local quotes",
+         call("propose_timeline", clipId=target, reason="Add a piano bed", music=dict(brief=brief)),
+         call("offer", kind="generateMusic", target=target, brief=brief),
+         call("offer", kind="illustration", target=target, brief="A drawing of a desk"),
+         call("offer", kind="revoice", target=target, brief="A shorter line", words=words),
+         call("offer", kind="lipSync", target=target, words=words),
+         call("offer", kind="makeItPostable", target=target), done=False),
+    step("The quoted options are ready. Nothing was bought.",
+         call("approve"), call("buy"), call("export"),
+         call("offer", kind="generateMusic", target=target, brief=brief, approved=True),
+         call("rewrite", target=target, voice="voice-one", words=words))
+], accepted=[True] * 6 + [False] * 5,
+    offered=["generateMusic", "generateMusic", "illustration", "revoice", "lipSync", "makeItPostable"])
+(replays / "spend-attempts.json").write_text(json.dumps(spend, ensure_ascii=False, indent=2) + "\n")

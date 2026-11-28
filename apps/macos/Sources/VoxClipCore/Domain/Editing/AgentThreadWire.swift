@@ -32,7 +32,7 @@ enum AgentThreadWire {
                 let change = try fields(item, "id label undoName state patch")
                 try patch(change["patch"])
             }
-            for offer in try ProjectValidation.array(turn["offers"]) { _ = try fields(offer, "id kind label quoteUSD state", "assetId") }
+            for offer in try ProjectValidation.array(turn["offers"]) { _ = try fields(offer, "id kind label quoteUSD state", "assetId target brief words") }
             if let check = turn["check"], check != .null { _ = try fields(check, "ok lines") }
             for item in try ProjectValidation.array(turn["events"]) {
                 let event = try fields(item, "kind undoName target at", "patch")

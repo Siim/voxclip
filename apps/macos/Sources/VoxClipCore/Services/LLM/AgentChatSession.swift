@@ -243,7 +243,11 @@ import Foundation
         var basis = candidate ?? project
         let thread = basis.agentThread ?? AgentThread(id: "agent-\(project.id)", mode: mode)
         var checkpoint = turn
-        if let current = thread.turns.last, current.id == turn.id { checkpoint.events = current.events }
+        if let current = thread.turns.last, current.id == turn.id {
+            checkpoint.events = current.events
+            let currentOffers = Dictionary(uniqueKeysWithValues: current.offers.map { ($0.id, $0) })
+            checkpoint.offers = turn.offers.map { currentOffers[$0.id] ?? $0 }
+        }
         basis.agentThread = thread
         project = try AgentTurns.record(checkpoint, in: basis, threadId: thread.id)
         onChange?()
