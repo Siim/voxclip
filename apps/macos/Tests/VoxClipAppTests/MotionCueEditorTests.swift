@@ -493,6 +493,35 @@ private actor MotionCueTestSettings: SettingsStore {
         })
     }
 
+    @Test func aKeyframeInACutShowsTheNearestKeptFrameInsideItsCue() async throws {
+        let model = try editor(); defer { model.close() }
+        // Words 14 and 15 are cut, so the end keyframe's moment (just before 14.5) has no frame of its own.
+        var value = try draft(model, start: 12, end: 14.5)
+        value.keyframes = [MotionKeyframe(progress: 0), MotionKeyframe(progress: 0.5, scale: 1.15), MotionKeyframe(progress: 1, scale: 1.3)]
+        #expect(model.applyMotionCue(value))
+        let shell = WorkspaceShell(app: model.app)
+        #expect(model.openMotionCueJob(id: value.id, in: shell))
+        let editing = try #require(model.motionCueEditing)
+        let timeline = try #require(model.renderTimeline)
+        let cue = try #require(model.project.motionCues.first)
+        #expect(await reaches { model.sourceTime == 13.25 })
+        // The paused viewer stays on kept video inside the cue, zoomed toward the end keyframe.
+        editing.selectFrame(2, model: model)
+        #expect(await reaches {
+            let shown = timeline.sourceTime(model.playhead)
+            return shown > 13.5 && shown < 14 && cue.transform(atSourceTime: shown).scale > 1.15
+        })
+        // A draft range with no kept video leaves the viewer where it is.
+        editing.selectFrame(0, model: model)
+        #expect(await reaches { model.sourceTime < 12.1 })
+        let before = model.playhead
+        editing.draft.sourceStart = 14.1
+        editing.draft.sourceEnd = 15.5
+        editing.selectFrame(1, model: model)
+        for _ in 0..<50 { await Task.yield() }
+        #expect(model.playhead == before)
+    }
+
     @Test(arguments: [false, true])
     func escapeFromTheInlineHostDiscardsTheDraftAndReturnsToThePreviousJob(fromField: Bool) async throws {
         let model = try editor(); defer { model.close() }

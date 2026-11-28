@@ -98,9 +98,11 @@ final class LeasedPlayerItem: AVPlayerItem {
             guard current == revision,
                   let instruction = item.videoComposition?.instructions.first as? RenderInstruction else { return }
             var preview = request; preview.forPreview = true
+            // The spans carry each part's crop (a one-recording story's face crops): instructions rebuilt without
+            // them would fall back to the clip's crop for every part.
             item.videoComposition = try builder.makeVideoComposition(preview, trackID: instruction.sourceTrackID,
                 duration: CMTime(value: request.timeline.outputSamples, timescale: Int32(request.timeline.sampleRate)),
-                orientation: instruction.orientation, previewFailures: failures)
+                orientation: instruction.orientation, videoSpans: try CompositionVideoSpan.build(preview), previewFailures: failures)
             self.request = preview
             lastCaptionUpdate = .now
             return
@@ -116,9 +118,12 @@ final class LeasedPlayerItem: AVPlayerItem {
     }
 
     /// Caption-only updates may reuse an ordinary source composition. Layered and
-    /// synthetic compositions retain prepared tracks, framing spans and leases.
+    /// synthetic compositions retain prepared tracks, framing spans and leases. Several recordings keep per-recording
+    /// video spans and gains in the audio mix, so a level change without a timeline change still rebuilds. Part crops
+    /// only shape the instructions, which the reuse path rebuilds from the new request's spans.
     private func canReuseComposition(_ old: RenderRequest, _ next: RenderRequest, item: AVPlayerItem) -> Bool {
         guard old.contextDemo == nil, next.contextDemo == nil, old.footage.isEmpty, next.footage.isEmpty,
+              old.recordings.isEmpty, next.recordings.isEmpty,
               old.voiceLab?.prepared.outputPlan.requiresSyntheticRendering != true,
               next.voiceLab?.prepared.outputPlan.requiresSyntheticRendering != true,
               let leased = item as? LeasedPlayerItem, leased.renderGraph.contextDemoLease == nil else { return false }
