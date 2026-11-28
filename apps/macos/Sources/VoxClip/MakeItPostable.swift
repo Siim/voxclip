@@ -205,6 +205,8 @@ struct MakeItRow: Identifiable, Equatable {
     /// The cap plus every amount Continue approved.
     private(set) var approved: Decimal
     private(set) var spent: Decimal = 0
+    private(set) var plannerSpent: Decimal = 0
+    private var plannerReserved: Decimal = 0
     /// What the waiting step needs beyond what is left, in whole cents; nil while nothing waits.
     private(set) var needed: Decimal?
     @ObservationIgnored private var waiting: CheckedContinuation<Bool, Never>?
@@ -216,6 +218,17 @@ struct MakeItRow: Identifiable, Equatable {
     /// A $0 cap means no paid voice or music at all: fixes are cuts and wording only, and nothing asks for more.
     var paidAllowed: Bool { cap > 0 }
     func charge(_ usd: Decimal) { spent += usd }
+
+    func reservePlanner(_ estimate: Decimal) -> Bool {
+        guard estimate > 0, plannerSpent + plannerReserved + estimate <= cap else { return false }
+        plannerReserved += estimate
+        return true
+    }
+
+    func finishPlanner(reserved estimate: Decimal, charged: Decimal) {
+        plannerReserved -= estimate
+        plannerSpent += charged
+    }
 
     /// Waits at the cap for the creator: true once Continue approved `shortfall` (rounded up to the cent), false after Stop.
     func ask(_ shortfall: Decimal) async -> Bool {

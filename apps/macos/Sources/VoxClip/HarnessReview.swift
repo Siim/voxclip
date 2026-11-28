@@ -8,13 +8,19 @@ extension EditorModel {
     }
 
     func keepHarnessTimeline(_ proposal: HarnessProposal, at url: URL, index: Int,
-                             recordingTranscript: Transcript? = nil) throws -> [ClipAutopilotOperation] {
+                             recordingTranscript: Transcript? = nil, recordingGainDb: Double? = nil) throws -> [ClipAutopilotOperation] {
         guard document.fileURL == url, !document.demo, capabilities.edit, !capabilities.aiBusy, !musicPanel.isBusy, let shared = app.shared else {
             throw HarnessError.invalid("Finish the current edit and try again. Your project is unchanged.")
         }
         let result = try proposal.review(project, shared: shared, at: index, recordingTranscript: recordingTranscript)
         try HarnessInbox.resolve(proposal, remaining: proposal.remaining(after: index, project: result.project), for: url)
-        if result.project != project { replace(result.project, name: "Keep timeline proposal") }
+        var next = result.project
+        if let key = proposal.timelines[index].recordingKey, let recordingGainDb,
+           project.media.spokenSources?.contains(where: { $0.sourceKey == key }) != true,
+           let position = next.media.spokenSources?.firstIndex(where: { $0.sourceKey == key }) {
+            next.media.spokenSources?[position].gainDb = recordingGainDb
+        }
+        if next != project { replace(next, name: "Keep timeline proposal") }
         return result.pending
     }
 
@@ -309,7 +315,15 @@ extension EditorModel {
         do {
             let clipID = try proposal.clipID(at: index)
             let transcript = try await model.prepareHarnessRecording(proposal, at: index)
-            let operations = try model.keepHarnessTimeline(proposal, at: url, index: index, recordingTranscript: transcript)
+            let gain: Double?
+            if let transcript, let key = proposal.timelines[index].recordingKey {
+                let snapshot = model.project
+                let source = try HarnessRecording.source(key, in: snapshot)
+                gain = try? await RecordingLoudness.match(primary: model.sourceURL, project: snapshot,
+                    recording: model.recordingURL(source), transcript: transcript)
+                try Task.checkCancellation()
+            } else { gain = nil }
+            let operations = try model.keepHarnessTimeline(proposal, at: url, index: index, recordingTranscript: transcript, recordingGainDb: gain)
             assets = operations.compactMap { if case .asset(let asset) = $0.action { asset } else { nil } }
             rewrites = operations.filter { $0.decision == .rewrite }
             rewriteClipID = clipID

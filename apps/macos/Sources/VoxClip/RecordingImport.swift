@@ -111,7 +111,7 @@ extension EditorModel {
                     RecordingTranscriptCache.read(key, cache: cache, recent: recent, localOnly: false)
                 }.value
                 try Task.checkCancellation()
-                if let cached, commitRecording(source, transcript: cached) { return }
+                if let cached, try await commitRecording(source, transcript: cached) { return }
                 var scratch = imported.project
                 scratch.media.source = source
                 imported.replaceProject(scratch)
@@ -120,7 +120,10 @@ extension EditorModel {
                 let pending = PendingSpokenRecording(reference: source, transcriptionEditor: transcribing)
                 transcribing.recordingTranscriptRecipient = { [weak self, weak pending] transcript in
                     guard let self, let pending, pendingRecording === pending else { return }
-                    _ = commitRecording(pending.reference, transcript: transcript)
+                    Task { [weak self, weak pending] in
+                        guard let self, let pending, pendingRecording === pending else { return }
+                        _ = try? await commitRecording(pending.reference, transcript: transcript, pending: pending)
+                    }
                 }
                 pendingRecording = pending
                 await pending.transcriber.open(automatic: true, onThisMac: onThisMac)
@@ -131,15 +134,20 @@ extension EditorModel {
         }
     }
 
-    private func commitRecording(_ source: MediaReference, transcript: Transcript) -> Bool {
+    private func commitRecording(_ source: MediaReference, transcript: Transcript, pending: PendingSpokenRecording? = nil) async throws -> Bool {
         let label = ProjectClock.label(source)
+        let original = project
+        let gain = try? await RecordingLoudness.match(primary: sourceURL, project: original,
+            recording: URL(fileURLWithPath: source.absolutePath), transcript: transcript)
+        try Task.checkCancellation()
+        guard !isLeaving, pendingRecording === pending, project.media.source.contentKey == original.media.source.contentKey else { return false }
         var base = project
         if let existing = base.media.additionalSources.firstIndex(where: { $0.contentKey == source.contentKey }) {
             base.media.additionalSources[existing] = source
         } else {
             base.media.additionalSources.append(source)
         }
-        if applyRecordingEdit(.addSpokenSource(key: source.contentKey, label: nil, transcript: transcript, gainDb: nil),
+        if applyRecordingEdit(.addSpokenSource(key: source.contentKey, label: nil, transcript: transcript, gainDb: gain),
                               preparing: base, message: "Added recording \(label)") {
             pendingRecording = nil
             recordingImportError = nil
@@ -149,6 +157,14 @@ extension EditorModel {
             recordingImportError = storyPartError
             return false
         }
+    }
+
+    func resetRecordingLevel(_ region: ProjectClock.Region) {
+        guard capabilities.edit, let index = project.media.spokenSources?.firstIndex(where: { $0.sourceKey == region.key }),
+              let gain = project.media.spokenSources?[index].gainDb, gain != 0 else { return }
+        var next = project
+        next.media.spokenSources?[index].gainDb = 0
+        replace(next, name: "Don't match level")
     }
 
     func cancelRecordingImport() {

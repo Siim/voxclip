@@ -1770,7 +1770,8 @@ struct EditorRenderSnapshot {
     func renderSnapshot() -> EditorRenderSnapshot {
         EditorRenderSnapshot(project: project, state: editState(), plan: plan, reduceMotion: EditorAccessibilityPolicy.system.reduceMotion)
     }
-    func renderRequest(target: ExportTarget? = nil, snapshot: EditorRenderSnapshot? = nil, labelPosition: VoiceLabLabelPosition? = nil) async throws -> RenderRequest {
+    func renderRequest(target: ExportTarget? = nil, snapshot: EditorRenderSnapshot? = nil, labelPosition: VoiceLabLabelPosition? = nil,
+                       previewBaseline: Project? = nil) async throws -> RenderRequest {
         let snapshot = snapshot ?? renderSnapshot()
         let project = snapshot.project
         let state = snapshot.state
@@ -1808,7 +1809,7 @@ struct EditorRenderSnapshot {
                                             project: project.resolvingCaptions(forClip: clip?.id), voiceLab: voiceLab.map { ClipEffects.maskingBleeps($0.prepared.outputPlan, effects: effects) },
                                             translations: (project, clip?.id, effects))
         try Task.checkCancellation()
-        if target == nil, snapshot.project != self.project || isLeaving { throw CancellationError() }
+        if target == nil, (previewBaseline ?? snapshot.project) != self.project || isLeaving { throw CancellationError() }
         let request = RenderRequest(sourceURL: URL(fileURLWithPath: project.media.source.absolutePath), plan: plan, captions: layout?.track ?? CaptionTrack(),
             output: output, forPreview: target == nil, captionLayout: layout, voiceLab: voiceLab)
         return try RenderCallerInputs.prepare(request, project: project, clipID: clip?.id, dataRoot: app.locations.root.resolvingSymlinksInPath(),

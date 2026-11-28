@@ -702,22 +702,25 @@ struct TranscriptAppearance: Equatable {
 
     private func placeRecordingControls(in paragraphs: inout [TranscriptParagraphContent], model: EditorModel) {
         guard model.hasSeveralRecordings, model.activeClip != nil else { return }
-        var before: [String: RecordingInlineControl] = [:], after: [String: [RecordingInlineControl]] = [:]
+        var before: [String: [RecordingInlineControl]] = [:], after: [String: [RecordingInlineControl]] = [:]
         switch model.transcriptRecordingScope {
         case .playOrder:
-            for line in model.recordingClipLines where !line.alternatives.isEmpty {
-                before[line.start] = .marker(line)
-                if model.recordingOpenLineID == line.id { after[line.end, default: []].append(.versions(line)) }
+            for omitted in model.recordingOmittedLines {
+                if let preceding = omitted.after { after[preceding, default: []].append(.omitted(omitted)) }
+                else if let following = omitted.before { before[following, default: []].append(.omitted(omitted)) }
             }
-            for omitted in model.recordingOmittedLines { after[omitted.after, default: []].append(.omitted(omitted)) }
+            for line in model.recordingClipLines where !line.alternatives.isEmpty {
+                before[line.start, default: []].append(.marker(line))
+                if model.recordingOpenLineID == line.id { after[line.end, default: []].insert(.versions(line), at: 0) }
+            }
         case .recording(let key):
-            for run in model.otherRecordingLines where run.key == key { before[run.startWordId] = .solo(run) }
+            for run in model.otherRecordingLines where run.key == key { before[run.startWordId] = [.solo(run)] }
         case .all: return
         }
         for index in paragraphs.indices {
             paragraphs[index].pieces = paragraphs[index].pieces.flatMap { piece -> [TranscriptParagraphContent.Piece] in
                 guard piece.kind == .word else { return [piece] }
-                let leading = before.removeValue(forKey: piece.id).map { [$0] } ?? []
+                let leading = before.removeValue(forKey: piece.id) ?? []
                 let trailing = after.removeValue(forKey: piece.id) ?? []
                 func controls(_ values: [RecordingInlineControl]) -> [TranscriptParagraphContent.Piece] {
                     values.map { .init(kind: .recordingControl, id: piece.id, text: "", recordingControl: $0) }

@@ -113,17 +113,20 @@ extension EditorModel {
         recordingAuditionTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let request = try await renderRequest(snapshot: snapshot)
+                let request = try await renderRequest(snapshot: snapshot, previewBaseline: original)
                 guard project == original, !Task.isCancelled, !isLeaving else { return }
                 try await preview.update(request)
                 guard project == original, !Task.isCancelled, !isLeaving else { return }
                 recordingAuditionEnd = end
                 try await preview.seek(to: start, exact: true)
-                guard !Task.isCancelled else { return }
+                guard project == original, !Task.isCancelled, !isLeaving else { return }
                 preview.play()
                 isPlaying = preview.isPlaying
             } catch is CancellationError {} catch {
-                previewError = await app.safeError(error, context: .preview)
+                guard project == original, !Task.isCancelled, !isLeaving else { return }
+                let message = await app.safeError(error, context: .preview)
+                guard project == original, !Task.isCancelled, !isLeaving else { return }
+                previewError = message
                 stopRecordingAudition()
             }
         }
