@@ -22,12 +22,14 @@ import VoxClipCore
     private var settingsWindow: NSWindow?
     private var terminating = false
     private var routingReady = false
+    private var compareKeyMonitor: Any?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         #if DEBUG
         if AppModel.isTestSession && !CommandLine.arguments.contains("-sceneAudit") && !CommandLine.arguments.contains("-saveBoundaryAudit") && !CommandLine.arguments.contains("-settingsAudit") && !CommandLine.arguments.contains("-voiceRecipeAudit") { NSApp.setActivationPolicy(.prohibited) }
         #endif
         installMenus()
+        installCompareKey()
         model.fileRouter.installMovieOpener { [weak self] url in
             guard let self else { return }
             openMovie(url, app: self.model)
@@ -341,6 +343,7 @@ import VoxClipCore
         case 16: shell.toggleSidebar(); return
         case 56: if validateMenuItem(item) { shell.toggleTimeline() }; return
         case 64: if let window = keyShell, let editor = window.editor { window.showPicture(for: editor) }; return
+        case 78: if validateMenuItem(item), let editor = keyEditor { editor.setLookCompare(!editor.looks.comparing) }; return
         case 63: if let window = keyShell, let editor = window.editor { window.showMusic(for: editor) }; return
         // Tabs work in the key window, a Versions window too (impl-plan V3a).
         case 50, 51: keyShell?.showAdjacentTab(item.tag == 50 ? -1 : 1); return
@@ -445,6 +448,29 @@ import VoxClipCore
         return "This replaces the transcript and removes \(removed)."
     }
 
+    /// Holding the backslash key shows the open clip as filmed while it is held, anywhere in the editor but a text field
+    /// (looks spec §3.4): the press and the release go to the editor; in a text field the key types.
+    func installCompareKey() {
+        guard compareKeyMonitor == nil else { return }
+        compareKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+            let handled = MainActor.assumeIsolated { self?.handleCompareKey(event) == true }
+            return handled ? nil : event
+        }
+    }
+    /// True when `event` was the backslash key's press or release and went to Compare.
+    func handleCompareKey(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown || event.type == .keyUp, event.charactersIgnoringModifiers == "\\",
+              event.modifierFlags.isDisjoint(with: [.command, .control, .option]), let editor = keyEditor, editor.correctionID == nil,
+              Self.compareKeyAllowed(NSApp.keyWindow?.firstResponder) else { return false }
+        if event.type == .keyUp { editor.setLookCompare(false) } else if !event.isARepeat { editor.setLookCompare(true) }
+        return true
+    }
+    /// Text fields, other text views and an input method's composition keep the key.
+    static func compareKeyAllowed(_ responder: NSResponder?) -> Bool {
+        if let input = responder as? any NSTextInputClient, input.hasMarkedText() { return false }
+        if responder is NSTextField { return false }
+        return !(responder is NSTextView) || responder is TranscriptNSTextView
+    }
     static func focusedControlKeepsKey(_ item: NSMenuItem, responder: NSResponder?) -> Bool {
         guard !item.keyEquivalent.isEmpty, item.keyEquivalentModifierMask.isDisjoint(with: [.command, .control, .option]) else { return false }
         if responder is NSText || responder is NSTextField || responder is NSTableView || responder is NSSlider { return false }
@@ -510,6 +536,13 @@ import VoxClipCore
             case 50, 51: return keyShell.map { $0.tabsShown && $0.tabs.open.count > 1 } ?? false
             case 20, 63: return keyEditor != nil
             case 64: return keyEditor?.project.media.source.video != nil
+            case 78:
+                // View › Compare with As Filmed (looks spec §3.4): a toggle; holding \ is the key's own path (`handleCompareKey`).
+                guard let editor = keyEditor, let panel = editor.lookPanel else { item.state = .off; return false }
+                item.state = editor.looks.comparing ? .on : .off
+                let reason = panel.compareReason ?? (editor.lookPreviewsAvailable ? nil : "Previews need the source video. Looks still apply when it's back.")
+                item.toolTip = reason
+                return editor.looks.comparing || reason == nil
             case 18, 19:
                 let timeline = keyEditor?.focusedPane == .timeline
                 item.title = item.tag != 19 ? (timeline ? "Zoom Timeline In" : "Bigger Text") : (timeline ? "Zoom Timeline Out" : "Smaller Text")
@@ -684,7 +717,8 @@ import VoxClipCore
         command(view, "Show Pauses", 11)
         command(view, "Hide Viewer", 12, "i", [.command, .option])
         command(view, "Browse Music", 63)
-        command(view, "Picture Looks", 64)
+        command(view, "Open Picture", 64)
+        command(view, "Compare with As Filmed", 78, "\\", [])
         command(view, "Search or Run a Command…", 61, "k")
         command(view, "Home", 13, "1")
         command(view, "Full Take", 14, "2")

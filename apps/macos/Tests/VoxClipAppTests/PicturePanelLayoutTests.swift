@@ -161,3 +161,60 @@ import Testing
     }
 }
 #endif
+
+#if DEBUG
+/// View › Open Picture and View › Compare with As Filmed, in the menu and so the command palette, and the backslash key held
+/// anywhere in the editor but a text field (looks spec 2026-11-28, sections 3.4 and 3.9).
+@Suite("Picture commands", .serialized, .offlineFixtures)
+@MainActor struct PictureCommandTests {
+    @Test func openPictureAndCompareAreCommandsAndTheBackslashKeyHoldsCompare() async throws {
+        let old = NSApp.mainMenu
+        defer { NSApp.mainMenu = old }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-picture-commands-" + UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = AppModel(settingsStore: RegressionSettingsStore(), locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
+        let shared = try SharedResources.locate()
+        let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+        var project = try DebugExplorer.fiveQuestions(from: base)
+        project.id = base.id
+        await app.shell.attachForTesting(VoxClipDocument(project: project, demo: true), selection: .clip("five-1"), preview: DemoPreviewEngine())
+        let controller = MainWindowController(shell: app.shell)
+        defer { controller.window?.close(); app.shell.editor?.close() }
+        let editor = try #require(app.shell.editor)
+        editor.mediaResolved = true
+        editor.refresh()
+        let delegate = AppDelegate(model: app)
+        delegate.installMenus()
+        delegate.commandWindowForTesting = controller.window
+        let main = try #require(NSApp.mainMenu)
+        for result in DebugMenus.shortcutChecks(in: main) { #expect(result.passed, Comment(rawValue: result.name)) }
+        let view = try #require(main.item(withTitle: "View")?.submenu)
+        let open = try #require(view.item(withTag: 64)), compare = try #require(view.item(withTag: 78))
+        #expect(open.title == "Open Picture" && compare.title == "Compare with As Filmed")
+        #expect(compare.keyEquivalent == "\\" && compare.keyEquivalentModifierMask.isEmpty)
+        // As filmed: nothing to compare, and the item says why.
+        #expect(!delegate.validateMenuItem(compare) && compare.toolTip == "Nothing to compare: the clip is as filmed")
+        #expect(editor.chooseLook("warm") == .changed)
+        #expect(delegate.validateMenuItem(compare) && compare.state == .off && compare.toolTip == nil)
+        let commands = MenuCommandIndex.items().map(\.menuItem.tag)
+        #expect(commands.contains(64) && commands.contains(78))
+
+        func key(_ type: NSEvent.EventType, repeating: Bool = false) throws -> NSEvent {
+            try #require(NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+                                          characters: "\\", charactersIgnoringModifiers: "\\", isARepeat: repeating, keyCode: 42))
+        }
+        #expect(delegate.handleCompareKey(try key(.keyDown)) && editor.looks.comparing && editor.lastAnnouncement == "Showing as filmed")
+        #expect(delegate.handleCompareKey(try key(.keyDown, repeating: true)) && editor.looks.comparing)
+        #expect(delegate.validateMenuItem(compare) && compare.state == .on)
+        #expect(delegate.handleCompareKey(try key(.keyUp)) && !editor.looks.comparing && editor.lastAnnouncement == "Showing Warm")
+        // The menu item toggles.
+        delegate.perform(Selector(("performEditorCommand:")), with: compare)
+        #expect(editor.looks.comparing)
+        delegate.perform(Selector(("performEditorCommand:")), with: compare)
+        #expect(!editor.looks.comparing)
+        // Text fields keep the key.
+        #expect(AppDelegate.compareKeyAllowed(nil) && !AppDelegate.compareKeyAllowed(NSTextField()) && !AppDelegate.compareKeyAllowed(NSTextView()))
+    }
+}
+#endif

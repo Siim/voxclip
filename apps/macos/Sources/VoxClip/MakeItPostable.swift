@@ -1428,6 +1428,7 @@ extension EditorModel {
         case .look:
             if option == Self.makeItAllLooks {
                 run.openChoice = nil
+                self.looks.scrollTarget = ClipLookLibrary.app?.match(controls)?.look.id
                 app.shell.choosePanelJob(.picture, for: self)
                 return
             }
