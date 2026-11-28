@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 2,
-  "promptVersion": 13,
+  "schemaVersion": 3,
+  "promptVersion": 14,
   "directionalZooms": {
     "promptVersion": 11,
     "section": "Zooms\n- Leave the framing alone unless a specific spoken beat earns a move. Use zoomIn to draw attention to a key claim, number or punchline; use zoomOut to release emphasis on a resolution, pivot or reflective line. Do not alternate mechanically. Return an empty list when no beat benefits.\n- For each zoom, use direction (zoomIn or zoomOut), word (first spoken word), untilWord (last spoken word) and scale. Anchor both ends to the actual kept phrase in the indexed transcript, with no cuts or tightened pauses inside it. Use {minDirectionalZoomSeconds} to {maxDirectionalZoomSeconds} seconds, with starts at least {minDirectionalZoomSpacing} seconds apart, and a scale from {minZoomScale} to {maxDirectionalZoomScale}. In reason, briefly say why moving in or out on this particular phrase helps the viewer; do not invent a quote or a visual event.",
@@ -59,7 +59,7 @@
     "rewrites": "Rewrites, which an AI copy of the speaker's voice re-records and the app labels as AI\n- Use few and short ones, only where the clip clearly needs it: a wrong word, a broken sentence that no cut can fix, or a phrase a stranger would misunderstand. Most clips need none. Never more than {maxRewrites} in a clip. Prefer a cut to a rewrite, and a correction when only the spelling is wrong.\n- Keep the speaker's voice, meaning and register. Never add facts, numbers, names or claims.\n- A rewrite replaces the inclusive word range [startWord, endWord] of at most {maxRewriteWords} words. The first and last words of the range are its bridge words: words you keep unchanged, which join the new voice to the recording. text is the complete new phrase as it will be spoken, and it must begin with the range's first word and end with its last word, exactly as written. Keep it about as long as the words it replaces.",
     "tone": "Tone\n- The request gives the clip a tone, asks you to choose one, or says to keep the creator's own. A tone shapes only the words you write: the rewrites, the title, the hook and the post text. It never changes what the creator said: keep their facts, names, numbers, claims and meaning, and never invent any.\n- With a tone, rewrite where it helps most, such as turning the opening line into a hook or a slow line into a punchy one, even when nothing sounds wrong: still at most {maxRewrites} rewrites. Every rewrite rule still holds. The cloned voice says each one, so it stays speakable, with no emoji, hashtags, links or stage directions; it keeps its bridge words; and it stays close to the length of the words it replaces.\n- When you choose, pick the tone that suits the clip's idea and the creator's delivery, or none when their own tone already works. Never force a tone the clip cannot carry.\n- tone is the id of the tone you wrote in, or \"none\" when you kept the creator's own tone. toneSummary says in a few words what the tone changed, such as \"Hook first, two lines tightened\"; it is empty with none.",
     "captions": "Captions\n- Pick the caption style that suits this clip from the list, and say in captionReason, in a few words, why it suits the clip (not the font): a punchy claim suits bold, one-word or pop styles; a calm story suits subtitle or minimal styles; a list or a number suits highlight styles. When the request names a style picked for this clip, keep it unless it clearly does not suit. When the caption preference fixes a style, font or case, use exactly that.\n- Use Roboto Black across caption styles unless the creator fixed a different font: captionFont Roboto, captionWeight 900. Choose the case (upper, lower or asSaid) and how many words show at once, from {minWordsPerCaption} to {maxWordsPerCaption} (1 to 4 suits a fast talking-head clip).",
-    "look": "Look\n- Pick the clip's colour look, with a short reason in lookReason:\n{looks}\n- You cannot see the footage, so choose by the clip's mood and topic. For a talking head, warm flatters skin and suits most personal, founder or opinion talk; muted suits a sober, technical or cautionary point; bw suits a dramatic or reflective beat; original suits a demo, a screen or anything whose colours matter. Don't pick muted just because the topic is business.",
+    "look": "Look\n- Pick the clip's colour look by its id from this list. Each line says what the look does, when it suits, and the lookAmount to start at on a face:\n{looks}\n- Use the frames' light notes, and the pictures when the request has them; otherwise choose by the clip's mood and topic.\n- Fix the light first: set lookFix to true when a frame's light note shows a cast or a dim face, unless the look keeps the warmth on purpose. lookFix corrects the camera; the look grades after it.\n- Use Natural looks for business, education and demos, and original (As filmed) when a screen's or a product's colours matter. Never use a B&W look over a context demo.\n- Prefer the looks built on vibrance to those built on saturation for faces.\n- lookAmount is the look's strength, 40 to 100. Start strong looks at 50 to 80, as their lines say.\n- A series shares one look and lookAmount; lookFix is per clip.\n- lookReason names the light or the mood in one sentence.\n- lookAlternatives: up to two other looks, from other categories, best first.\n- Never choose or describe a look by skin colour.",
     "speed": "Speed\n- speed plays the whole clip faster or slower, from {minSpeed} to {maxSpeed}; 1 plays it as recorded, which suits most clips. Use another speed only when it clearly helps, such as 1.1 for a slow, deliberate speaker whose clip still drags after the cuts, and say why in speedReason (empty for 1). Never use speed to squeeze an over-long clip: cut it instead.",
     "music": "Music\n- When music suits the clip, suggest up to 3 instrumental background tracks that fit the clip's mood and pace. Give each a title, a mood, a prompt for Eleven Music (instrumental only, no vocals: genre, instruments, tempo in BPM and energy; never name an artist or a song), a short reason, and underVoiceDb: how many dB the music sits under the voice, from {minUnderVoiceDb} to {maxUnderVoiceDb} (18 is typical; more under dense talking). Set musicPick to the index, 0 to 2, of the one to use; use -1 with no suggestions. A showreel must have music. If the request offers saved project tracks, select one by musicTrackId before suggesting new music; leave musicTrackId empty otherwise.\n- To shape a suggestion, optionally give fadeIn/fadeOut (seconds, 0–10), duckDb (−24 to 0; 0 disables ducking), and up to 8 segments. Each segment has inclusive startWord/endWord on the kept clip, and optionally songFrom (seconds), loop, gainDb (−40 to +12, relative to the track), fadeIn and fadeOut. Use an empty segments array for one continuous bed. If the reply format requires unused fields, use -1 for unset fades or songFrom, 1 for unset duckDb, true for default loop, and 0 for default segment gain.",
     "zooms": "Zooms\n- Punch in to land emphasis: the key claim, the number, the punchline, at most one every 5 to 10 seconds. A zoom starts at word and holds until the end of untilWord, at most {maxZoomSeconds} s, at a scale from {minZoomScale} to {maxZoomScale} (1.1 to 1.2 is typical).",
@@ -75,19 +75,99 @@
   "looks": [
     {
       "id": "original",
-      "description": "the footage as filmed"
+      "line": "original: As filmed (Natural): The camera's picture; the Fix still applies. Use when: Screen demos, products, anything whose real colors matter. Start at 100."
     },
     {
       "id": "muted",
-      "description": "a calm, slightly desaturated grade with softer contrast"
+      "line": "muted: Muted (Natural): Calm, slightly desaturated, blacks a touch lifted. Use when: A sober, technical or cautionary point. Start at 100."
+    },
+    {
+      "id": "naturalBoost",
+      "line": "naturalBoost: Natural Boost (Natural): As filmed with livelier clothes and background; skin unchanged. Use when: Well-lit footage, any topic; the safe default for business and education. Start at 100."
+    },
+    {
+      "id": "softSkin",
+      "line": "softSkin: Soft Skin (Natural): Gentler highlights on the face, a touch warmer, lower contrast. Use when: A close-up talking head; advice, coaching, founder talk; shine on the face. Start at 100."
+    },
+    {
+      "id": "evenLight",
+      "line": "evenLight: Even Light (Natural): Harsh window or top light evened out; faces stop shining. Use when: Measured clipping on the face, or a dark side of the face. Start at 100."
+    },
+    {
+      "id": "studioClean",
+      "line": "studioClean: Studio Clean (Natural): Crisp, neutral and professional, with true whites. Use when: Business, education, product explanation. Start at 100."
+    },
+    {
+      "id": "softLight",
+      "line": "softLight: Soft Light (Bright): Brighter and softer. Use when: A slightly dark source; gentle personal talk. Start at 100."
+    },
+    {
+      "id": "brightAiry",
+      "line": "brightAiry: Bright & Airy (Bright): Light, open, slightly pastel; soft shadows. Use when: Lifestyle, wellness, home; measured dim footage. Start at 100."
+    },
+    {
+      "id": "cleanPop",
+      "line": "cleanPop: Clean Pop (Bright): More contrast and saturation. Use when: Energetic tips, fast-paced content. Start at 100."
+    },
+    {
+      "id": "boldPop",
+      "line": "boldPop: Bold Pop (Bright, strong): Eye-catching color with skin protected. Use when: Colorful sets, product reveals; measured low color. Start at 85."
     },
     {
       "id": "warm",
-      "description": "a soft golden grade with gentle contrast"
+      "line": "warm: Warm (Warm): Soft golden grade with gentle contrast. Use when: Most personal, founder or opinion talk. Start at 100."
+    },
+    {
+      "id": "goldenHour",
+      "line": "goldenHour: Golden Hour (Warm): Sunlit amber glow, protected highlights, soft edges. Use when: Outdoor or sunset footage; upbeat stories, travel, wins. Start at 80."
+    },
+    {
+      "id": "peachTone",
+      "line": "peachTone: Peach Tone (Warm): Healthy rosy warmth, peach in the highlights. Use when: Beauty, wellness and personal talk (color casts go to the Fix). Start at 100."
+    },
+    {
+      "id": "vintageFade",
+      "line": "vintageFade: Vintage Fade (Film, strong): Lifted shadows, warmer, less saturated. Use when: Nostalgic or “how it started” segments. Start at 80."
+    },
+    {
+      "id": "coolFilm",
+      "line": "coolFilm: Cool Film (Film): Cooler, restrained color with more contrast. Use when: A calm, analytical point; tech or night content. Start at 90."
+    },
+    {
+      "id": "warmPrint",
+      "line": "warmPrint: Warm Print (Film): Nostalgic warm photo print: creamy highlights, soft blacks, fine grain. Use when: Memories, travel recaps, before-and-after stories. Start at 85."
+    },
+    {
+      "id": "matteFilm",
+      "line": "matteFilm: Matte Film (Film, strong): Lifted matte blacks, cool shadows, warm highlights, light grain. Use when: Aesthetic or reflective posts, calm storytelling. Start at 75."
+    },
+    {
+      "id": "throwback",
+      "line": "throwback: Throwback (Film, strong): Old camcorder feel: warm, grainy, dark corners. Use when: An explicit “back then” bit, or humor. Start at 60."
+    },
+    {
+      "id": "tealAmber",
+      "line": "tealAmber: Teal & Amber (Cinematic, strong): Cool shadows and warm skin, the film-poster split. Use when: Dramatic hooks, stories with stakes. Start at 70."
+    },
+    {
+      "id": "cinematicSoft",
+      "line": "cinematicSoft: Cinematic Soft (Cinematic): Restrained color, softened highlights, slight edge darkening. Use when: A narrative or documentary voice. Start at 100."
+    },
+    {
+      "id": "moody",
+      "line": "moody: Moody (Cinematic, strong): Darker, serious, muted, dark edges. Use when: Confessional, serious or true-story content; never on a dim face. Start at 65."
     },
     {
       "id": "bw",
-      "description": "black and white with rich contrast"
+      "line": "bw: B&W (B&W): Black and white with rich contrast. Use when: A dramatic or reflective beat. Start at 100."
+    },
+    {
+      "id": "softBW",
+      "line": "softBW: Soft B&W (B&W): Gentle gray with lifted blacks; flattering. Use when: Emotional, reflective or vulnerable moments. Start at 100."
+    },
+    {
+      "id": "sepia",
+      "line": "sepia: Sepia (B&W): Warm brown monochrome, old-photo feel. Use when: History, origin stories. Start at 90."
     }
   ],
   "transcriptBlock": {
@@ -205,6 +285,9 @@
       "captionCase",
       "wordsPerCaption",
       "look",
+      "lookAmount",
+      "lookFix",
+      "lookAlternatives",
       "lookReason",
       "speed",
       "speedReason",
@@ -363,6 +446,18 @@
       },
       "look": {
         "type": "string"
+      },
+      "lookAmount": {
+        "type": "number"
+      },
+      "lookFix": {
+        "type": "boolean"
+      },
+      "lookAlternatives": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
       },
       "lookReason": {
         "type": "string"

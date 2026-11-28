@@ -73,6 +73,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/clip-frames/autopilot-picture-cases.json',
          'shared/fixtures/autopilot/plan-frames-cases.json', 'shared/fixtures/autopilot/plan-validation-cases.json',
          'shared/fixtures/autopilot/plan-v2-cases.json', 'shared/fixtures/autopilot/plan-tone-cases.json',
+         'shared/prompts/clip-autopilot.json', 'shared/fixtures/autopilot/plan-look-cases.json',
          'shared/schemas/clip-proposal.schema.json', 'shared/schemas/harness-timeline.schema.json',
          'shared/schemas/harness-proposal.schema.json',
          'shared/fixtures/clip-render/clip-render-cases.json',
@@ -149,6 +150,10 @@ def main():
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-frames/generate_analyze_frames.py")], check=True)
     # autopilot's frames and picture objects on fabricated decisions (ADR-R48 part 2, W6), replayed by the Windows CLI; pure IEEE.
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-frames/generate_autopilot_picture.py")], check=True)
+    # The planner's look list (looks spec 2026-11-28, section 9.2) is written into the prompt from shared/looks before the
+    # autopilot fixtures pin the prompt's hash, and the validator's look vectors (sections 9.4 and 9.5) follow the same file.
+    subprocess.run([sys.executable, str(root / "tools/looks/generate_prompt_looks.py")], check=True)
+    subprocess.run([sys.executable, str(root / "tools/fixtures/autopilot/generate_plan_looks.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/autopilot/generate_plan_frames.py")], check=True)
     # The clip style's tone (doc/design.md section 6.6) and the Rewrite tone catalog (section 6.3.1).
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_style_tone_schema.py")], check=True)

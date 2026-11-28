@@ -1,7 +1,7 @@
 {
   "schema": "voxclip-autopilot-parts/1",
   "sources": {
-    "shared/prompts/clip-autopilot.json": "7f84e88a226e010b8ba227d5ea28b5d81743a1982a188cfc696a8e8ed8e25262"
+    "shared/prompts/clip-autopilot.json": "76ce28356613efa53f2ede3517d5c9934d21fd5927c34f3f784c760f60229573"
   },
   "transcript": {
     "words": [
