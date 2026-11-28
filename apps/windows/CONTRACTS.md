@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-11-28 — The Picture tab (issue #40, T7, track/looks-win-ui)
+
+- `PicturePanelModel` (ViewModels, no `App.Services`) is the Picture tab's state and its only writer: `Apply`, `SetAmount`, `SetValue`, `ResetValue`, `ResetGroup`, `BackTo`, `RemoveToning`, `Clear`, `Auto`, `UseClaudeLook` and `RemoveTimedLook` are one named undo step each through `EditorViewModel.ReplaceProject`; `PreviewLook`, `BeginCompare`/`EndCompare`, `PreviewValue`/`PreviewAmount`, the chip and the fold are view state. `PicturePanelServices(Looks)` carries Auto's `Measure` (default: the frame pass's sheet frames through `FrameLightSampling.Fix`) and the remembered fold (`ui.pictureFineTuneOpen`, not yet in the shared settings schema). Make it hands Claude's pick to `NoteClaudePick`.
+- `PicturePanel` renders it; `RightColumn.ShowPicture()` opens it, `EditorPage.Picture.cs` gives it `IPreviewEngine.StillBeforeGradeAsync` for tiles (centred square: the face anchor isn't mapped into the output frame yet) and draws `StillAsync` previews over the paused player. `MakeItServices.PictureTab` is on.
+- Portable coverage: `PicturePanelTests` (15). Owed on the VM: the tab at 300/348/560 epx and 1280 × 800, tiles' thumbnails against the export, hover timing, Compare hold with pointer, Space and backslash (and that backslash is free on non-US layouts), Narrator names, toggle and announcements, keyboard order, high contrast, and drag previews.
+
 ### 2026-11-28 — Claude picks one of the 24 looks (issue #40, T8, track/looks-planner)
 
 - Twin of the Mac planner look: plan v5 `Look(Id, Reason) { Amount, Fix, Alternatives }` (`ToJson`/`FromJson`, v4 reads whole), prompt v14 checked against `ClipLookLibrary`, `ClipAutopilotValidator.Look` replaying `plan-look-cases.json`, `FrameObservation.Light` in analysis cache v3, and the frames summary's light line.
