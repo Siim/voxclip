@@ -368,4 +368,45 @@ private let gradeClipRoot: URL = {
         let grainy = try Self.frame(try await still.still(colorOf: look))
         #expect(grainy != export, "the export has the look's grain; the tile leaves it out")
     }
+
+    /// At a real tile size (144 px, 2.5 times smaller here, up to 7.5 times on a 1080 p export) a tile is the export's
+    /// pre-finish frame for that look, cropped to the face-anchor square and scaled by the compositor's own scaler, within 1;
+    /// with a vignette, the tile is that square with F1 at the tile's own size, within 1.
+    @Test(.timeLimit(.minutes(3))) func aTileAtItsOwnSizeIsTheExportsSquareScaledThenVignetted() async throws {
+        let source = try await Self.clip()
+        let still = try await ClipStillFrame.capture(try await CompositionBuilder().build(Self.request(source, controls: nil)), renderedSeconds: 0.5)
+        let pixels = 144, center = (x: 0.5, y: 0.3)
+        var flat = try Self.warmPrint(amount: 100, vignette: 0)
+        flat.colorGrade?.grain = 0
+        let export = try await still.still(colorOf: flat)
+        let side = Double(Self.width)
+        let square = CompositionFrameGeometry.centered(CGRect(x: 0, y: 0, width: side, height: side),
+            in: CGRect(x: 0, y: 0, width: side, height: Double(Self.height)), x: center.x, y: center.y)
+        let picture = CIImage(cgImage: export, options: [.colorSpace: NSNull()])
+        let expected = try Self.frame(try ClipStillFrame.image(CompositionFrameGeometry.fill(picture, crop: square,
+            output: CGSize(width: pixels, height: pixels)), size: CGSize(width: pixels, height: pixels)))
+        let tile = try Self.frame(try still.tile(controls: try Self.warmPrint(amount: 100, vignette: 0), center: center, pixels: pixels))
+        #expect(tile.width == pixels && tile.height == pixels)
+        var worst = 0, off = 0
+        for y in 0..<pixels {
+            for x in 0..<pixels {
+                let difference = zip(tile.rgb(x, y), expected.rgb(x, y)).map { abs($0 - $1) }.max() ?? 0
+                worst = max(worst, difference)
+                if difference > 1 { off += 1 }
+            }
+        }
+        #expect(worst <= 1 && off == 0, "tile against the export's square: worst \(worst), \(off) pixels off by more than 1")
+        let vignetted = try Self.warmPrint(amount: 100, vignette: 60, grain: 0)
+        let recipe = ClipGradeRecipe(controls: vignetted)
+        let dark = try Self.frame(try still.tile(controls: vignetted, center: center, pixels: pixels))
+        worst = 0
+        for y in 0..<pixels {
+            for x in 0..<pixels {
+                let value = recipe.finish(tile.rgb(x, y).map { Double($0) / 255 }, x: x, y: y, width: pixels, height: pixels, frameHash: 0, hole: nil)
+                worst = max(worst, zip(dark.rgb(x, y), value.map(ClipGradeRecipe.byte)).map { abs($0 - $1) }.max() ?? 0)
+            }
+        }
+        #expect(worst <= 1, "F1 at the tile's own size: worst \(worst)")
+        #expect(dark.rgb(0, 0).reduce(0, +) < tile.rgb(0, 0).reduce(0, +), "the vignette darkens the corner")
+    }
 }
