@@ -102,9 +102,9 @@ public sealed class VoiceTakeIdentityTests
         var root = Cases.Value;
         Assert.Equal(new[] { "schema", "caseCount", "project", "base", "cases" }, root.Select(pair => pair.Key));
         Assert.Equal("voxclip-voice-take-identity/1", root["schema"]!.GetValue<string>());
-        Assert.Equal(32, root["caseCount"]!.GetValue<int>());
-        Assert.Equal(32, Rows("cases").Count());
-        Assert.Equal(32, Rows("cases").Select(row => row["id"]!.GetValue<string>()).Distinct().Count());
+        Assert.Equal(36, root["caseCount"]!.GetValue<int>());
+        Assert.Equal(36, Rows("cases").Count());
+        Assert.Equal(36, Rows("cases").Select(row => row["id"]!.GetValue<string>()).Distinct().Count());
     }
 
     [Fact]

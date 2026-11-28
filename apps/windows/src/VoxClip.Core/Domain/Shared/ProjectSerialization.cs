@@ -159,8 +159,7 @@ public static class ProjectSerialization
         ProjectClock.Validate(project);
         if (project.AgentThread is not null && project.SchemaVersion < FrameVersion)
             throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Agent threads require project version 8.");
-        if (project.Edits.CutEdges is { Count: > 0 } && project.SchemaVersion < FrameVersion)
-            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Cut edges require project version 8.");
+        CutEdges.Validate(project);
         if (project.AgentThread is { } thread) AgentThreadWire.Validate(thread);
         VoiceLabProject.Validate(project);
         ContextDemoProject.Validate(project);

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.ContextDemo;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Frames;
@@ -168,6 +169,9 @@ public sealed class EditingFixtureTests
             "text-whitespace" => new { trim = input.GetProperty("strings").EnumerateArray().Select(text => EditingAlgorithms.JsTrim(text.GetString()!)).ToArray(), split = input.GetProperty("strings").EnumerateArray().Select(text => EditingAlgorithms.SplitWords(text.GetString()!)).ToArray() },
             "content-key" => await ContentKeys(input),
             "project-plan" => await ProjectPlan(input),
+            "cut-edges" => CutEdgeSeat(input, expected),
+            "cut-edge-session" => CutEdgeSession(input, expected),
+            "cut-edge-project" => CutEdgeProject(input, expected),
             _ => throw new InvalidOperationException("Unknown editing fixture kind: " + fixture.GetProperty("kind").GetString())
         };
         Compare(expected, JsonSerializer.SerializeToElement(actual, JsonOptions), tolerance);
@@ -323,6 +327,124 @@ public sealed class EditingFixtureTests
         }).ToArray() };
     }
 
+    /// <summary>The seat over one recording (editing §5.10), its normalized keys, the offer count and the plan they give.</summary>
+    private static object CutEdgeSeat(JsonElement input, JsonElement expected)
+    {
+        var words = Words(input);
+        var duration = Number(input.GetProperty("durationSeconds"));
+        var rate = Number(input.GetProperty("sampleRate"));
+        var cut = input.GetProperty("cutWordIds").EnumerateArray().Select(id => id.GetString()!).ToHashSet(StringComparer.Ordinal);
+        var existing = input.TryGetProperty("existing", out var pins) ? Edges(pins) : new Dictionary<string, double>(StringComparer.Ordinal);
+        var freeze = CutEdges.Freeze.None;
+        if (input.TryGetProperty("freeze", out var frozen))
+            freeze = new(frozen.TryGetProperty("voiceRanges", out var voice) ? voice.EnumerateArray().Select(range => new TimeRange(Number(range[0]), Number(range[1]))).ToArray() : [],
+                frozen.TryGetProperty("paidScopes", out var paid) ? paid.EnumerateArray().Select(scope => new ClipWordRange(scope[0].GetString()!, scope[1].GetString()!)).ToArray() : []);
+        var seated = CutEdges.Seat(words, cut, Levels(input.GetProperty("envelope")), rate, freeze, existing);
+        var merged = new Dictionary<string, double>(existing, StringComparer.Ordinal);
+        foreach (var (id, edge) in seated.Edges) merged[id] = edge;
+        var stored = CutEdges.Normalized(merged, words, cut);
+        AssertEdges(expected.GetProperty("cutEdges"), stored, "cutEdges");
+        var state = State(words, duration) with { CutWordIds = cut, CutEdges = stored };
+        var plan = EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, duration), duration, rate, state.PauseKeepSeconds);
+        return new { cutEdges = stored, offerCount = seated.Edges.Count, frozen = seated.Frozen, cuts = Ranges(plan.Cuts) };
+    }
+
+    /// <summary>Toggles on a project with one loaded envelope, each committed through <see cref="CutEdges.Finalize"/> as the editor does.</summary>
+    private static object CutEdgeSession(JsonElement input, JsonElement expected)
+    {
+        var words = Words(input);
+        var duration = Number(input.GetProperty("durationSeconds"));
+        var opened = ContextDemoProject.UpgradeToV4(ProjectSerialization.Deserialize(File.ReadAllText(TestStorage.ProjectPath("interview-take.voxclip"))));
+        var project = opened with
+        {
+            SchemaVersion = input.GetProperty("startVersion").GetInt32(),
+            Transcript = opened.Transcript! with { Words = words, DurationSeconds = duration },
+            Media = opened.Media with { Source = opened.Media.Source with { DurationSeconds = duration } },
+            Edits = new(0.8, 0.15, [], [], new Dictionary<string, string>(StringComparer.Ordinal), [], null),
+        };
+        Assert.Equal(input.GetProperty("sampleRate").GetInt32(), project.Media.Source.Audio?.SampleRate);
+        var envelopes = new Dictionary<string, AudioEnvelope>(StringComparer.Ordinal) { [project.Media.Source.ContentKey] = Levels(input.GetProperty("envelope")) };
+        var original = JsonSerializer.Serialize(project.Edits, ProjectJsonContext.Default.ProjectEdits);
+        var expectedSteps = expected.GetProperty("steps").EnumerateArray().ToArray();
+        var operations = input.GetProperty("ops").EnumerateArray().ToArray();
+        Assert.Equal(operations.Length + 1, expectedSteps.Length);
+        var steps = new List<object>();
+        for (var index = 0; index < expectedSteps.Length; index++)
+        {
+            if (index > 0)
+            {
+                var operation = operations[index - 1];
+                Assert.Equal("toggle", operation.GetProperty("op").GetString());
+                var next = EditingEngine.ApplyEditing(project, new EditOperation.Toggle(operation.GetProperty("id").GetString()!));
+                project = CutEdges.Finalize(project, next, envelopes);
+            }
+            AssertEdges(expectedSteps[index].GetProperty("cutEdges"), project.Edits.CutEdges, "step " + index + " cutEdges");
+            steps.Add(new
+            {
+                after = expectedSteps[index].GetProperty("after").Clone(), cutWords = project.Edits.CutWordIds,
+                cutEdges = project.Edits.CutEdges ?? new Dictionary<string, double>(), schemaVersion = project.SchemaVersion,
+                editsEqualInitial = JsonSerializer.Serialize(project.Edits, ProjectJsonContext.Default.ProjectEdits) == original,
+            });
+        }
+        return new { steps };
+    }
+
+    /// <summary>A project file with edits.cutEdges: refused, or opened, re-saved at its version and planned with each stored edge.</summary>
+    private static object CutEdgeProject(JsonElement input, JsonElement expected)
+    {
+        var path = Path.Combine(Path.GetDirectoryName(FixtureLoader.SharedRoot)!, input.GetProperty("projectPath").GetString()!);
+        var document = JsonNode.Parse(File.ReadAllText(path))!;
+        foreach (var set in input.GetProperty("set").EnumerateArray())
+            SetPointer(document, set.GetProperty("path").GetString()!, JsonNode.Parse(set.GetProperty("value").GetRawText()));
+        if (!expected.GetProperty("valid").GetBoolean())
+        {
+            Assert.ThrowsAny<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+            // The refusal is the cut edge rule: the same file without its cut edges opens.
+            document["edits"]!.AsObject().Remove("cutEdges");
+            ProjectSerialization.Deserialize(document.ToJsonString());
+            return new { valid = false, reason = expected.GetProperty("reason").GetString() };
+        }
+        var project = ProjectSerialization.Deserialize(document.ToJsonString());
+        var written = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(project)).SchemaVersion;
+        var state = EditingEngine.FromProject(project)! with { ActiveClipId = null };
+        var plan = EditingEngine.BuildPlan(state, project.Media.Source.DurationSeconds, project.Media.Source.Audio?.SampleRate ?? 48000);
+        var boundaries = plan.Cuts.SelectMany(cut => new[] { cut.StartSample, cut.EndSample }).ToHashSet();
+        return new { valid = true, writtenVersion = written,
+            edgeSamples = expected.GetProperty("edgeSamples").EnumerateArray().Select(sample => sample.GetInt64()).Where(boundaries.Contains).ToArray() };
+    }
+
+    /// <summary>levels-v1 (editing fixtures README): every frame at <c>base</c>, then each inclusive run in order, as exact float levels.</summary>
+    private static AudioEnvelope Levels(JsonElement envelope)
+    {
+        Assert.Equal("levels-v1", envelope.GetProperty("generator").GetString());
+        var levels = Enumerable.Repeat((float)Number(envelope.GetProperty("base")), envelope.GetProperty("frames").GetInt32()).ToArray();
+        foreach (var run in envelope.GetProperty("runs").EnumerateArray())
+            for (var frame = run[0].GetInt32(); frame <= run[1].GetInt32(); frame++) levels[frame] = (float)Number(run[2]);
+        var rate = envelope.GetProperty("sampleRate").GetInt32();
+        return new(rate, Math.Max(1, Round(rate * 0.01)) / rate, levels);
+    }
+
+    private static Dictionary<string, double> Edges(JsonElement edges) =>
+        edges.EnumerateObject().ToDictionary(pair => pair.Name, pair => Number(pair.Value), StringComparer.Ordinal);
+
+    /// <summary>The stored keys equal the expected ones exactly, with no extra key.</summary>
+    private static void AssertEdges(JsonElement expected, IReadOnlyDictionary<string, double>? actual, string label)
+    {
+        var want = Edges(expected).OrderBy(pair => pair.Key, StringComparer.Ordinal).ToArray();
+        var have = (actual ?? new Dictionary<string, double>()).OrderBy(pair => pair.Key, StringComparer.Ordinal).ToArray();
+        Assert.True(want.SequenceEqual(have), label + ": " + string.Join(", ", have) + " != " + string.Join(", ", want));
+    }
+
+    /// <summary><paramref name="value"/> at the JSON pointer <paramref name="path"/> (no escapes).</summary>
+    private static void SetPointer(JsonNode root, string path, JsonNode? value)
+    {
+        var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var node = root;
+        foreach (var part in parts[..^1]) node = node is JsonArray array ? array[int.Parse(part)]! : node[part]!;
+        if (node is JsonArray list) list[int.Parse(parts[^1])] = value;
+        else node.AsObject()[parts[^1]] = value;
+    }
+
     private static async Task<object> ContentKeys(JsonElement input)
     {
         var directory = Directory.CreateTempSubdirectory("voxclip-content-key-");
@@ -360,7 +482,8 @@ public sealed class EditingFixtureTests
     private static EditSegment[] Segments(JsonElement input) => input.GetProperty("segments").EnumerateArray().Select(segment => new EditSegment(segment.GetProperty("id").GetString()!,
         segment.GetProperty("kind").GetString() switch { "word" => EditSegmentKind.Word, "pause" => EditSegmentKind.Pause, "range" => EditSegmentKind.Range, _ => throw new InvalidOperationException() },
         segment.TryGetProperty("wordKind", out var wordKind) ? WordKindValue(wordKind.GetString()) : null,
-        segment.TryGetProperty("text", out var text) ? text.GetString() : null, Number(segment.GetProperty("start")), Number(segment.GetProperty("end")), segment.GetProperty("cut").GetBoolean())).ToArray();
+        segment.TryGetProperty("text", out var text) ? text.GetString() : null, Number(segment.GetProperty("start")), Number(segment.GetProperty("end")), segment.GetProperty("cut").GetBoolean())
+        { CutStart = OptionalNumber(segment, "cutStart"), CutEnd = OptionalNumber(segment, "cutEnd") }).ToArray();
 
     private static WordKind Kind(JsonElement word) => word.TryGetProperty("kind", out var kind) ? WordKindValue(kind.GetString()) : WordKind.Word;
     private static WordKind WordKindValue(string? kind) => kind switch { "event" => WordKind.Event, "unlabeledSpeech" => WordKind.UnlabeledSpeech, _ => WordKind.Word };

@@ -97,6 +97,8 @@ internal static class EditingPlanner
                 (segment.Kind != EditSegmentKind.Pause || segment.End <= end)).Select(segment => segment with
                 {
                     Start = RecordingLocalTime(segment.Start, region, rate), End = RecordingLocalTime(segment.End, region, rate),
+                    CutStart = segment.CutStart is { } cutStart ? RecordingLocalTime(cutStart, region, rate) : null,
+                    CutEnd = segment.CutEnd is { } cutEnd ? RecordingLocalTime(cutEnd, region, rate) : null,
                 }).ToList();
             if (scope is { } selected)
             {
@@ -264,7 +266,9 @@ internal static class EditingPlanner
         var earlierEnd = speech.EarlierEnds[position];
         if (earlierEnd >= segment.End) return new(segment.Start, segment.End);
         var nextStart = position + 1 < speech.Words.Length ? speech.Words[position + 1].Start : duration;
-        return new(segment.Start - Math.Min(0.1, Math.Max(0, segment.Start - earlierEnd) / 2), segment.End + Math.Min(0.1, Math.Max(0, nextStart - segment.End) / 2));
+        // A stored cut edge (editing §5.10) replaces the padded edge on its side.
+        return new(segment.CutStart ?? (segment.Start - Math.Min(0.1, Math.Max(0, segment.Start - earlierEnd) / 2)),
+            segment.CutEnd ?? (segment.End + Math.Min(0.1, Math.Max(0, nextStart - segment.End) / 2)));
     }
 
     internal static EditPlan Build(IReadOnlyList<EditSegment> segments, double duration, double rate, double pauseKeep)
