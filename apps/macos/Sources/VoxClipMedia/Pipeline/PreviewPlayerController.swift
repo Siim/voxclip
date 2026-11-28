@@ -116,9 +116,11 @@ final class LeasedPlayerItem: AVPlayerItem {
     }
 
     /// Caption-only updates may reuse an ordinary source composition. Layered and
-    /// synthetic compositions retain prepared tracks, framing spans and leases.
+    /// synthetic compositions retain prepared tracks, framing spans and leases. Several recordings keep per-recording
+    /// video spans and gains in the audio mix, so a level change without a timeline change still rebuilds.
     private func canReuseComposition(_ old: RenderRequest, _ next: RenderRequest, item: AVPlayerItem) -> Bool {
         guard old.contextDemo == nil, next.contextDemo == nil, old.footage.isEmpty, next.footage.isEmpty,
+              old.recordings.isEmpty, next.recordings.isEmpty,
               old.voiceLab?.prepared.outputPlan.requiresSyntheticRendering != true,
               next.voiceLab?.prepared.outputPlan.requiresSyntheticRendering != true,
               let leased = item as? LeasedPlayerItem, leased.renderGraph.contextDemoLease == nil else { return false }
