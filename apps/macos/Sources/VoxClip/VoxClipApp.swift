@@ -471,6 +471,11 @@ import VoxClipCore
         if responder is NSTextField { return false }
         return !(responder is NSTextView) || responder is TranscriptNSTextView
     }
+    /// True when `event` is the press of `item`'s own bare key, as AppKit's key-equivalent match sends it.
+    static func isCompareKeyEquivalent(_ item: NSMenuItem, event: NSEvent?) -> Bool {
+        guard let event, event.type == .keyDown, !item.keyEquivalent.isEmpty, item.keyEquivalentModifierMask.isEmpty else { return false }
+        return event.charactersIgnoringModifiers == item.keyEquivalent
+    }
     static func focusedControlKeepsKey(_ item: NSMenuItem, responder: NSResponder?) -> Bool {
         guard !item.keyEquivalent.isEmpty, item.keyEquivalentModifierMask.isDisjoint(with: [.command, .control, .option]) else { return false }
         if responder is NSText || responder is NSTextField || responder is NSTableView || responder is NSSlider { return false }
@@ -542,6 +547,9 @@ import VoxClipCore
                 item.state = editor.looks.comparing ? .on : .off
                 let reason = panel.compareReason ?? (editor.lookPreviewsAvailable ? nil : "Previews need the source video. Looks still apply when it's back.")
                 item.toolTip = reason
+                // The bare \ never fires the item: the hold path owns it outside text, and a text field or a correction
+                // types it.
+                if Self.isCompareKeyEquivalent(item, event: MenuCommandIndex.isInvoking ? nil : commandEvent) { return false }
                 return editor.looks.comparing || reason == nil
             case 18, 19:
                 let timeline = keyEditor?.focusedPane == .timeline

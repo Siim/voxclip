@@ -187,6 +187,7 @@ import Testing
 @Suite("Picture commands", .serialized, .offlineFixtures)
 @MainActor struct PictureCommandTests {
     @Test func openPictureAndCompareAreCommandsAndTheBackslashKeyHoldsCompare() async throws {
+        _ = NSApplication.shared
         let old = NSApp.mainMenu
         defer { NSApp.mainMenu = old }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-picture-commands-" + UUID().uuidString, isDirectory: true)
@@ -234,6 +235,23 @@ import Testing
         #expect(!editor.looks.comparing)
         // Text fields keep the key.
         #expect(AppDelegate.compareKeyAllowed(nil) && !AppDelegate.compareKeyAllowed(NSTextField()) && !AppDelegate.compareKeyAllowed(NSTextView()))
+        // The bare \ never fires the menu item: in the Ask field, a rename or a correction it types; elsewhere the hold has it.
+        let field = NSTextView(frame: CGRect(x: 0, y: 0, width: 200, height: 20))
+        controller.window?.contentView?.addSubview(field)
+        controller.window?.makeFirstResponder(field)
+        delegate.commandEventForTesting = try key(.keyDown)
+        #expect(!delegate.validateMenuItem(compare), "the backslash typed in a text view reaches the text view")
+        delegate.perform(Selector(("performEditorCommand:")), with: compare)
+        #expect(!editor.looks.comparing)
+        editor.correctionID = editor.words.first?.id
+        #expect(!delegate.handleCompareKey(try key(.keyDown)) && !delegate.validateMenuItem(compare), "a correction types it")
+        editor.correctionID = nil
+        // Chosen from the menu, the palette or with another key down, the item still toggles.
+        delegate.commandEventForTesting = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+                                                                        context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+        #expect(delegate.validateMenuItem(compare))
+        delegate.commandEventForTesting = nil
+        #expect(delegate.validateMenuItem(compare))
     }
 }
 #endif
