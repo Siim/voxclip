@@ -168,7 +168,12 @@ extension EditorModel {
         let offer = cutEdgeOffer
         guard offer.count == 0 else { return nil }
         guard let key = offer.unloaded.first else { return "All cut edges are in the quiet" }
-        return recordingIsMissing(key) || (key == project.media.source.contentKey && mediaUnreadable)
+        return unloadedLevelsReason(key)
+    }
+
+    /// Why a recording's levels aren't there to seat on: its video is missing or unreadable, or they are still loading.
+    func unloadedLevelsReason(_ key: String) -> String {
+        recordingIsMissing(key) || (key == project.media.source.contentKey && mediaUnreadable)
             ? "Reconnect \(recordingLabel(key)) to fix its cut edges" : "Waveform still loading"
     }
 
@@ -189,14 +194,117 @@ extension EditorModel {
         announce(text)
     }
 
+    // MARK: A selected cut
+
+    /// The selected cut words' edges at a kept neighbour (design.md, the timeline edit bar): on a quiet point the seat
+    /// found, with Use word edge to pin each one at the word edge, or on the word edge, with Use quiet point to seat them
+    /// again. Nil when no selected cut word has such an edge. Read once per change of the selection, the edits, the
+    /// waveforms or the open Rewrite.
+    var selectedCutEdge: CutEdgeChoice? {
+        let selected = selectedWordIDs
+        guard !selected.isDisjoint(with: cutWordIDs) else { return nil }
+        _ = transcriptRevision
+        _ = openRewrite
+        let waveforms = [waveform?.identity] + recordingWaveforms.keys.sorted().map { recordingWaveforms[$0]?.identity }
+        if let memo = cutEdgeChoiceMemo, memo.selected == selected, memo.edits == project.edits, memo.waveforms == waveforms {
+            return memo.choice
+        }
+        let choice = cutEdgeChoice(selected: selected)
+        cutEdgeChoiceMemo = CutEdgeChoiceMemo(selected: selected, edits: project.edits, waveforms: waveforms, choice: choice)
+        return choice
+    }
+
+    private func cutEdgeChoice(selected: Set<String>) -> CutEdgeChoice? {
+        let project = project
+        let cut = Set(project.edits.cutWordIds), edges = project.edits.cutEdges
+        let rate = Double(max(1, project.media.source.audio?.sampleRate ?? 48_000))
+        var boundaries: [(recording: CutEdges.Recording, index: Int)] = []
+        for recording in CutEdges.recordings(project) {
+            let words = recording.words
+            for index in words.indices.dropFirst() where CutEdges.qualifies(words[index - 1], words[index], cutWordIds: cut) {
+                let removed = cut.contains(words[index].id) ? words[index] : words[index - 1]
+                if selected.contains(removed.id) { boundaries.append((recording, index)) }
+            }
+        }
+        guard !boundaries.isEmpty else { return nil }
+        /// The word edge, sample-rounded as stored: where today's padding ends a cut between touching words.
+        func wordEdge(_ a: TimedWord, _ b: TimedWord) -> Double { EditingPrimitives.jsRound((a.end + b.start) / 2 * rate) / rate }
+        let freeze = cutEdgeFreeze(project)
+        let open = boundaries.filter { item in
+            !CutEdges.isFrozen(words: item.recording.words, at: item.index, cutWordIds: cut, freeze: freeze[item.recording.key] ?? CutEdges.Freeze())
+        }
+        let quiet = boundaries.contains { item in
+            let a = item.recording.words[item.index - 1], b = item.recording.words[item.index]
+            return edges[b.id].map { $0 != wordEdge(a, b) } ?? false
+        }
+        let kept = "Kept beside a voice patch"
+        var writes: [String: Double] = [:]
+        if quiet {
+            for item in open {
+                let a = item.recording.words[item.index - 1], b = item.recording.words[item.index]
+                let pin = wordEdge(a, b)
+                if pin > a.start, pin < b.end, edges[b.id] != pin { writes[b.id] = pin }
+            }
+            return CutEdgeChoice(quiet: true, writes: writes, reason: writes.isEmpty ? kept : nil)
+        }
+        guard !open.isEmpty else { return CutEdgeChoice(quiet: false, writes: [:], reason: kept) }
+        let envelopes = cutEdgeEnvelopes
+        var unloaded: [String] = []
+        for recording in CutEdges.recordings(project) {
+            let ids = Set(open.filter { $0.recording.key == recording.key }.map { $0.recording.words[$0.index].id })
+            guard !ids.isEmpty else { continue }
+            guard let envelope = envelopes[recording.key] else { unloaded.append(recording.key); continue }
+            let seated = CutEdges.seat(words: recording.words, cutWordIds: cut, envelope: envelope, sampleRate: rate,
+                                       freeze: freeze[recording.key] ?? CutEdges.Freeze(),
+                                       existing: edges.filter { !ids.contains($0.key) }, only: ids)
+            writes.merge(seated.edges) { _, new in new }
+        }
+        guard writes.isEmpty else { return CutEdgeChoice(quiet: false, writes: writes, reason: nil) }
+        return CutEdgeChoice(quiet: false, writes: [:], reason: unloaded.first.map(unloadedLevelsReason) ?? "No quiet point near this edge")
+    }
+
+    /// The selected cut's action, as one undo step named for it ("Use word edge", "Use quiet point").
+    func useSelectedCutEdge() {
+        guard capabilities.edit, let choice = selectedCutEdge, choice.reason == nil, !choice.writes.isEmpty else { return }
+        var next = project
+        next.edits.cutEdges.merge(choice.writes) { _, new in new }
+        replace(next, name: choice.action)
+    }
+
+    /// The edit bar row's action: the selected cut's, else Fix cut edges.
+    func runCutEdgeBarAction() {
+        if selectedCutEdge != nil { useSelectedCutEdge() } else { fixCutEdges() }
+    }
+
     /// The one cut edge row the timeline edit bar shows: a selected cut's edges, the result of Fix cut edges while
     /// its edits stand, or the offer while old cuts could move.
     var cutEdgeBarRow: CutEdgeBarRow? {
+        if let choice = selectedCutEdge { return CutEdgeBarRow(text: choice.status, action: choice.action, reason: choice.reason) }
         if let result = cutEdgeResult, result.edits == project.edits { return CutEdgeBarRow(text: result.text) }
         let count = cutEdgeOffer.count
         guard count > 0 else { return nil }
         return CutEdgeBarRow(text: "\(count) \(count == 1 ? "cut" : "cuts") can land in the quiet", action: "Fix cut edges")
     }
+}
+
+/// The selected cut's edges as last read (`EditorModel.selectedCutEdge`), with what they were read over.
+struct CutEdgeChoiceMemo {
+    let selected: Set<String>
+    let edits: ProjectEdits
+    let waveforms: [UUID?]
+    let choice: CutEdgeChoice?
+}
+
+/// Where a selected cut's edges sit and what its one action writes, by the later word's clock id: each edge's word edge
+/// (Use word edge) or the quiet point found (Use quiet point).
+struct CutEdgeChoice: Equatable {
+    /// At least one edge sits on a quiet point the seat found.
+    let quiet: Bool
+    let writes: [String: Double]
+    /// Why the action can't run, or nil.
+    let reason: String?
+    var status: String { quiet ? "Cut edge: quiet point" : "Cut edge: word edge" }
+    var action: String { quiet ? "Use word edge" : "Use quiet point" }
 }
 
 /// A row of the timeline edit bar about cut edges: its line and, when it has one, its inline action and why that is

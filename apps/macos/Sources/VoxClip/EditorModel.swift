@@ -156,7 +156,7 @@ struct EditorRenderSnapshot {
     var openRewrite: RewriteSession? {
         didSet {
             // Its scope keeps its edges while it is open, and a close may leave paid work saved beside the project.
-            cutEdgeOfferMemo = nil; savedPaidRewriteScopesMemo = nil
+            cutEdgeOfferMemo = nil; cutEdgeChoiceMemo = nil; savedPaidRewriteScopesMemo = nil
             if let session = openRewrite, session.isOpen { onRewriteSessionOpen?(session.project.edits.activeClipId) }
         }
     }
@@ -669,6 +669,8 @@ struct EditorRenderSnapshot {
     var recordingWaveforms: [String: WaveformData] = [:]
     /// The inline offer as last counted, for the edits, waveforms and Rewrite it was counted over (EditorModel+CutEdges).
     @ObservationIgnored var cutEdgeOfferMemo: CutEdgeOfferMemo?
+    /// The selected cut's edges as last read, for the selection, edits and waveforms they were read over.
+    @ObservationIgnored var cutEdgeChoiceMemo: CutEdgeChoiceMemo?
     /// The Rewrite scopes with paid takes saved beside the project, read once per project change (EditorModel+CutEdges).
     @ObservationIgnored var savedPaidRewriteScopesMemo: [String]?
     /// "Moved N cut edges into the quiet", shown in the edit bar while the edits are the ones Fix cut edges made.
@@ -985,7 +987,7 @@ struct EditorRenderSnapshot {
     }
     func refresh() {
         let project = project
-        cutEdgeOfferMemo = nil; savedPaidRewriteScopesMemo = nil
+        cutEdgeOfferMemo = nil; cutEdgeChoiceMemo = nil; savedPaidRewriteScopesMemo = nil
         if let route = timelineEditor, route.projectID != project.id || route.clipID != project.edits.activeClipId {
             resetTimelineEditor()
         }

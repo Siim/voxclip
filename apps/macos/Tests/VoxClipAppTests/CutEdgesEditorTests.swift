@@ -227,6 +227,70 @@ private actor CutEdgeTestSettings: SettingsStore {
         #expect(none.fixCutEdgesReason == "All cut edges are in the quiet" && none.cutEdgeBarRow == nil)
     }
 
+    // MARK: A selected cut
+
+    @Test func aSelectedCutGoesToItsWordEdgeAndBack() throws {
+        let app = try app()
+        var seated = try Self.project(cut: ["w2"])
+        seated.edits.cutEdges = ["w2": 0.705, "w3": 1.205]
+        seated.schemaVersion = 8
+        let (model, undo) = editor(app, project: seated)
+        defer { model.close(); try? FileManager.default.removeItem(at: app.locations.root) }
+        #expect(model.cutEdgeBarRow == nil)
+        model.selectedWordIDs = ["w2"]
+        #expect(model.cutEdgeBarRow == CutEdgeBarRow(text: "Cut edge: quiet point", action: "Use word edge"))
+        let steps = model.undoSteps
+        step(undo) { model.runCutEdgeBarAction() }
+        #expect(model.undoSteps == steps + 1 && undo.undoActionName == "Use word edge")
+        // The pin is the word edge itself, which today's padding gave: the cut is the stored words' cut again.
+        #expect(model.project.edits.cutEdges == ["w2": 0.80, "w3": 1.30])
+        #expect(model.plan?.cuts == [MediaInterval(startSample: 38_400, endSample: 62_400)])
+        #expect(model.cutEdgeBarRow == CutEdgeBarRow(text: "Cut edge: word edge", action: "Use quiet point"))
+        // A pin stays: nothing is offered for it.
+        model.selectedWordIDs = []
+        #expect(model.cutEdgeBarRow == nil && model.fixCutEdgesReason == "All cut edges are in the quiet")
+        model.selectedWordIDs = ["w2"]
+        step(undo) { model.runCutEdgeBarAction() }
+        #expect(undo.undoActionName == "Use quiet point" && model.project.edits.cutEdges == ["w2": 0.705, "w3": 1.205])
+        #expect(model.plan?.cuts == [MediaInterval(startSample: 33_840, endSample: 57_840)])
+        undo.undo()
+        #expect(model.project.edits.cutEdges == ["w2": 0.80, "w3": 1.30])
+    }
+
+    @Test func aSelectedCutSaysWhyItsEdgeCannotMove() throws {
+        let app = try app()
+        defer { try? FileManager.default.removeItem(at: app.locations.root) }
+        let wordEdge = "Cut edge: word edge", quiet = "Use quiet point"
+        // Coarticulated: no dip near either edge.
+        let (flat, _) = editor(app, project: try Self.project(cut: ["w2"]), levels: Self.levels(dips: []))
+        defer { flat.close() }
+        flat.selectedWordIDs = ["w2"]
+        #expect(flat.cutEdgeBarRow == CutEdgeBarRow(text: wordEdge, action: quiet, reason: "No quiet point near this edge"))
+        let (loading, _) = editor(app, project: try Self.project(cut: ["w2"]), levels: nil)
+        defer { loading.close() }
+        loading.selectedWordIDs = ["w2"]
+        #expect(loading.cutEdgeBarRow == CutEdgeBarRow(text: wordEdge, action: quiet, reason: "Waveform still loading"))
+        // Beside a voice patch over w3 and w1 (both edges): an edge seated before the patch stays where it is.
+        let shared = try SharedResources.locate()
+        let revoiced = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/whole-clip-revoice-project.voxclip")))
+        var segment = try #require(revoiced.voiceLab.segments.first)
+        var patched = try Self.project(cut: ["w2"])
+        segment.replace = VoiceLabReplacement(start: 0.30, end: 1.90, firstWordId: "w1", lastWordId: "w3")
+        patched.voiceLab.segments = [segment]
+        let (frozen, _) = editor(app, project: patched)
+        defer { frozen.close() }
+        frozen.selectedWordIDs = ["w2"]
+        #expect(frozen.cutEdgeBarRow == CutEdgeBarRow(text: wordEdge, action: quiet, reason: "Kept beside a voice patch"))
+        patched.edits.cutEdges = ["w3": 1.205]
+        patched.schemaVersion = 8
+        let (kept, _) = editor(app, project: patched)
+        defer { kept.close() }
+        kept.selectedWordIDs = ["w2"]
+        #expect(kept.cutEdgeBarRow == CutEdgeBarRow(text: "Cut edge: quiet point", action: "Use word edge", reason: "Kept beside a voice patch"))
+        kept.runCutEdgeBarAction()
+        #expect(kept.project.edits.cutEdges == ["w3": 1.205])
+    }
+
     @Test func editMenuListsFixCutEdges() throws {
         _ = NSApplication.shared
         let previous = NSApp.mainMenu
