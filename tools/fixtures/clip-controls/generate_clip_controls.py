@@ -6,6 +6,11 @@ voxclip-clip-controls-wire-cases/1), a new file of its own so neither Core's exi
 Swift ClipControlsProjectWireTests and C# ClipControlsProjectWireTests. `schemaValid: true` on an invalid case marks a rule
 JSON Schema cannot express (the clip exists, one entry per clip, no entry stored at its defaults). Deterministic; run from
 anywhere.
+
+clip-controls-color-grade-cases.json (format voxclip-clip-color-grade-wire-cases/1) holds the schema-v8 `colorGrade`
+cases (looks spec 2026-11-28, sections 8.1 and 11.5) on the same project: each case first sets schemaVersion 8, then its
+own patches. A valid case round-trips byte for byte at v8; `schemaValid: true` on an invalid case marks a rule only the
+Cores check (a curve never decreases).
 """
 import copy
 import json
@@ -86,7 +91,109 @@ def generated():
     invalid[-1]['tooNew'] = True
     cases = {'format': 'voxclip-clip-controls-wire-cases/1', 'project': 'fixtures/clip-controls/clip-controls-project.voxclip',
              'valid': valid, 'invalid': invalid}
-    return {'clip-controls-project.voxclip': project, 'clip-controls-wire-cases.json': cases}
+    return {'clip-controls-project.voxclip': project, 'clip-controls-wire-cases.json': cases,
+            'clip-controls-color-grade-cases.json': color_grade_cases(defaults)}
+
+
+SLIDERS = ['exposure', 'temperature', 'tint', 'highlights', 'shadows', 'vibrance', 'fade', 'vignette', 'grain']
+
+
+def grade(**values):
+    """A colorGrade as the Cores write it: preset and amount first when present, all nine sliders, then the toning."""
+    result = {key: values.pop(key) for key in ('preset', 'amount') if key in values}
+    result.update({name: values.pop(name, 0) for name in SLIDERS})
+    result.update({key: values.pop(key) for key in ('curve', 'splitTone') if key in values})
+    assert not values, values
+    return result
+
+
+def color_grade_cases(defaults):
+    def set_value(path, value):
+        return {'path': path, 'value': value}
+
+    def remove(path):
+        return {'path': path, 'remove': True}
+
+    at = '/clipControls/0/colorGrade'
+    v8 = set_value('/schemaVersion', 8)
+    split = {'shadowHue': 200, 'shadowSaturation': 10, 'highlightHue': 38, 'highlightSaturation': 30, 'balance': 0}
+    reference = grade(preset='warmPrint', amount=70, highlights=-15, vibrance=20, fade=20, grain=20,
+                      curve={'master': [0, 245, 500, 760, 965]}, splitTone=split)
+    vibrant = grade(vibrance=25)
+    valid = [
+        # The reference task (spec section 8.1): Warm Print at 70% with vibrance +20 and highlights -15.
+        {'id': 'reference-task', 'patches': [set_value('/clipControls/0/look', 'original'),
+                                             set_value('/clipControls/0/colorAdjustments', {'brightness': 0, 'contrast': 0, 'saturation': -10, 'warmth': 26}),
+                                             set_value(at, reference)]},
+        {'id': 'muted-at-seventy', 'patches': [set_value(at, grade(preset='muted', amount=70))]},
+        {'id': 'fix-only', 'patches': [set_value('/clipControls/0/look', 'original'), set_value(at, grade(exposure=20))]},
+        {'id': 'grade-only-entry', 'patches': [set_value('/clipControls', [{**defaults, 'colorGrade': vibrant}])]},
+        {'id': 'every-slider-at-its-top', 'patches': [set_value(at, grade(
+            amount=0, **{name: 100 for name in SLIDERS},
+            curve={'master': [0, 0, 0, 0, 0], 'red': [1000, 1000, 1000, 1000, 1000], 'green': [0, 250, 500, 750, 1000],
+                   'blue': [0, 1, 1, 999, 1000]},
+            splitTone={'shadowHue': 0, 'shadowSaturation': 100, 'highlightHue': 359, 'highlightSaturation': 100, 'balance': -100}))]},
+        {'id': 'every-slider-at-its-bottom', 'patches': [set_value(at, grade(
+            amount=99, **{name: (0 if name in ('fade', 'vignette', 'grain') else -100) for name in SLIDERS}))]},
+        {'id': 'unknown-preset-renders-from-values', 'patches': [set_value(at, grade(preset='futureLook9', vibrance=10))]},
+        {'id': 'longest-preset', 'patches': [set_value(at, grade(preset='a' * 40, fade=5))]},
+        {'id': 'one-channel-curve', 'patches': [set_value(at, grade(curve={'red': [0, 260, 510, 760, 1000]}))]},
+        {'id': 'split-tone-only', 'patches': [set_value(at, grade(splitTone={**split, 'balance': 100}))]},
+        {'id': 'amount-alone', 'patches': [set_value(at, grade(preset='muted', amount=0))]}]
+    for case in valid:
+        case['patches'].insert(0, v8)
+
+    invalid = []
+
+    def reject(identity, patches, schema_valid=False, version=v8):
+        invalid.append({'id': identity, 'schemaValid': schema_valid, 'patches': [version] + patches})
+
+    def field(name, value):
+        return [set_value(at, vibrant), set_value(f'{at}/{name}', value)]
+
+    reject('neutral-grade', [set_value(at, grade())])
+    reject('preset-alone', [set_value(at, grade(preset='warmPrint'))])
+    reject('full-amount-written', [set_value(at, grade(amount=100, vibrance=25))])
+    reject('null-grade', [set_value(at, None)])
+    reject('list-grade', [set_value(at, [vibrant])])
+    reject('unknown-grade-field', field('whites', 0))
+    for name in SLIDERS:
+        reject(f'missing-{name}', [set_value(at, vibrant), remove(f'{at}/{name}')])
+    reject('exposure-too-high', field('exposure', 101))
+    reject('vibrance-too-low', field('vibrance', -101))
+    reject('negative-fade', field('fade', -1))
+    reject('vignette-too-high', field('vignette', 101))
+    reject('grain-too-high', field('grain', 101))
+    reject('negative-amount', field('amount', -1))
+    reject('fractional-point', field('highlights', 1.5))
+    reject('string-point', field('tint', '5'))
+    reject('boolean-point', field('shadows', True))
+    reject('empty-preset', field('preset', ''))
+    reject('long-preset', field('preset', 'a' * 41))
+    reject('preset-with-a-dash', field('preset', 'warm-print'))
+    reject('accented-preset', field('preset', 'caf\u00e9'))
+    reject('numeric-preset', field('preset', 5))
+    reject('empty-curve', field('curve', {}))
+    reject('unknown-curve-channel', field('curve', {'alpha': [0, 250, 500, 750, 1000]}))
+    reject('short-curve', field('curve', {'master': [0, 250, 750, 1000]}))
+    reject('long-curve', field('curve', {'master': [0, 200, 400, 600, 800, 1000]}))
+    reject('curve-above-1000', field('curve', {'master': [0, 250, 500, 750, 1001]}))
+    reject('negative-curve', field('curve', {'master': [-1, 250, 500, 750, 1000]}))
+    reject('fractional-curve', field('curve', {'master': [0, 245.5, 500, 760, 965]}))
+    reject('null-curve-channel', field('curve', {'master': None}))
+    reject('falling-curve', field('curve', {'master': [0, 500, 400, 760, 965]}), True)
+    reject('hue-360', field('splitTone', {**split, 'shadowHue': 360}))
+    reject('negative-hue', field('splitTone', {**split, 'highlightHue': -1}))
+    reject('split-saturation-too-high', field('splitTone', {**split, 'shadowSaturation': 101}))
+    reject('balance-too-high', field('splitTone', {**split, 'balance': 101}))
+    reject('fractional-hue', field('splitTone', {**split, 'shadowHue': 200.5}))
+    reject('split-missing-balance', field('splitTone', {key: value for key, value in split.items() if key != 'balance'}))
+    reject('split-extra-key', field('splitTone', {**split, 'midtoneHue': 90}))
+    # A colour grade needs the v8 frame (spec section 8.4): a v4 or v6 project with one is refused.
+    for version in (4, 6):
+        reject(f'v{version}-color-grade', [set_value(at, vibrant)], version=set_value('/schemaVersion', version))
+    return {'format': 'voxclip-clip-color-grade-wire-cases/1', 'project': 'fixtures/clip-controls/clip-controls-project.voxclip',
+            'valid': valid, 'invalid': invalid}
 
 
 def main():

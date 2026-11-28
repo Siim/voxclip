@@ -1,0 +1,1753 @@
+{
+  "format": "voxclip-clip-color-grade-wire-cases/1",
+  "project": "fixtures/clip-controls/clip-controls-project.voxclip",
+  "valid": [
+    {
+      "id": "reference-task",
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/look",
+          "value": "original"
+        },
+        {
+          "path": "/clipControls/0/colorAdjustments",
+          "value": {
+            "brightness": 0,
+            "contrast": 0,
+            "saturation": -10,
+            "warmth": 26
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "preset": "warmPrint",
+            "amount": 70,
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": -15,
+            "shadows": 0,
+            "vibrance": 20,
+            "fade": 20,
+            "vignette": 0,
+            "grain": 20,
+            "curve": {
+              "master": [
+                0,
+                245,
+                500,
+                760,
+                965
+              ]
+            },
+            "splitTone": {
+              "shadowHue": 200,
+              "shadowSaturation": 10,
+              "highlightHue": 38,
+              "highlightSaturation": 30,
+              "balance": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "muted-at-seventy",
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "preset": "muted",
+            "amount": 70,
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 0,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "fix-only",
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/look",
+          "value": "original"
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 20,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 0,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "grade-only-entry",
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls",
+          "value": [
+            {
+              "clipId": "clip-main",
+              "speed": 1,
+              "shape": null,
+              "look": "original",
+              "gainDb": 0,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 0,
+              "muteSource": false,
+              "flipHorizontal": false,
+              "rotationDegrees": 0,
+              "colorGrade": {
+                "exposure": 0,
+                "temperature": 0,
+                "tint": 0,
+                "highlights": 0,
+                "shadows": 0,
+                "vibrance": 25,
+                "fade": 0,
+                "vignette": 0,
+                "grain": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "every-slider-at-its-top",
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "amount": 0,
+            "exposure": 100,
+            "temperature": 100,
+            "tint": 100,
+            "highlights": 100,
+            "shadows": 100,
+            "vibrance": 100,
+            "fade": 100,
+            "vignette": 100,
+            "grain": 100,
+            "curve": {
+              "master": [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "red": [
+                1000,
+                1000,
+                1000,
+                1000,
+                1000
+              ],
+              "green": [
+                0,
+                250,
+                500,
+                750,
+                1000
+              ],
+              "blue": [
+                0,
+                1,
+                1,
+                999,
+                1000
+              ]
+            },
+            "splitTone": {
+              "shadowHue": 0,
+              "shadowSaturation": 100,
+              "highlightHue": 359,
+              "highlightSaturation": 100,
+              "balance": -100
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "every-slider-at-its-bottom",
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "amount": 99,
+            "exposure": -100,
+            "temperature": -100,
+            "tint": -100,
+            "highlights": -100,
+            "shadows": -100,
+            "vibrance": -100,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "unknown-preset-renders-from-values",
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "preset": "futureLook9",
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 10,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "longest-preset",
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "preset": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 0,
+            "fade": 5,
+            "vignette": 0,
+            "grain": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "one-channel-curve",
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 0,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0,
+            "curve": {
+              "red": [
+                0,
+                260,
+                510,
+                760,
+                1000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "split-tone-only",
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 0,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0,
+            "splitTone": {
+              "shadowHue": 200,
+              "shadowSaturation": 10,
+              "highlightHue": 38,
+              "highlightSaturation": 30,
+              "balance": 100
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "amount-alone",
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "preset": "muted",
+            "amount": 0,
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 0,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        }
+      ]
+    }
+  ],
+  "invalid": [
+    {
+      "id": "neutral-grade",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 0,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "preset-alone",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "preset": "warmPrint",
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 0,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "full-amount-written",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "amount": 100,
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "null-grade",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "list-grade",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": [
+            {
+              "exposure": 0,
+              "temperature": 0,
+              "tint": 0,
+              "highlights": 0,
+              "shadows": 0,
+              "vibrance": 25,
+              "fade": 0,
+              "vignette": 0,
+              "grain": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "unknown-grade-field",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/whites",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "missing-exposure",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/exposure",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-temperature",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/temperature",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-tint",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/tint",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-highlights",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/highlights",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-shadows",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/shadows",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-vibrance",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/vibrance",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-fade",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/fade",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-vignette",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/vignette",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-grain",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/grain",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "exposure-too-high",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/exposure",
+          "value": 101
+        }
+      ]
+    },
+    {
+      "id": "vibrance-too-low",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/vibrance",
+          "value": -101
+        }
+      ]
+    },
+    {
+      "id": "negative-fade",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/fade",
+          "value": -1
+        }
+      ]
+    },
+    {
+      "id": "vignette-too-high",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/vignette",
+          "value": 101
+        }
+      ]
+    },
+    {
+      "id": "grain-too-high",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/grain",
+          "value": 101
+        }
+      ]
+    },
+    {
+      "id": "negative-amount",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/amount",
+          "value": -1
+        }
+      ]
+    },
+    {
+      "id": "fractional-point",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/highlights",
+          "value": 1.5
+        }
+      ]
+    },
+    {
+      "id": "string-point",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/tint",
+          "value": "5"
+        }
+      ]
+    },
+    {
+      "id": "boolean-point",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/shadows",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "empty-preset",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/preset",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "id": "long-preset",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/preset",
+          "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "id": "preset-with-a-dash",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/preset",
+          "value": "warm-print"
+        }
+      ]
+    },
+    {
+      "id": "accented-preset",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/preset",
+          "value": "café"
+        }
+      ]
+    },
+    {
+      "id": "numeric-preset",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/preset",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "id": "empty-curve",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/curve",
+          "value": {}
+        }
+      ]
+    },
+    {
+      "id": "unknown-curve-channel",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/curve",
+          "value": {
+            "alpha": [
+              0,
+              250,
+              500,
+              750,
+              1000
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "short-curve",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/curve",
+          "value": {
+            "master": [
+              0,
+              250,
+              750,
+              1000
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "long-curve",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/curve",
+          "value": {
+            "master": [
+              0,
+              200,
+              400,
+              600,
+              800,
+              1000
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "curve-above-1000",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/curve",
+          "value": {
+            "master": [
+              0,
+              250,
+              500,
+              750,
+              1001
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "negative-curve",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/curve",
+          "value": {
+            "master": [
+              -1,
+              250,
+              500,
+              750,
+              1000
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "fractional-curve",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/curve",
+          "value": {
+            "master": [
+              0,
+              245.5,
+              500,
+              760,
+              965
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "null-curve-channel",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/curve",
+          "value": {
+            "master": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "falling-curve",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/curve",
+          "value": {
+            "master": [
+              0,
+              500,
+              400,
+              760,
+              965
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "hue-360",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/splitTone",
+          "value": {
+            "shadowHue": 360,
+            "shadowSaturation": 10,
+            "highlightHue": 38,
+            "highlightSaturation": 30,
+            "balance": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "negative-hue",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/splitTone",
+          "value": {
+            "shadowHue": 200,
+            "shadowSaturation": 10,
+            "highlightHue": -1,
+            "highlightSaturation": 30,
+            "balance": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "split-saturation-too-high",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/splitTone",
+          "value": {
+            "shadowHue": 200,
+            "shadowSaturation": 101,
+            "highlightHue": 38,
+            "highlightSaturation": 30,
+            "balance": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "balance-too-high",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/splitTone",
+          "value": {
+            "shadowHue": 200,
+            "shadowSaturation": 10,
+            "highlightHue": 38,
+            "highlightSaturation": 30,
+            "balance": 101
+          }
+        }
+      ]
+    },
+    {
+      "id": "fractional-hue",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/splitTone",
+          "value": {
+            "shadowHue": 200.5,
+            "shadowSaturation": 10,
+            "highlightHue": 38,
+            "highlightSaturation": 30,
+            "balance": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "split-missing-balance",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/splitTone",
+          "value": {
+            "shadowHue": 200,
+            "shadowSaturation": 10,
+            "highlightHue": 38,
+            "highlightSaturation": 30
+          }
+        }
+      ]
+    },
+    {
+      "id": "split-extra-key",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        },
+        {
+          "path": "/clipControls/0/colorGrade/splitTone",
+          "value": {
+            "shadowHue": 200,
+            "shadowSaturation": 10,
+            "highlightHue": 38,
+            "highlightSaturation": 30,
+            "balance": 0,
+            "midtoneHue": 90
+          }
+        }
+      ]
+    },
+    {
+      "id": "v4-color-grade",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 4
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "v6-color-grade",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        },
+        {
+          "path": "/clipControls/0/colorGrade",
+          "value": {
+            "exposure": 0,
+            "temperature": 0,
+            "tint": 0,
+            "highlights": 0,
+            "shadows": 0,
+            "vibrance": 25,
+            "fade": 0,
+            "vignette": 0,
+            "grain": 0
+          }
+        }
+      ]
+    }
+  ]
+}

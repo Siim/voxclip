@@ -13,6 +13,7 @@ import Testing
         let id: String
         let patches: [Patch]
         let tooNew: Bool?
+        var schemaValid: Bool? = nil
     }
     private struct Cases: Decodable {
         let format: String
@@ -22,6 +23,9 @@ import Testing
     static let fixture = "fixtures/clip-controls/clip-controls-project.voxclip"
     private func cases() throws -> Cases {
         try JSONDecoder().decode(Cases.self, from: FixtureLoader.data("fixtures/clip-controls/clip-controls-wire-cases.json"))
+    }
+    private func gradeCases() throws -> Cases {
+        try JSONDecoder().decode(Cases.self, from: FixtureLoader.data("fixtures/clip-controls/clip-controls-color-grade-cases.json"))
     }
 
     private func replacing(_ original: JSONValue, path: ArraySlice<String>, patch: Patch) throws -> JSONValue {
@@ -84,6 +88,72 @@ import Testing
                 #expect(throws: (any Error).self, "\(item.id)") { try JSONProjectStore.decode(input) }
             }
         }
+    }
+
+    /// Looks spec §11.5: a colorGrade loads and saves byte for byte at v8, an older reader refuses it as too new, and
+    /// every shared range, key set and version rule holds.
+    @Test func colorGradeCasesRoundTripAtV8AndAV7ReaderRefusesThem() throws {
+        let corpus = try gradeCases()
+        #expect(corpus.format == "voxclip-clip-color-grade-wire-cases/1")
+        #expect(corpus.valid.count == 11)
+        for item in corpus.valid {
+            let input = try data(item)
+            let project = try ProjectJSON.decode(input)
+            #expect(project.schemaVersion == 8 && project.clipControls.contains { $0.colorGrade != nil }, "\(item.id)")
+            let encoded = try ProjectJSON.encode(project)
+            #expect(try ProjectJSON.decode(encoded) == project, "\(item.id)")
+            #expect(try JSONProjectStore.decode(JSONProjectStore.encode(project)) == project, "\(item.id)")
+            let written = try JSONDecoder().decode(JSONValue.self, from: encoded)[ai: "clipControls"]
+            let original = try JSONDecoder().decode(JSONValue.self, from: input)[ai: "clipControls"]
+            #expect(written == original, "\(item.id): the object is written as it was read")
+            #expect(throws: VoxClipError.projectTooNew, "\(item.id)") {
+                try ProjectMigrations.checkVersion(JSONDecoder().decode(JSONValue.self, from: encoded), maximumSupportedVersion: 7)
+            }
+        }
+        #expect(corpus.invalid.count == 47)
+        for item in corpus.invalid {
+            let input = try data(item)
+            #expect(throws: (any Error).self, "\(item.id)") { try ProjectJSON.decode(input) }
+            #expect(throws: (any Error).self, "\(item.id)") { try JSONProjectStore.decode(input) }
+        }
+    }
+
+    /// The first colour grade promotes a project to v8; without one it keeps its version and its bytes, and a v7
+    /// project (spoken recordings) refuses a colorGrade written at 7.
+    @Test func theFirstColorGradePromotesToV8AndItsRemovalLeavesTheFrame() throws {
+        let input = try FixtureLoader.data(Self.fixture)
+        let original = try ProjectJSON.decode(input)
+        #expect(original.schemaVersion == 4)
+        #expect(try ProjectJSON.encode(ProjectJSON.decode(ProjectJSON.encode(original))) == ProjectJSON.encode(original))
+        var graded = try #require(original.clipControls.first)
+        graded.colorGrade = ClipColorGrade(exposure: 20)
+        let promoted = try ClipControlsProject.setting(graded, in: original)
+        #expect(promoted.schemaVersion == 8)
+        let saved = try ProjectJSON.encode(promoted)
+        #expect(try ProjectJSON.decode(saved).schemaVersion == 8)
+        #expect(throws: VoxClipError.projectTooNew) {
+            try ProjectMigrations.checkVersion(JSONDecoder().decode(JSONValue.self, from: saved), maximumSupportedVersion: 7)
+        }
+        graded.colorGrade = nil
+        let cleared = try ClipControlsProject.setting(graded, in: promoted)
+        #expect(cleared.schemaVersion == TimelineEditFields.version && cleared.clipControls == original.clipControls)
+        // A neutral grade is not stored and promotes nothing.
+        graded.colorGrade = ClipColorGrade(preset: "warmPrint")
+        #expect(try ClipControlsProject.setting(graded, in: original) == original)
+        // Written below 8 by hand, a grade is refused.
+        var legacy = original
+        legacy.clipControls = [ProjectClipControls(clipId: "clip-main", colorGrade: ClipColorGrade(vibrance: 10))]
+        #expect(throws: ClipControlsProjectError.unsupportedVersion) { try ClipControlsProject.validate(legacy) }
+        var spoken = try ProjectJSON.decode(FixtureLoader.data("fixtures/recordings/two-recordings.voxclip"))
+        #expect(spoken.schemaVersion == 7)
+        spoken.clipControls = [ProjectClipControls(clipId: "clip-main", colorGrade: ClipColorGrade(vibrance: 10))]
+        #expect(throws: (any Error).self) { try ClipControlsProject.validate(spoken) }
+        let regraded = try ClipControlsProject.setting(ProjectClipControls(clipId: "clip-main", colorGrade: ClipColorGrade(vibrance: 10)),
+                                                       in: ProjectJSON.decode(FixtureLoader.data("fixtures/recordings/two-recordings.voxclip")))
+        #expect(regraded.schemaVersion == 8)
+        var cleaned = try #require(regraded.clipControls.first)
+        cleaned.colorGrade = nil
+        #expect(try ClipControlsProject.setting(cleaned, in: regraded).schemaVersion == 7)
     }
 
     @Test func colorAdjustmentsRoundTripAndClearWithoutChangingTheLegacyLook() throws {

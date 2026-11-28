@@ -628,6 +628,31 @@
       "if": {
         "properties": {
           "schemaVersion": {
+            "maximum": 7
+          }
+        },
+        "required": [
+          "clipControls"
+        ]
+      },
+      "then": {
+        "properties": {
+          "clipControls": {
+            "items": {
+              "not": {
+                "required": [
+                  "colorGrade"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
             "const": 8
           }
         }
@@ -4770,7 +4795,7 @@
       ]
     },
     "clipControls": {
-      "description": "One clip's playback controls; doc/design.md section 6.9. Every required key is written; reframe and coverSeconds, coverTitle and colorAdjustments are omitted when absent. Runtime also checks that the clip exists, that a clip has one entry and that no entry is stored at its defaults.",
+      "description": "One clip's playback controls; doc/design.md section 6.9. Every required key is written; reframe and coverSeconds, coverTitle, colorAdjustments and colorGrade are omitted when absent. Runtime also checks that the clip exists, that a clip has one entry and that no entry is stored at its defaults.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -4942,6 +4967,9 @@
               }
             }
           }
+        },
+        "colorGrade": {
+          "$ref": "#/$defs/clipColorGrade"
         }
       },
       "dependentRequired": {
@@ -5902,6 +5930,221 @@
             },
             {
               "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "clipColorGrade": {
+      "description": "Schema v8 only: a clip's Fix (exposure, temperature, tint), the newer look controls, Amount and a preset's toning, in whole points; looks spec section 8.1. Every slider key is written; preset, curve and splitTone are omitted when absent and amount at 100. Never neutral: a preset alone stores nothing.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exposure",
+        "temperature",
+        "tint",
+        "highlights",
+        "shadows",
+        "vibrance",
+        "fade",
+        "vignette",
+        "grain"
+      ],
+      "properties": {
+        "preset": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9]{1,40}$",
+          "description": "The look in shared/looks/clip-looks.json these values came from; display only, never rendered. An ID a build does not know shows \"Custom\"."
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 99,
+          "description": "The look's strength in percent, mixed over the Fix; omitted at 100."
+        },
+        "exposure": {
+          "type": "integer",
+          "minimum": -100,
+          "maximum": 100
+        },
+        "temperature": {
+          "type": "integer",
+          "minimum": -100,
+          "maximum": 100
+        },
+        "tint": {
+          "type": "integer",
+          "minimum": -100,
+          "maximum": 100
+        },
+        "highlights": {
+          "type": "integer",
+          "minimum": -100,
+          "maximum": 100
+        },
+        "shadows": {
+          "type": "integer",
+          "minimum": -100,
+          "maximum": 100
+        },
+        "vibrance": {
+          "type": "integer",
+          "minimum": -100,
+          "maximum": 100
+        },
+        "fade": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "vignette": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "grain": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "curve": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "master": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "description": "Y in thousandths at x = 0, 1/4, 1/2, 3/4 and 1; runtime checks it never decreases."
+            },
+            "red": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "description": "Y in thousandths at x = 0, 1/4, 1/2, 3/4 and 1; runtime checks it never decreases."
+            },
+            "green": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "description": "Y in thousandths at x = 0, 1/4, 1/2, 3/4 and 1; runtime checks it never decreases."
+            },
+            "blue": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "description": "Y in thousandths at x = 0, 1/4, 1/2, 3/4 and 1; runtime checks it never decreases."
+            }
+          },
+          "description": "A preset's tone curves: master on every channel, then the channel curves. Data only."
+        },
+        "splitTone": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "shadowHue",
+            "shadowSaturation",
+            "highlightHue",
+            "highlightSaturation",
+            "balance"
+          ],
+          "properties": {
+            "shadowHue": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 359
+            },
+            "shadowSaturation": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "highlightHue": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 359
+            },
+            "highlightSaturation": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "balance": {
+              "type": "integer",
+              "minimum": -100,
+              "maximum": 100
+            }
+          },
+          "description": "A preset's split toning. Data only."
+        }
+      },
+      "not": {
+        "properties": {
+          "exposure": {
+            "const": 0
+          },
+          "temperature": {
+            "const": 0
+          },
+          "tint": {
+            "const": 0
+          },
+          "highlights": {
+            "const": 0
+          },
+          "shadows": {
+            "const": 0
+          },
+          "vibrance": {
+            "const": 0
+          },
+          "fade": {
+            "const": 0
+          },
+          "vignette": {
+            "const": 0
+          },
+          "grain": {
+            "const": 0
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "amount"
+              ]
+            },
+            {
+              "required": [
+                "curve"
+              ]
+            },
+            {
+              "required": [
+                "splitTone"
+              ]
             }
           ]
         }

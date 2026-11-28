@@ -17,7 +17,7 @@ GENERATOR = ROOT / "tools/fixtures/clip-controls/generate_clip_controls.py"
 SPEC = importlib.util.spec_from_file_location("clip_controls_fixtures", GENERATOR)
 FIXTURES = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(FIXTURES)
-NAMES = ["clip-controls-project.voxclip", "clip-controls-wire-cases.json"]
+NAMES = ["clip-controls-project.voxclip", "clip-controls-wire-cases.json", "clip-controls-color-grade-cases.json"]
 
 
 class ClipControlsSchemaTests(unittest.TestCase):
@@ -28,6 +28,7 @@ class ClipControlsSchemaTests(unittest.TestCase):
         cls.validator = Draft202012Validator(cls.schema, registry=registry, format_checker=FormatChecker())
         cls.project = json.loads((ROOT / "shared/fixtures/clip-controls/clip-controls-project.voxclip").read_text())
         cls.cases = json.loads((ROOT / "shared/fixtures/clip-controls/clip-controls-wire-cases.json").read_text())
+        cls.grades = json.loads((ROOT / "shared/fixtures/clip-controls/clip-controls-color-grade-cases.json").read_text())
 
     def test_shared_valid_cases(self):
         for case in self.cases["valid"]:
@@ -39,6 +40,25 @@ class ClipControlsSchemaTests(unittest.TestCase):
             with self.subTest(case=case["id"]):
                 actual = not list(self.validator.iter_errors(FIXTURES.apply_case(self.project, case)))
                 self.assertEqual(case["schemaValid"], actual)
+
+    def test_color_grade_cases(self):
+        self.assertEqual("voxclip-clip-color-grade-wire-cases/1", self.grades["format"])
+        for case in self.grades["valid"]:
+            with self.subTest(case=case["id"]):
+                document = FIXTURES.apply_case(self.project, case)
+                self.assertEqual(8, document["schemaVersion"])
+                self.validator.validate(document)
+        for case in self.grades["invalid"]:
+            with self.subTest(case=case["id"]):
+                actual = not list(self.validator.iter_errors(FIXTURES.apply_case(self.project, case)))
+                self.assertEqual(case["schemaValid"], actual)
+
+    def test_color_grade_stays_out_of_versions_before_8(self):
+        case = next(item for item in self.grades["valid"] if item["id"] == "reference-task")
+        document = FIXTURES.apply_case(self.project, case)
+        for version in (4, 6):
+            document["schemaVersion"] = version
+            self.assertTrue(list(self.validator.iter_errors(document)), version)
 
     def test_looks_match_the_planner(self):
         looks = self.schema["$defs"]["clipControls"]["properties"]["look"]["enum"]
