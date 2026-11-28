@@ -12,7 +12,7 @@ public sealed class FrameAnalyzerTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     /// <summary>A cached time is never decoded or looked at again, by this analyzer or another on the same cache; the file is the
-    /// Mac's <c>analysis-v2.json</c> and reads back the same.</summary>
+    /// Mac's <c>analysis-v3.json</c> and reads back the same.</summary>
     [Fact]
     public async Task ACachedTimeIsNeverDecodedAgainAndTheCacheFileRoundTrips()
     {

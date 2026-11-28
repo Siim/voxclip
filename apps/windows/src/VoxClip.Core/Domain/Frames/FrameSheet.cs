@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using VoxClip.Core.Domain.Autopilot;
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Services.LLM;
 
@@ -30,10 +31,11 @@ public sealed class FrameSheet
     /// <summary>The images as the request carries them.</summary>
     public IReadOnlyList<LlmImage> Images => Frames.Select(frame => frame.Image).ToArray();
 
-    /// <summary>The summary block: a header line, then one line per frame, facing judged against <paramref name="pitchBaseline"/>.
-    /// Empty for an empty sheet.</summary>
-    public string Summary(double? pitchBaseline) =>
-        Frames.Count == 0 ? "" : string.Join("\n", Frames.Select(frame => frame.SummaryLine(pitchBaseline)).Prepend(SummaryHeader));
+    /// <summary>The summary block: a header line, then one line per frame, facing judged against <paramref name="pitchBaseline"/>, and
+    /// each measured frame's light line from <paramref name="light"/>'s thresholds (looks spec §9.3) when given. Empty for an empty
+    /// sheet.</summary>
+    public string Summary(double? pitchBaseline, ClipLightMeasure? light = null) =>
+        Frames.Count == 0 ? "" : string.Join("\n", Frames.Select(frame => frame.SummaryLine(pitchBaseline, light)).Prepend(SummaryHeader));
 
     /// <summary>The JPEG bytes the images add to a request (before base64).</summary>
     public int ImageBytes => Frames.Sum(frame => frame.Image.Data.Length);
@@ -42,7 +44,7 @@ public sealed class FrameSheet
     public int EstimatedImageTokens => Frames.Sum(frame => ImageTokens(frame.Image.Width, frame.Image.Height));
 
     /// <summary>The estimated input tokens of the summary (2.2 UTF-8 bytes per token, the Mac's <c>AITokenPolicy</c>).</summary>
-    public int EstimatedSummaryTokens(double? pitchBaseline) => SummaryTokens(Summary(pitchBaseline));
+    public int EstimatedSummaryTokens(double? pitchBaseline, ClipLightMeasure? light = null) => SummaryTokens(Summary(pitchBaseline, light));
 
     internal static int SummaryTokens(string summary) => (int)Math.Ceiling(Encoding.UTF8.GetByteCount(summary) / 2.2);
 
@@ -72,10 +74,11 @@ public sealed class FrameSheetFrame
     public static string Label(int index, double time) => $"Frame {index} at {Fixed(time)} s";
 
     /// <summary>"F3 12.40 s: face at 0.42,0.18,0.20,0.36, eyes open, quality 0.62, facing camera; screen with text at …", facing
-    /// judged against <paramref name="pitchBaseline"/>.</summary>
-    public string SummaryLine(double? pitchBaseline) => SummaryLine(Index, Observation, pitchBaseline);
+    /// judged against <paramref name="pitchBaseline"/>; the light line only for a measured frame and with <paramref name="light"/>'s
+    /// thresholds.</summary>
+    public string SummaryLine(double? pitchBaseline, ClipLightMeasure? light = null) => SummaryLine(Index, Observation, pitchBaseline, light);
 
-    internal static string SummaryLine(int index, FrameObservation frame, double? pitchBaseline)
+    internal static string SummaryLine(int index, FrameObservation frame, double? pitchBaseline, ClipLightMeasure? light = null)
     {
         var parts = new List<string>();
         if (frame.Face is { } face)
@@ -94,6 +97,7 @@ public sealed class FrameSheetFrame
         foreach (var screen in frame.Screens)
             parts.Add($"{(screen.Framed ? "screen" : "dense text")} with {screen.TextBoxes.ToString(CultureInfo.InvariantCulture)} text boxes at {RectText(screen.Rect)}");
         if (frame.Screens.Count == 0 && frame.TextRects.Count > 0) parts.Add($"{frame.TextRects.Count.ToString(CultureInfo.InvariantCulture)} text boxes");
+        if (light is not null && frame.Light is { } measured) parts.Add(measured.Line(light));
         return $"F{index.ToString(CultureInfo.InvariantCulture)} {Fixed(frame.Time)} s: " + string.Join(", ", parts);
     }
 

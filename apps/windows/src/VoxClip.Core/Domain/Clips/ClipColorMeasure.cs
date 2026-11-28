@@ -1,4 +1,5 @@
 using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Domain.Frames;
 
 namespace VoxClip.Core.Domain.Clips;
 
@@ -221,36 +222,20 @@ public sealed record ClipLightNote(ClipLightNoteKind Kind, int Percent = 0)
 public sealed class ClipLightFacts
 {
     /// <summary>The facts of <paramref name="frame"/> under <paramref name="measure"/>.</summary>
-    public ClipLightFacts(ClipFrameSample frame, ClipColorMeasure measure)
+    public ClipLightFacts(ClipFrameSample frame, ClipColorMeasure measure) : this(FrameLight.Measure(frame, measure), measure.Light) { }
+
+    /// <summary>The facts of a frame's measured light, with its notes from <paramref name="light"/>'s thresholds.</summary>
+    public ClipLightFacts(FrameLight facts, ClipLightMeasure light)
     {
-        var pixels = frame.Pixels();
-        var face = frame.FacePixels();
-        var lumas = pixels.Select(pixel => ClipGradeRecipe.Luma(pixel)).ToArray();
-        var faceLumas = face.Select(pixel => ClipGradeRecipe.Luma(pixel)).ToArray();
-        var ordered = lumas.Order().ToArray();
-        MedianLuma = ClipColorMeasure.Median(lumas);
-        P95Luma = ordered[Math.Max(0, (int)Math.Ceiling(0.95 * ordered.Length) - 1)];
-        FaceMeanLuma = face.Length == 0 ? null : ClipColorMeasure.Sum(faceLumas) / face.Length;
-        FaceMedianLuma = face.Length == 0 ? null : ClipColorMeasure.Median(faceLumas);
-        FaceClippedShare = face.Length == 0 ? null
-            : (double)face.Count(pixel => Math.Max(Math.Max(pixel[0], pixel[1]), pixel[2]) >= measure.Light.ClippedChannel) / face.Length;
-        NeutralMeans = ClipColorMeasure.NeutralMeans(pixels, measure.Auto);
-        MeanChroma = ClipColorMeasure.Sum(pixels.Select(pixel => ClipColorMeasure.Chroma(pixel))) / pixels.Length;
-        var light = measure.Light;
-        var notes = new List<ClipLightNote>();
-        if (FaceMedianLuma < light.DimFaceLuma) notes.Add(new(ClipLightNoteKind.DimFace));
-        if (FaceClippedShare is { } share && share > light.ClippedShare) notes.Add(new(ClipLightNoteKind.Clipped, ClipColorMeasure.Points(share * 100)));
-        if (NeutralMeans is { } means)
-        {
-            var (r, g, b) = (means[0], means[1], means[2]);
-            if (r - b > light.WarmCool) notes.Add(new(ClipLightNoteKind.WarmCast));
-            else if (b - r > light.WarmCool) notes.Add(new(ClipLightNoteKind.CoolCast));
-            if (g - (r + b) / 2 > light.GreenMagenta) notes.Add(new(ClipLightNoteKind.GreenCast));
-            else if ((r + b) / 2 - g > light.GreenMagenta) notes.Add(new(ClipLightNoteKind.MagentaCast));
-        }
-        if (MeanChroma < light.LowColor) notes.Add(new(ClipLightNoteKind.LowColor));
-        else if (MeanChroma > light.HighColor) notes.Add(new(ClipLightNoteKind.HighColor));
-        Notes = notes;
+        ArgumentNullException.ThrowIfNull(facts);
+        MedianLuma = facts.MedianLuma;
+        P95Luma = facts.P95Luma;
+        FaceMeanLuma = facts.FaceMeanLuma;
+        FaceMedianLuma = facts.FaceMedianLuma;
+        FaceClippedShare = facts.FaceClippedShare;
+        NeutralMeans = facts.NeutralMeans;
+        MeanChroma = facts.MeanChroma;
+        Notes = facts.Notes(light);
     }
 
     /// <summary>The median luma.</summary>
