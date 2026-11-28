@@ -120,6 +120,7 @@
     <Compile Include="ShareDisclosureTests.cs" />
     <Compile Include="CaptionUndoTests.cs" />
     <Compile Include="CutEdgeCarryTests.cs" />
+    <Compile Include="CutEdgesEditorTests.cs" />
     <Compile Include="FootageUndoTests.cs" />
     <Compile Include="WindowsSettingsCopyTests.cs" />
     <Compile Include="CacheUpkeepTests.cs" />

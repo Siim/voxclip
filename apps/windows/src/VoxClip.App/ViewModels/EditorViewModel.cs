@@ -326,8 +326,10 @@ public sealed partial class EditorViewModel : ObservableObject
             if (next == state) return false;
             CaptionDrag.Cancel();
             PushHistory(actionName);
+            var before = project;
             state = next;
             SyncProject();
+            SeatCutEdges(before);
             Refresh();
             return true;
         }
@@ -389,8 +391,11 @@ public sealed partial class EditorViewModel : ObservableObject
                 CaptionDrag.Cancel();
                 if (!ReferenceEquals(project, snapshot) || isLeaving || IsReadOnly || Busy) return false;
                 PushHistory(actionName ?? command.ActionName);
-                state = nextState;
-                project = change.Present;
+                // A local cut accepted with the takes is seated in the same step; the new segments' ranges are frozen.
+                var present = CommittingCutEdges(snapshot, change.Present);
+                state = ReferenceEquals(present, change.Present) ? nextState
+                    : nextState with { CutEdges = present.Edits.CutEdges ?? System.Collections.ObjectModel.ReadOnlyDictionary<string, double>.Empty };
+                project = present;
                 Refresh();
                 Announcement?.Invoke(this, actionName ?? command.ActionName);
                 return true;

@@ -113,6 +113,9 @@ internal sealed partial class RewriteSession : IDisposable
     /// the selection, with the clip it opened in.</summary>
     private readonly RewriteScope identityScope;
     private readonly string? identityClipId;
+    /// <summary>The scope the voice identity reads, and a selection's clip: the editor keeps cut edges at its edges (editing §5.10).</summary>
+    internal RewriteScope IdentityScope => identityScope;
+    internal string? IdentityClipId => identityClipId;
     /// <summary>What the paid voice work is made from as the session opened (<see cref="ProjectVoiceTakeIdentity.IdentityKey"/>).</summary>
     private readonly string voiceIdentity;
     private Project? keyedProject;
@@ -235,6 +238,7 @@ internal sealed partial class RewriteSession : IDisposable
         editor.SetRewriteRange(insertionAfter ?? first, insertionAfter is null ? last : insertionAfter.Value + 1);
         editor.Changed += EditorChanged;
         editor.PropertyChanged += EditorPropertyChanged;
+        editor.RewriteOpened(this);
         RefreshReview();
     }
 
@@ -640,6 +644,7 @@ internal sealed partial class RewriteSession : IDisposable
         Editor.Changed -= EditorChanged;
         Editor.PropertyChanged -= EditorPropertyChanged;
         Editor.SetRewriteRange(-1, -1);
+        Editor.RewriteClosed(this);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 }

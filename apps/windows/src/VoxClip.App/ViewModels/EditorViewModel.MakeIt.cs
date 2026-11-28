@@ -71,6 +71,7 @@ public sealed partial class EditorViewModel
     internal bool ReplaceProject(Project next, string name)
     {
         if (isLeaving || IsReadOnly || state is null || ReferenceEquals(next, project)) return false;
+        next = CommittingCutEdges(project, next);
         if (EditingEngine.FromProject(next) is not { } nextState) return false;
         CaptionDrag.Cancel();
         PushHistory(name);
