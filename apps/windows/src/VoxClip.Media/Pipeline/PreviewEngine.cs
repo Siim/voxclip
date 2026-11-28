@@ -405,9 +405,8 @@ public sealed class PreviewEngine : IPreviewEngine
         var source = timeline.Source(Math.Min(edited, Math.Max(0, local.Timeline.Duration - 1 / local.Timeline.SampleRate)));
         var (recording, localTime) = timeline.Picture(local, source);
         if (recording is null) OpenLegacyWorkers(local.Media.Path, ct);
-        PixelBuffer decoded;
-        try { decoded = (recording is null ? current! : OpenRecordingWorker(recording, ct)).ReadAsync(localTime, true, ct).GetAwaiter().GetResult(); }
-        catch (Exception exception) { PreviewFrameFailures.Failed(failures, true, PreviewFailureReason.SourceFrame, exception); throw; }
+        // A still that fails fails its own call; the preview's failure count is for the frames it shows.
+        var decoded = (recording is null ? current! : OpenRecordingWorker(recording, ct)).ReadAsync(localTime, true, ct).GetAwaiter().GetResult();
         var size = local.Output.Size;
         var pixels = new PixelBuffer(GC.AllocateUninitializedArray<byte>(checked(size.Width * size.Height * 4)), size.Width, size.Height, size.Width * 4);
         var synced = voiceSession?.Lipsync?.Read(edited, ct);
