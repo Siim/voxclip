@@ -131,6 +131,8 @@ CASES = [
     ('an-amount-below-the-floor', LIT, {'look': 'goldenHour', 'lookAmount': 33, 'lookReason': 'Sunset'}),
     ('an-amount-rounded-to-five', LIT, {'look': 'goldenHour', 'lookAmount': 72, 'lookReason': 'Sunset'}),
     ('an-amount-above-the-whole-look', LIT, {'look': 'goldenHour', 'lookAmount': 130, 'lookReason': 'Sunset'}),
+    ('an-amount-past-any-whole-number', LIT, {'look': 'goldenHour', 'lookAmount': 1e300, 'lookReason': 'Sunset'}),
+    ('an-amount-below-any-whole-number', LIT, {'look': 'goldenHour', 'lookAmount': -1e300, 'lookReason': 'Sunset'}),
     ('a-strong-look-at-95', LIT, {'look': 'matteFilm', 'lookAmount': 95, 'lookReason': 'Calm storytelling'}),
     ('an-unreadable-amount', LIT, {'look': 'warmPrint', 'lookAmount': 'seventy', 'lookReason': 'Memories'}),
     ('as-filmed-takes-no-amount', LIT, {'look': 'As filmed', 'lookAmount': 60, 'lookFix': True, 'lookReason': 'A screen demo'}),

@@ -573,7 +573,8 @@ public enum ClipAutopilotValidator {
             reason = reason.isEmpty ? "Brightened for a dim face" : reason + "; brightened for a dim face"
         } else if look.id != ClipLook.original.rawValue, value[ai: "lookAmount"] != .null {
             if let given = value[ai: "lookAmount"].aiDouble, given.isFinite {
-                let points = (0...1).contains(given) ? given * 100 : given
+                // Bounded before the Int conversion, which traps past Int.max; the result is the same within 40–100.
+                let points = min(100, max(0, (0...1).contains(given) ? given * 100 : given))
                 var checked = Int((points / 5).rounded(.toNearestOrAwayFromZero)) * 5
                 checked = min(100, max(40, checked))
                 if look.strength == .strong { checked = min(checked, 85) }

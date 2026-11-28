@@ -439,6 +439,110 @@
       }
     },
     {
+      "id": "an-amount-past-any-whole-number",
+      "reply": {
+        "look": "goldenHour",
+        "lookAmount": 1e+300,
+        "lookReason": "Sunset"
+      },
+      "frames": [
+        {
+          "medianLuma": 0.45,
+          "p95Luma": 0.9,
+          "meanChroma": 0.12,
+          "neutralMeans": [
+            0.5,
+            0.46875,
+            0.4375
+          ],
+          "faceMeanLuma": 0.5,
+          "faceMedianLuma": 0.5,
+          "faceClippedShare": 0.0
+        },
+        {
+          "medianLuma": 0.45,
+          "p95Luma": 0.9,
+          "meanChroma": 0.12,
+          "neutralMeans": [
+            0.5,
+            0.46875,
+            0.4375
+          ],
+          "faceMeanLuma": 0.46,
+          "faceMedianLuma": 0.46,
+          "faceClippedShare": 0.0
+        },
+        null
+      ],
+      "expect": {
+        "look": {
+          "id": "goldenHour",
+          "amount": 100,
+          "fix": false,
+          "alternatives": [],
+          "reason": "Sunset"
+        },
+        "repairs": [
+          [
+            "lookAmount",
+            "repaired"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "an-amount-below-any-whole-number",
+      "reply": {
+        "look": "goldenHour",
+        "lookAmount": -1e+300,
+        "lookReason": "Sunset"
+      },
+      "frames": [
+        {
+          "medianLuma": 0.45,
+          "p95Luma": 0.9,
+          "meanChroma": 0.12,
+          "neutralMeans": [
+            0.5,
+            0.46875,
+            0.4375
+          ],
+          "faceMeanLuma": 0.5,
+          "faceMedianLuma": 0.5,
+          "faceClippedShare": 0.0
+        },
+        {
+          "medianLuma": 0.45,
+          "p95Luma": 0.9,
+          "meanChroma": 0.12,
+          "neutralMeans": [
+            0.5,
+            0.46875,
+            0.4375
+          ],
+          "faceMeanLuma": 0.46,
+          "faceMedianLuma": 0.46,
+          "faceClippedShare": 0.0
+        },
+        null
+      ],
+      "expect": {
+        "look": {
+          "id": "goldenHour",
+          "amount": 40,
+          "fix": false,
+          "alternatives": [],
+          "reason": "Sunset"
+        },
+        "repairs": [
+          [
+            "lookAmount",
+            "repaired"
+          ]
+        ]
+      }
+    },
+    {
       "id": "a-strong-look-at-95",
       "reply": {
         "look": "matteFilm",

@@ -76,7 +76,7 @@ public sealed class ClipAutopilotLookTests
         Assert.Equal(ClipAutopilotValidator.DimFaceLooks, fixture["dimFaceLooks"]!.AsArray().Select(item => item!.GetValue<string>()));
         Assert.Equal(ClipAutopilotValidator.DimFaceReplacement, fixture["dimFaceReplacement"]!.GetValue<string>());
         var cases = fixture["cases"]!.AsArray();
-        Assert.Equal(21, cases.Count);
+        Assert.Equal(23, cases.Count);
         foreach (var item in cases)
         {
             var id = item!["id"]!.GetValue<string>();

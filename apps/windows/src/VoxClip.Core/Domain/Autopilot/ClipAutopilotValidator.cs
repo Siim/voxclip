@@ -597,7 +597,8 @@ public static partial class ClipAutopilotValidator
         {
             if (AiJson.Number(given) is { } number && double.IsFinite(number))
             {
-                var points = number is >= 0 and <= 1 ? number * 100 : number;
+                // Bounded before the int conversion, as on the Mac, whose conversion traps; the result is the same within 40-100.
+                var points = Math.Clamp(number is >= 0 and <= 1 ? number * 100 : number, 0, 100);
                 var checkedAmount = Math.Clamp((int)Math.Round(points / 5, MidpointRounding.AwayFromZero) * 5, 40, 100);
                 if (look.Strength == ClipLookStrength.Strong) checkedAmount = Math.Min(checkedAmount, 85);
                 if (checkedAmount != number) log.Repair("lookAmount", number.ToString(CultureInfo.InvariantCulture) + "; " + checkedAmount.ToString(CultureInfo.InvariantCulture));

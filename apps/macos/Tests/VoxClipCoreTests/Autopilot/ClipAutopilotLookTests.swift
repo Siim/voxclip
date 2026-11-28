@@ -69,7 +69,7 @@ import Testing
         #expect(fixture[ai: "dimFaceLooks"].aiArray.compactMap(\.aiString) == ClipAutopilotValidator.dimFaceLooks.map(\.rawValue))
         #expect(fixture[ai: "dimFaceReplacement"].aiString == ClipAutopilotValidator.dimFaceReplacement.rawValue)
         let cases = fixture[ai: "cases"].aiArray
-        #expect(cases.count == 21)
+        #expect(cases.count == 23)
         for item in cases {
             let id = item[ai: "id"].aiString ?? ""
             var log = ClipAutopilotValidator.Log()
