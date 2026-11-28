@@ -54,7 +54,10 @@ public sealed record AgentPatch(string Path, JsonElement Before, JsonElement Aft
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? NextId = null);
 public sealed record AgentOffer(string Id, AgentOfferKind Kind, string Label,
     [property: JsonPropertyName("quoteUSD")] string QuoteUSD, AgentOfferState State,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? AssetId = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? AssetId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Target = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Brief = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Words = null);
 public sealed record AgentCheck(bool Ok, IReadOnlyList<string> Lines);
 public sealed record AgentEvent(AgentEventKind Kind, string UndoName, string Target, DateTimeOffset At,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<AgentPatch>? Patch = null);

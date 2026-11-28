@@ -33,7 +33,8 @@ internal static class AgentThreadWire
             Require(turn.Changes.All(change => change is not null) && Ids(turn.Changes.Select(change => change.Id)) &&
                 turn.Offers.All(offer => offer is not null) && Ids(turn.Offers.Select(offer => offer.Id)), "Invalid change or offer id.");
             Require(turn.Request.Context.All(item => item is not null && (item.Part ?? 1) > 0 && (item.Line ?? 1) > 0), "Invalid context.");
-            Require(turn.Offers.All(offer => Regex.IsMatch(offer.QuoteUSD, @"\A[0-9]+\.[0-9]{2}\z")), "Invalid offer quote.");
+            Require(turn.Offers.All(offer => Regex.IsMatch(offer.QuoteUSD, @"\A[0-9]+\.[0-9]{2}\z") &&
+                (offer.Words is null || (offer.Words.Count <= 500 && offer.Words.All(word => word is not null)))), "Invalid offer.");
             Require(turn.Check is null || turn.Check.Lines.All(line => line is not null), "Invalid check lines.");
             Require(turn.Events.All(item => item is not null && (item.Kind == AgentEventKind.Hand || item.Patch is null)), "Invalid events.");
             foreach (var patch in turn.Changes.Select(change => change.Patch).Concat(turn.Events.Select(item => item.Patch).OfType<IReadOnlyList<AgentPatch>>()))

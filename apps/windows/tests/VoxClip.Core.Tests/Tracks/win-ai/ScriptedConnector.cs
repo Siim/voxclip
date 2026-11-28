@@ -12,6 +12,7 @@ internal sealed class ScriptedConnector : ILlmConnector
     private readonly Func<int, LlmRequest, string, CancellationToken, Task<RawCompletion>> respond;
     public ConnectorId Id { get; }
     internal string? AuthMethod { get; }
+    public string? KnownCliAuthMethod => AuthMethod;
     internal ConnectorStatus Status { get; set; } = new ConnectorStatus.Ready();
     internal int StatusCalls { get; private set; }
     internal int ContextCalls { get; private set; }

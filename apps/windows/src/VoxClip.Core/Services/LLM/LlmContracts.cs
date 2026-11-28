@@ -43,7 +43,9 @@ public enum LlmFeature
     /// <summary>Make it postable: every decision a postable clip needs, at extra high effort; AI §16.</summary>
     ClipAutopilot,
     /// <summary>Ask Claude on a selection, clip or time range: toolbox operations at extra high effort; AI §18.</summary>
-    AskClaude
+    AskClaude,
+    /// <summary>One structured step in the live agent chat, AI §20.</summary>
+    AgentChat
 }
 /// <summary>Portable effort selection, lowest first; AI §3.2.</summary>
 public enum Effort
@@ -91,6 +93,7 @@ public enum ModelSource
 public sealed record LlmRequest(LlmFeature Feature, string System, string? CachedBlock, string Instruction,
     string SchemaName, JsonObject Schema, int MaxOutputTokens, Effort? Effort, TimeSpan Timeout, string? Language, string Tag)
 {
+    internal bool AgentChatKeyApproved { get; init; }
     /// <summary>Small frames for a connector that takes images (ai.md §19.3). A connector whose catalogue entry has no
     /// <c>images.supported</c> sends none; the instruction then carries the frames' text summary alone. Empty by default, and a
     /// request without images is sent exactly as before.</summary>
@@ -146,6 +149,8 @@ public abstract record ConnectorStatus
 /// <summary>One provider adapter; AI §3.2. HTTP retries stay inside SendAsync; model fallback is owned by LlmRunner.</summary>
 public interface ILlmConnector
 {
+    /// <summary>Known CLI sign-in method after preflight, or null when the billing mode is unknown.</summary>
+    string? KnownCliAuthMethod => null;
     /// <summary>Catalog id.</summary>
     ConnectorId Id { get; }
     /// <summary>Preflight without starting a generation.</summary>
@@ -307,6 +312,8 @@ public sealed partial class LlmConnector : ILlmConnector
     public ConnectorId Id { get; }
     /// <summary>The last CLI detection and authentication method, or null before detection.</summary>
     public CliDetectionInfo? CliDetection => cli?.DetectionInfo;
+    /// <inheritdoc />
+    public string? KnownCliAuthMethod => CliDetection?.AuthMethod;
     /// <inheritdoc />
     public Task<ConnectorStatus> GetStatusAsync(CancellationToken ct) => StatusAsync(ct);
     /// <inheritdoc />
