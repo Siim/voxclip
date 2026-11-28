@@ -132,6 +132,26 @@ public static class TimelineRuler
         }
         return ticks;
     }
+    /// <summary>Ticks between the whole seconds once 1 s minor ticks show (issue #41): every 0.5 s, every 0.1 s, then every frame
+    /// at <paramref name="fps"/>, the finest that keeps them <see cref="MinorSpacing"/> apart. Whole seconds are left to
+    /// <see cref="Ticks"/>. Times are counted in steps, so they never drift. Twin of the Mac <c>subsecondTicks</c>.</summary>
+    public static IReadOnlyList<double> SubsecondTicks(TimeRange visible, double ptPerSecond, double fps)
+    {
+        if (!double.IsFinite(visible.Start) || !double.IsFinite(visible.End) || !double.IsFinite(ptPerSecond) || ptPerSecond <= 0 ||
+            MinorStep(ptPerSecond) != 1) return [];
+        double[] divisions = double.IsFinite(fps) && fps > 10 ? [2, 10, fps] : [2, 10];
+        var perSecond = divisions.LastOrDefault(division => ptPerSecond / division >= MinorSpacing);
+        if (perSecond == 0) return [];
+        var first = (long)Math.Ceiling(visible.Start * perSecond); var last = (long)Math.Floor(visible.End * perSecond);
+        if (first > last || last - first >= 100000) return [];
+        var ticks = new List<double>();
+        for (var index = first; index <= last; index++)
+        {
+            var time = index / perSecond;
+            if (Math.Abs(time - Math.Round(time)) >= 1e-9) ticks.Add(time);
+        }
+        return ticks;
+    }
     public static double? LabelX(double tickX, double width, IReadOnlyList<double> brackets, double? inBracket, double laneEnd)
     {
         var start = tickX + (inBracket is { } edge && Math.Abs(edge - tickX) < 2 ? 9 : 4);
