@@ -53,7 +53,7 @@ extension ClipFinder {
         let prompt = try loadPrompt()
         let catalog = try LLMCatalog(shared: shared)
         let builder = ClipRequestBuilder(prompt: prompt, policy: catalog.document[ai: "policy"])
-        try checkGates(request, builder: builder)
+        try Self.checkGates(request, builder: builder)
         try await runner.preflight(connector, feature: .clipFinder, model: model)
         let words = builder.clipWords(request.transcript, corrections: request.corrections)
         let context = try await catalog.resolvedContextTokens(connector: connector, model: model)
@@ -74,7 +74,7 @@ extension ClipFinder {
         let prompt = try loadPrompt()
         let catalog = try LLMCatalog(shared: shared)
         let builder = ClipRequestBuilder(prompt: prompt, policy: catalog.document[ai: "policy"])
-        try checkGates(request, builder: builder)
+        try Self.checkGates(request, builder: builder)
         try await runner.preflight(connector, feature: .clipFinder, model: model)
         let words = builder.clipWords(request.transcript, corrections: request.corrections)
         let lines = try formatTranscript(words)
@@ -147,7 +147,7 @@ extension ClipFinder {
         return result
     }
 
-    private func checkGates(_ request: ClipFinderRequest, builder: ClipRequestBuilder) throws {
+    package static func checkGates(_ request: ClipFinderRequest, builder: ClipRequestBuilder) throws {
         let messages = builder.prompt.document[ai: "messages"]
         guard !request.transcript.words.isEmpty else { throw ClipFinderGateError.noWords(message: messages[ai: "noWords"].aiString ?? "") }
         guard request.preset.id != .bestTakes || request.recordings?.canCompare == true else {

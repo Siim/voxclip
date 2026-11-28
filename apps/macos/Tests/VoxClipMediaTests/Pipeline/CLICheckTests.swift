@@ -4,6 +4,18 @@ import Testing
 @testable import VoxClipMedia
 @testable import voxclip_cli
 
+@Test func cliRecordingSeamMatchesTheSharedCheckShape() throws {
+    let expected = try JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/cli/check-seam.json"))
+    var input = ExportCheckInput(expected: [], heard: nil, video: nil, audio: nil, frameSeconds: 1 / 30,
+                                 loudness: nil, frame: .init(width: 320, height: 180))
+    input.recordingMeasurements = [.init(seam: .init(at: 1.25, from: "0007", to: "0010"), wrongPictureLabel: nil, levelDelta: nil)]
+    let report = ExportCheck.run(input)
+    let check = CLIWorkflow.checkJSON(.init(report: report, measureSeconds: 0, hearSeconds: 0, totalSeconds: 0, engine: nil, model: nil))
+    guard case .object(let fields) = check else { Issue.record("Missing check object"); return }
+    #expect(fields["sync"] == expected)
+    #expect(fields["recordingSeams"] == nil)
+}
+
 /// A connector stand-in that answers at once: Find Clips with one clip over every line, and a plan with nothing to cut.
 private actor OneClipStub: LLMConnector {
     nonisolated let id = ConnectorID.ollama

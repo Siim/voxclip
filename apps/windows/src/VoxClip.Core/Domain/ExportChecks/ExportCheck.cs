@@ -60,6 +60,8 @@ public enum ExportCheckItemKind
     CaptionBand,
     /// <summary>The title reaches into a safe-zone band.</summary>
     TitleBand,
+    /// <summary>An informational marker for a recording change.</summary>
+    RecordingSeam,
     /// <summary>The picture after a recording seam looks more like another recording.</summary>
     PictureSource,
     /// <summary>Speech loudness changed by more than 3 LU at a recording seam.</summary>
@@ -151,8 +153,6 @@ public sealed record ExportCheckResult(ExportCheckKind Check, ExportCheckStatus 
 /// <summary>The four results, in <see cref="ExportCheckKind"/> order.</summary>
 public sealed record ExportCheckReport(IReadOnlyList<ExportCheckResult> Results)
 {
-    /// <summary>Each source change, whether or not it has any findings.</summary>
-    public IReadOnlyList<ExportCheckRecordingSeam> RecordingSeams { get; init; } = [];
     /// <summary>No check warned: every result is ok or skipped.</summary>
     public bool Passed => Results.All(result => result.Status != ExportCheckStatus.Warning);
     /// <summary>The result of <paramref name="check"/>, if any.</summary>
@@ -250,11 +250,8 @@ public static class ExportCheck
     public static ExportCheckReport Run(ExportCheckInput input)
     {
         var alignment = input.Heard is { } heard ? new WordAlignment(input.Expected, heard) : null;
-        var pictures = input.Recordings.Where(reading => reading.PictureMatches == false).Select(reading =>
-            new ExportCheckItem(ExportCheckItemKind.PictureSource, reading.Seam.At) { RecordingSeam = reading.Seam, Expected = reading.Seam.To });
         var levels = input.Recordings.Select(RecordingLevel).OfType<ExportCheckItem>();
-        return new([Words(input, alignment), AddWarnings(Sync(input, alignment), pictures), AddWarnings(Loudness(input), levels), Captions(input)])
-        { RecordingSeams = input.Recordings.Select(reading => reading.Seam).ToArray() };
+        return new([Words(input, alignment), Sync(input, alignment), AddWarnings(Loudness(input), levels), Captions(input)]);
     }
 
     private static ExportCheckResult AddWarnings(ExportCheckResult result, IEnumerable<ExportCheckItem> warnings)
@@ -443,7 +440,7 @@ public static class ExportCheck
             if (Math.Abs(end) > frame + 1e-6)
                 items.Add(new(ExportCheckItemKind.TrackEnd, Math.Min(audio.End, video.End)) { Value = end, Limit = frame });
         }
-        else if (input.Phrases.Count == 0)
+        else if (input.Phrases.Count == 0 && input.Recordings.Count == 0)
             return ExportCheckResult.Skipped(ExportCheckKind.Sync, input.Video is null ? "No video track" : "No audio track");
         if (input.Phrases.Count > 0 && alignment is not null)
         {
@@ -452,7 +449,14 @@ public static class ExportCheck
         }
         else if (input.Phrases.Count > 0)
             items.Add(new(ExportCheckItemKind.PhrasesSkipped, input.Phrases.Min(phrase => phrase.Start)) { Reason = input.HearingSkipped });
-        var warn = items.Any(item => item.Kind != ExportCheckItemKind.PhrasesSkipped);
+        foreach (var recording in input.Recordings)
+        {
+            var seam = recording.Seam;
+            items.Add(new(ExportCheckItemKind.RecordingSeam, seam.At) { RecordingSeam = seam });
+            if (recording.PictureMatches == false)
+                items.Add(new(ExportCheckItemKind.PictureSource, seam.At) { RecordingSeam = seam, Expected = seam.To });
+        }
+        var warn = items.Any(item => item.Kind is not (ExportCheckItemKind.PhrasesSkipped or ExportCheckItemKind.RecordingSeam));
         return new(ExportCheckKind.Sync, warn ? ExportCheckStatus.Warning : ExportCheckStatus.Ok)
         { Items = items, StartOffset = startOffset, EndOffset = endOffset };
     }

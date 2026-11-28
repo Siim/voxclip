@@ -14,6 +14,7 @@ using VoxClip.Core.Services.Settings;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.VoiceLab;
 using System.ComponentModel;
+using RecordingTranscriptCache = VoxClip.App.Services.RecordingTranscriptCache;
 
 namespace VoxClip.App.Controls;
 
@@ -528,7 +529,6 @@ internal sealed class TranscriptionDialog : InlineEditorJob
                 if (cloud && approvedPrice is { } paid)
                     TranscriptionSpendState.Shared.Completed(jobId, approvedDay, paid, transcript.FromCache);
                 RequireCurrent();
-                HarnessRecording.CacheTranscript(source.ContentKey, App.Services.Data.Cache, transcript);
                 await ReceiveAsync(transcript, token);
                 if (!closed) Hide();
             }

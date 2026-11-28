@@ -249,6 +249,10 @@ public enum RecordingEdits {
         result.extensions = extensions
         sources.remove(at: index)
         result.media.spokenSources = sources.isEmpty ? nil : sources
+        for index in result.edits.clips.indices {
+            let retained = result.edits.clips[index].displacedVersions?.filter { !uses($0.startWordId, $0.endWordId) }
+            result.edits.clips[index].displacedVersions = !sources.isEmpty && retained?.isEmpty == false ? retained : nil
+        }
         if sources.isEmpty {
             result.schemaVersion = TimelineEditFields.version
             for index in result.edits.clips.indices {

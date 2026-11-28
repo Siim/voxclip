@@ -34,12 +34,16 @@ def main():
         'description': 'In clock order. Companion membership, guard gaps and distinct prefixes are checked by Core.',
     }
     legacy_parts = {'items': {'not': {'required': ['takeReason']}}}
+    schema['$defs']['clipRange']['properties']['displacedVersions'] = {
+        'type': 'array', 'items': {'$ref': '#/$defs/clipWordRange'},
+        'description': 'Exact ranges displaced by a line version change, for restoring that version.',
+    }
     rule = {
         'if': {'properties': {'schemaVersion': {'const': 7}}},
         'then': {'properties': {'media': {'required': ['additionalSources', 'spokenSources']},
                                 'transcript': {'$ref': '#/$defs/transcript'}}},
         'else': {'properties': {'media': {'not': {'required': ['spokenSources']}}, 'edits': {'properties': {
-            'clips': {'items': {'properties': {'parts': legacy_parts}}},
+            'clips': {'items': {'not': {'required': ['displacedVersions']}, 'properties': {'parts': legacy_parts}}},
         }}}},
     }
     for index, existing in enumerate(schema['allOf']):

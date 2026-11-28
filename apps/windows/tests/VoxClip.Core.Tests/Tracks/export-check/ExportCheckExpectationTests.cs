@@ -46,8 +46,8 @@ public sealed class ExportCheckExpectationTests
         { Recordings = [new(seam, PictureMatches: false, BeforeLufs: -16, AfterLufs: -20)] };
         var report = ExportCheck.Run(input);
         Assert.False(report.Passed);
-        var picture = report[ExportCheckKind.Sync]!.ToJson()["items"]![0]!;
-        Assert.Equal("pictureSource", picture["kind"]!.GetValue<string>());
+        var items = report[ExportCheckKind.Sync]!.ToJson()["items"]!.AsArray();
+        var picture = Assert.Single(items, item => item?["kind"]?.GetValue<string>() == "pictureSource")!;
         Assert.Equal("0010", picture["recordingSeam"]!["to"]!.GetValue<string>());
         var level = Assert.Single(report[ExportCheckKind.Loudness]!.Items);
         Assert.Equal("0010 is quieter than 0007 at 0:21. Listen there.", level.Reason);

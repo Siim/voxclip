@@ -21,8 +21,21 @@ public static partial class RecordingEdits
         if (line.Key == edit.Key) return new(project, "Use version");
         var span = beat.Spans.FirstOrDefault(span => span.FromKey == line.Key && span.ToKey == edit.Key)
             ?? throw new Refusal("Choose a version from another recording.");
+        var take = beat.Takes.FirstOrDefault(take => take.Key == edit.Key);
+        ClipWordRange? saved = null;
+        if (take is not null && parts.Positions.TryGetValue(take.StartWordId, out var start) && parts.Positions.TryGetValue(take.EndWordId, out var end))
+        {
+            var savedIndex = parts.DisplacedVersions.FindLastIndex(saved => parts.Positions.TryGetValue(saved.StartWordId, out var first) &&
+                parts.Positions.TryGetValue(saved.EndWordId, out var last) && start <= first && first <= last && last <= end);
+            if (savedIndex >= 0)
+            {
+                saved = parts.DisplacedVersions[savedIndex];
+                parts.DisplacedVersions.RemoveAt(savedIndex);
+            }
+        }
+        parts.DisplacedVersions.Add(new(parts.Clock.Words[line.Start].Id, parts.Clock.Words[line.End].Id));
         var original = parts.Parts[line.PartIndex];
-        var replacement = original with { StartWordId = span.StartWordId, EndWordId = span.EndWordId, TakeReason = null };
+        var replacement = original with { StartWordId = saved?.StartWordId ?? span.StartWordId, EndWordId = saved?.EndWordId ?? span.EndWordId, TakeReason = null };
         parts.Replace(line.PartIndex, line.Start, line.End + 1, replacement, keepLeadingId: true);
         return FinishShortcut(parts, project, "Use version");
     }
@@ -86,7 +99,11 @@ public static partial class RecordingEdits
         });
         var resultClip = applied.Project.Edits.Clips.Count > project.Edits.Clips.Count ? applied.Project.Edits.Clips[^1] :
             applied.Project.Edits.Clips.First(clip => clip.Id == change.Clip.Id);
-        return applied with { Details = new(resultClip.Id, change.Made.ToArray(), []) { SplitPartId = change.Split, Joins = change.Joins.ToArray() } };
+        var result = applied.Project;
+        var clips = result.Edits.Clips.Select(clip => clip.Id != resultClip.Id ? clip : clip with
+            { DisplacedVersions = change.DisplacedVersions.Count == 0 ? null : change.DisplacedVersions.ToArray() }).ToArray();
+        return applied with { Project = result with { Edits = result.Edits with { Clips = clips } },
+            Details = new(resultClip.Id, change.Made.ToArray(), []) { SplitPartId = change.Split, Joins = change.Joins.ToArray() } };
     }
 
     private sealed class ShortcutParts(ClipRange clip, ProjectClock clock)
@@ -95,6 +112,7 @@ public static partial class RecordingEdits
         public ProjectClock Clock { get; } = clock;
         public Dictionary<string, int> Positions { get; } = clock.Words.Select((word, index) => (word.Id, index)).ToDictionary(pair => pair.Id, pair => pair.index);
         public List<ClipPart> Parts { get; } = clip.PlayParts.ToList();
+        public List<ClipWordRange> DisplacedVersions { get; } = clip.DisplacedVersions?.ToList() ?? [];
         private readonly HashSet<string> reserved = clip.PlayParts.Select(part => part.Id).ToHashSet();
         public HashSet<string> Touched { get; } = [];
         public List<string> Made { get; } = [];
