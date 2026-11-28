@@ -197,9 +197,13 @@ public static class ClipControlsRendering
     public static bool ChangesPicture(this ProjectClipControls controls)
         => controls.HasColorGrade() || controls.FlipHorizontal || controls.RotationDegrees != 0;
 
-    /// <summary>A base look other than Original or a stored adjustment grades the picture.</summary>
+    /// <summary>The clip's colour changes its frames (looks spec §5.8): a Fix at any amount, or above amount 0 a base look other
+    /// than As filmed, an adjustment, a tone, color or effects value. At amount 0 without a Fix nothing is graded.</summary>
     public static bool HasColorGrade(this ProjectClipControls controls)
-        => controls.Look != ClipLook.Original || controls.ColorAdjustments is not null;
+    {
+        var recipe = ClipGradeRecipe.For(controls);
+        return recipe.ChangesColor || recipe.HasFinish;
+    }
 
     /// <summary>A quarter turn swaps the picture's width and height.</summary>
     public static bool IsQuarterTurn(this ProjectClipControls controls) => controls.RotationDegrees is 90 or 270;

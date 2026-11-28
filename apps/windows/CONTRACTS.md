@@ -1,5 +1,12 @@
 # Windows fixed contracts
 
+### 2026-11-28 — The looks' grade in preview and export, and Picture's stills (track/looks-win-render, looks spec T5)
+
+- Media `ClipPicture.Grade(frame, ClipGradeRecipe, ct)` replaces the look-and-adjustments overload: the Fix folds into the nine per-byte tables, stage T and Amount's mix over the Fix's output run four pixels at a time with `Vector128`. `ClipPicture.Finish` is the vignette and grain (`ClipGrainField`, the shared integer field) on the output frame. `FrameComposer.FinishClipFrame` grades with the clip's whole grade, then finishes after the motion crop and footage with `RenderedFrameIndex` (⌊rendered time × fps + 0.5⌋), leaving grain out of a context demo. See design.md §6.9 and the looks spec §5–§7.
+- Core `HasColorGrade`/`ChangesPicture` follow `ClipGradeRecipe`: a Fix at any amount, or above amount 0 a look, adjustments or a grade value.
+- Public additions for Picture (win-ui consumes them in T7): `IPreviewEngine.StillAsync(ProjectClipControls colour, ct)` and `StillBeforeGradeAsync(ct)`, with defaults that fail with `NotSupportedException` so `DemoPreviewEngine` compiles unchanged; `PreviewEngine` implements both on its owner thread for a paused preview only (`InvalidOperationException` while playing), presenting nothing. `ClipLookTiles.Render(still, square, edge, colour, ct)` cuts and grades a tile with the vignette at its size and no grain.
+- Portable coverage: `ClipGradeMediaTests` (vectors, every colour, legacy bytes, grain field), `ClipGradeComposeTests`, `ClipGradeStillTests` and Core `ClipGradeGateTests`. Windows and FFmpeg only: `ClipGradeExportTests` (§11.2) and `PreviewStillsAreTheExportCompositorsFrames` (§11.3). The opt-in budget `ClipGradePerformanceTests` (`VOXCLIP_PERF_TESTS=1`) is run on the reference x64 machine.
+
 ### 2026-11-24 — Saved patch Rewrite proposals and Music parity (track/c19b-win-proposal-music)
 
 - Paid patch audio is journaled before timing and QA, and that write checkpoints the fitted proposal for its project and scope. A matching reopen needs no proposal call; Take Run still checks consent and prices only the word checks for adoptable audio. Use and explicit discard clear the proposal, not its assets. See `doc/spec/voice-lab.md` §3.5.

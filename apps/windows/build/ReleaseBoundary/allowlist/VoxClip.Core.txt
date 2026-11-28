@@ -19986,6 +19986,8 @@ member VoxClip.Core.Services.Media.IPreviewEngine :: method public PauseAsync(Sy
 member VoxClip.Core.Services.Media.IPreviewEngine :: method public PlayAsync(System.Threading.CancellationToken)
 member VoxClip.Core.Services.Media.IPreviewEngine :: method public ReadFramesAsync(System.Threading.CancellationToken)
 member VoxClip.Core.Services.Media.IPreviewEngine :: method public SeekAsync(double,bool,System.Threading.CancellationToken)
+member VoxClip.Core.Services.Media.IPreviewEngine :: method public StillAsync(VoxClip.Core.Domain.Clips.ProjectClipControls,System.Threading.CancellationToken)
+member VoxClip.Core.Services.Media.IPreviewEngine :: method public StillBeforeGradeAsync(System.Threading.CancellationToken)
 member VoxClip.Core.Services.Media.IPreviewEngine :: method public UpdateCaptionsAsync(VoxClip.Core.Domain.Captions.CaptionTrack,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Media.IPreviewEngine :: method public UpdateSnapshotAsync(VoxClip.Core.Domain.Shared.ComposeSnapshot,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Media.IPreviewEngine :: method public add_AudioStatusChanged(System.EventHandler`1<VoxClip.Core.Services.Media.PreviewAudioStatus>)

@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using VoxClip.Core.Domain.Captions;
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Media;
 using VoxClip.Media.Audio;
@@ -188,6 +189,21 @@ public sealed class PreviewEngine : IPreviewEngine
         try { if (!playing) Present(Position.EditedTime, true, ct); }
         finally { if (composer is FrameComposer used) used.ReleaseSnapshot(previous); }
     }, ct);
+    /// <inheritdoc />
+    public async Task<PixelBuffer> StillAsync(ProjectClipControls colour, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(colour);
+        PixelBuffer? still = null;
+        await Invoke(() => still = Still(new(false, colour), ct), ct).ConfigureAwait(false);
+        return still!;
+    }
+    /// <inheritdoc />
+    public async Task<PixelBuffer> StillBeforeGradeAsync(CancellationToken ct)
+    {
+        PixelBuffer? still = null;
+        await Invoke(() => still = Still(new(true, null), ct), ct).ConfigureAwait(false);
+        return still!;
+    }
     /// <inheritdoc />
     public async IAsyncEnumerable<PreviewFrame> ReadFramesAsync([EnumeratorCancellation] CancellationToken ct)
     {
@@ -374,6 +390,36 @@ public sealed class PreviewEngine : IPreviewEngine
         recordingWorkers.Add(recording.ContentKey, (recording.Path, worker));
         worker.Ready.WaitAsync(ct).GetAwaiter().GetResult();
         return worker;
+    }
+
+    /// <summary>A Picture still of the paused frame (looks spec §7): the source frame under the playhead read exactly, as a seek reads
+    /// it, then composed as the export composes it into a new buffer at the output size. The playhead, the prefetch and the presented
+    /// frames stay as they are.</summary>
+    private PixelBuffer Still(FrameStill request, CancellationToken ct)
+    {
+        RequireSnapshot();
+        if (playing) throw new InvalidOperationException("Pause the preview before taking a still.");
+        var local = snapshot!;
+        var edited = Position.EditedTime;
+        var timeline = new TimelineCursor(local.Timeline);
+        var source = timeline.Source(Math.Min(edited, Math.Max(0, local.Timeline.Duration - 1 / local.Timeline.SampleRate)));
+        var (recording, localTime) = timeline.Picture(local, source);
+        if (recording is null) OpenLegacyWorkers(local.Media.Path, ct);
+        // A still that fails fails its own call; the preview's failure count is for the frames it shows.
+        var decoded = (recording is null ? current! : OpenRecordingWorker(recording, ct)).ReadAsync(localTime, true, ct).GetAwaiter().GetResult();
+        var size = local.Output.Size;
+        var pixels = new PixelBuffer(GC.AllocateUninitializedArray<byte>(checked(size.Width * size.Height * 4)), size.Width, size.Height, size.Width * 4);
+        var synced = voiceSession?.Lipsync?.Read(edited, ct);
+        if (composer is FrameComposer concrete)
+            concrete.Compose(synced ?? decoded, pixels, local, edited, false, null, ct, renderedVoicePicture: synced is not null, still: request);
+        else if (request.BeforeGrade) throw new NotSupportedException("Only the shared frame composer stops before the grade.");
+        else
+        {
+            var colour = request.Colour!;
+            var controls = (local.Clip?.Controls ?? colour) with { Look = colour.Look, ColorAdjustments = colour.ColorAdjustments, ColorGrade = colour.ColorGrade };
+            composer.Compose(decoded, pixels, local with { Clip = (local.Clip ?? new(null, null)) with { Controls = controls } }, edited, false, ct);
+        }
+        return pixels;
     }
 
     /// <summary>The shared compositor, told about this preview's failures; another composer composes as given.</summary>

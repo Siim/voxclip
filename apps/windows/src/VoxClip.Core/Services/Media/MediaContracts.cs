@@ -43,6 +43,16 @@ public interface IPreviewEngine : IAsyncDisposable
     Task UpdateSnapshotAsync(ComposeSnapshot snapshot, CancellationToken ct);
     /// <summary>Swap captions without rebuilding the plan and recompose the paused frame once.</summary>
     Task UpdateCaptionsAsync(CaptionTrack? captions, CancellationToken ct);
+    /// <summary>The paused frame as the export renders it, with <paramref name="colour"/>'s look, adjustments and grade in place of the
+    /// clip's (looks spec §7.8): Picture's hover, focus, Compare and slider previews, at the export's output size, before any display
+    /// scaling. It presents nothing and never reloads the snapshot. Needs a paused preview.</summary>
+    Task<PixelBuffer> StillAsync(VoxClip.Core.Domain.Clips.ProjectClipControls colour, CancellationToken ct) =>
+        Task.FromException<PixelBuffer>(new NotSupportedException("This preview has no stills."));
+    /// <summary>The paused frame's framed picture before the grade (looks spec §7.2), at the export's output size: the orientation,
+    /// crop, lip-synced picture, context demo and illustration, without the grade, effects, motion, titles or captions. Picture's look
+    /// tiles start from it. Needs a paused preview.</summary>
+    Task<PixelBuffer> StillBeforeGradeAsync(CancellationToken ct) =>
+        Task.FromException<PixelBuffer>(new NotSupportedException("This preview has no stills."));
     /// <summary>Read bounded frame hand-offs for the engine lifetime, across recoverable playback faults. No re-subscribe is needed; only disposal or a terminal owner failure completes the stream. Consumer presents only the newest frame due at the clock.</summary>
     IAsyncEnumerable<PreviewFrame> ReadFramesAsync(CancellationToken ct);
 }

@@ -540,13 +540,13 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
         var looks = Cases().GetProperty("looks");
         var tolerance = looks.GetProperty("tolerance").GetInt32();
         var original = Swatches(looks);
-        ClipPicture.Grade(original, ClipLook.Original, null, CancellationToken.None);
+        ClipPicture.Grade(original, new ClipGradeRecipe(ClipLook.Original, null, null), CancellationToken.None);
         Assert.Equal(Swatches(looks).Pixels.ToArray(), original.Pixels.ToArray());
         var worst = 0;
         foreach (var (look, name) in new[] { (ClipLook.Original, "original"), (ClipLook.Muted, "muted"), (ClipLook.Warm, "warm"), (ClipLook.Bw, "bw") })
         {
             var frame = Swatches(looks);
-            ClipPicture.Grade(frame, look, null, CancellationToken.None);
+            ClipPicture.Grade(frame, new ClipGradeRecipe(look, null, null), CancellationToken.None);
             var goldens = looks.GetProperty("macGoldens").GetProperty(name).EnumerateArray().ToArray();
             for (var index = 0; index < 8; index++)
             {
