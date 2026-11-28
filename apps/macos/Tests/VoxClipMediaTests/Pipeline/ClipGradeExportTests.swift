@@ -125,20 +125,24 @@ import Testing
     }
 
     /// The compositor's frames at `indices`, read as the exporter reads them, before the encoder.
-    static func exportFrames(_ graph: RenderGraph, _ indices: [Int]) throws -> [Int: Frame] {
-        let reader = try AVAssetReader(asset: graph.composition)
-        let output = AVAssetReaderVideoCompositionOutput(videoTracks: graph.composition.tracks(withMediaType: .video),
-                                                         videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
-        output.videoComposition = graph.videoComposition
-        reader.add(output)
-        guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
-        defer { reader.cancelReading() }
-        var frames: [Int: Frame] = [:]
-        while frames.count < indices.count, let sample = output.copyNextSampleBuffer() {
-            let index = Int((CMSampleBufferGetPresentationTimeStamp(sample).seconds * 30).rounded())
-            if indices.contains(index), let buffer = CMSampleBufferGetImageBuffer(sample) { frames[index] = frame(buffer) }
+    static func exportFrames(_ graph: RenderGraph, _ indices: [Int]) async throws -> [Int: Frame] {
+        guard let composition = graph.composition.copy() as? AVComposition else { throw CocoaError(.fileReadUnknown) }
+        let videoComposition = graph.videoComposition
+        return try await MediaReadQueue.run {
+            let reader = try AVAssetReader(asset: composition)
+            let output = AVAssetReaderVideoCompositionOutput(videoTracks: composition.tracks(withMediaType: .video),
+                                                             videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+            output.videoComposition = videoComposition
+            reader.add(output)
+            guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
+            defer { reader.cancelReading() }
+            var frames: [Int: Frame] = [:]
+            while frames.count < indices.count, let sample = MediaReadQueue.copyNext(output) {
+                let index = Int((CMSampleBufferGetPresentationTimeStamp(sample).seconds * 30).rounded())
+                if indices.contains(index), let buffer = CMSampleBufferGetImageBuffer(sample) { frames[index] = frame(buffer) }
+            }
+            return frames
         }
-        return frames
     }
 
     /// `image` as float RGB, top row first.
@@ -157,7 +161,7 @@ import Testing
         let recipe = ClipGradeRecipe(controls: controls)
         #expect(recipe.primary != nil && recipe.tone?.master != nil && recipe.tone?.splitTone != nil && recipe.vignette > 0 && recipe.grain > 0)
         let graph = try await CompositionBuilder().build(Self.request(try await Self.clip(), controls: controls))
-        let exported = try Self.exportFrames(graph, [0, 15, 45])
+        let exported = try await Self.exportFrames(graph, [0, 15, 45])
         #expect(exported.keys.sorted() == [0, 15, 45])
         var previous: Frame?
         for n in [0, 15, 45] {
@@ -189,26 +193,13 @@ import Testing
         let controls = try Self.warmPrint()
         let render = Self.request(try await Self.clip(), controls: controls)
         let graph = try await CompositionBuilder().build(render)
-        let expected = try #require(try Self.exportFrames(graph, [15])[15])
+        let expected = try #require(try await Self.exportFrames(graph, [15])[15])
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-grade-export-" + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("graded.mp4")
         _ = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: render, outputURL: url)) { _ in }
-        let file = AVURLAsset(url: url)
-        let track = try #require(try await file.loadTracks(withMediaType: .video).first)
-        let reader = try AVAssetReader(asset: file)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
-        reader.add(output)
-        #expect(reader.startReading())
-        var decoded: Frame?
-        while decoded == nil, let sample = output.copyNextSampleBuffer() {
-            if Int((CMSampleBufferGetPresentationTimeStamp(sample).seconds * 30).rounded()) == 15, let buffer = CMSampleBufferGetImageBuffer(sample) {
-                decoded = Self.frame(buffer)
-            }
-        }
-        reader.cancelReading()
-        let frame = try #require(decoded)
+        let frame = try await Self.decodedFrame(url, index: 15)
         var total = 0
         for index in frame.bytes.indices where index % 4 != 3 { total += abs(Int(frame.bytes[index]) - Int(expected.bytes[index])) }
         let mean = Double(total) / Double(3 * Self.width * Self.height)
@@ -247,20 +238,23 @@ import Testing
         #expect(plain != graded)
     }
 
+    /// Frame `index` of a video file, decoded.
     static func decodedFrame(_ url: URL, index: Int) async throws -> Frame {
         let file = AVURLAsset(url: url)
         let track = try #require(try await file.loadTracks(withMediaType: .video).first)
-        let reader = try AVAssetReader(asset: file)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
-        reader.add(output)
-        guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
-        defer { reader.cancelReading() }
-        while let sample = output.copyNextSampleBuffer() {
-            if Int((CMSampleBufferGetPresentationTimeStamp(sample).seconds * 30).rounded()) == index, let buffer = CMSampleBufferGetImageBuffer(sample) {
-                return frame(buffer)
+        return try await MediaReadQueue.run {
+            let reader = try AVAssetReader(asset: file)
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+            reader.add(output)
+            guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
+            defer { reader.cancelReading() }
+            while let sample = MediaReadQueue.copyNext(output) {
+                if Int((CMSampleBufferGetPresentationTimeStamp(sample).seconds * 30).rounded()) == index, let buffer = CMSampleBufferGetImageBuffer(sample) {
+                    return frame(buffer)
+                }
             }
+            throw CocoaError(.fileReadCorruptFile)
         }
-        throw CocoaError(.fileReadCorruptFile)
     }
 
     /// A saved project of the synthetic clip with one clip "a" over its eight words.
@@ -314,10 +308,10 @@ import Testing
         let still = try await ClipStillFrame.capture(plain, renderedSeconds: 15.2 / 30)
         #expect(still.renderedTime == CMTime(value: 15, timescale: 30) && still.size == CGSize(width: Self.width, height: Self.height))
         let hover = try Self.frame(try await still.still(controls: controls))
-        #expect(hover == (try #require(try Self.exportFrames(graded, [15])[15])))
+        #expect(hover == (try #require(try await Self.exportFrames(graded, [15])[15])))
         let gradedStill = try await ClipStillFrame.capture(graded, renderedSeconds: 0.5)
         let compare = try Self.frame(try await gradedStill.still(controls: nil))
-        #expect(compare == (try #require(try Self.exportFrames(plain, [15])[15])))
+        #expect(compare == (try #require(try await Self.exportFrames(plain, [15])[15])))
         #expect(compare != hover)
         let past = try await ClipStillFrame.capture(plain, renderedSeconds: 9)
         #expect(past.renderedTime == CMTime(value: 59, timescale: 30), "a time past the end takes the last frame")
