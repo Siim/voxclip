@@ -122,6 +122,154 @@ private actor PrecisionTestSettings: SettingsStore {
         #expect(near(pixel(13, 17.5), tick))
     }
 
+    // MARK: Exact range
+
+    @Test(arguments: [TimelineAxis.edited, .source]) func snappingOffKeepsAFrameRoundedRangeAndSelectsTheWordsWhollyInside(_ axis: TimelineAxis) throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = axis == .source
+        model.timelineSnapping = false
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        let y = TimelineMetrics.audio.y + 12
+        func p(_ source: Double) -> NSPoint { NSPoint(x: canvas.headerWidth + canvas.viewport.x(model.timelineTime(source: source, on: axis)), y: y) }
+        canvas.mouseDown(with: try mouse(.leftMouseDown, p(17.06), in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, p(12.84), in: canvas))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, p(12.84), in: canvas))
+        let range = try #require(model.timelineRange)
+        // 12.84 s and 17.06 s fall on frames 385.2 and 511.8 of 30 fps: the nearest frames are 385 and 512.
+        #expect(range.recording == nil)
+        #expect(abs(range.start * 30 - 385) < 0.01 && abs(range.end * 30 - 512) < 0.01, "\(range)")
+        #expect(model.selectedWordIDs == Set((13...16).map { "t\($0)" }), "Word 17 ends at 17.8, outside the range")
+        let shown = try #require(canvas.content.selection)
+        #expect(abs(shown.lowerBound - model.timelineTime(source: 385.0 / 30, on: axis)) < 1e-6)
+        #expect(abs(shown.upperBound - model.timelineTime(source: 512.0 / 30, on: axis)) < 1e-6, "The band is the range, not the words")
+        #expect(canvas.ruler.state.selection == shown)
+        let wash = canvas.overlay.wash.frame
+        #expect(!canvas.overlay.wash.isHidden && abs(wash.minX - canvas.viewport.x(shown.lowerBound)) < 0.001)
+        #expect(model.timelineRangeReadout == "4.23\u{00A0}s · 0:12.83\u{2013}0:17.07")
+        #expect(model.askClaude.timeRange == 385.0 / 30...512.0 / 30)
+        #expect(!model.timelineCanCut && model.undoSteps == 0 && !model.document.isDocumentEdited)
+    }
+
+    @Test func optionDragKeepsARangeWithSnappingOnAndAPlainDragStillSelectsWords() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = true
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        let y = TimelineMetrics.audio.y + 12
+        func p(_ source: Double) -> NSPoint { NSPoint(x: canvas.headerWidth + canvas.viewport.x(source), y: y) }
+        canvas.mouseDown(with: try mouse(.leftMouseDown, p(20.3), in: canvas, flags: .option))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, p(20.9), in: canvas, flags: .option))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, p(20.9), in: canvas, flags: .option))
+        let range = try #require(model.timelineRange)
+        #expect(abs(range.start - 0.3 - 20) < 1e-6 && abs(range.end - 20.9) < 1e-6)
+        #expect(model.selectedWordIDs.isEmpty, "No word is wholly inside a breath-sized range")
+        // A plain drag snaps to words and drops the range.
+        canvas.mouseDown(with: try mouse(.leftMouseDown, p(12.1), in: canvas))
+        #expect(model.timelineRange == nil)
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, p(13.7), in: canvas))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, p(13.7), in: canvas))
+        #expect(model.timelineRange == nil && model.selectedWordIDs == ["t12", "t13"])
+    }
+
+    @Test func rangesWordsAndItemsReplaceEachOtherAndEscapeClearsTheRange() async throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = true
+        model.sourceTime = 25
+        try model.addTimelineTitle("Title")
+        let title = try #require(model.project.clipEffects.first)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        _ = model.setTimelineRange(from: 11.5, to: 13.9, on: .source)
+        #expect(model.timelineRange != nil && model.selectedWordIDs == ["t12", "t13"])
+        model.selectTimelineItems([.effect(title.id)])
+        #expect(model.timelineRange == nil && model.selectedWordIDs.isEmpty, "An item selection replaces the range")
+        _ = model.setTimelineRange(from: 11.5, to: 13.9, on: .source)
+        #expect(model.timelineItemSelection.isEmpty, "A range replaces the item selection")
+        model.selectedWordIDs = ["t20"]
+        #expect(model.timelineRange == nil, "A word selection replaces the range")
+        _ = model.setTimelineRange(from: 11.5, to: 13.9, on: .source)
+        #expect(canvas.interaction.key(53, shift: false))
+        #expect(model.timelineRange == nil && model.selectedWordIDs.isEmpty && model.askClaude.timeRange == nil)
+        #expect(!canvas.interaction.key(53, shift: false), "Esc with nothing left passes on")
+        #expect(model.undoSteps == 1, "Only the title is an undo step")
+    }
+
+    @Test func shiftClickExtendsByFrameWithSnappingOffAndByWordWithItOn() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = true
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        let y = TimelineMetrics.audio.y + 12
+        func p(_ source: Double) -> NSPoint { NSPoint(x: canvas.headerWidth + canvas.viewport.x(source), y: y) }
+        model.timelineSnapping = false
+        _ = model.setTimelineRange(from: 12.4, to: 13.5, on: .source)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, p(16.42), in: canvas, flags: .shift))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, p(16.42), in: canvas, flags: .shift))
+        let range = try #require(model.timelineRange)
+        #expect(abs(range.start - 12.4) < 1e-6 && abs(range.end * 30 - 493) < 0.01, "\(range)")
+        #expect(model.selectedWordIDs == ["t13", "t14", "t15"])
+        model.timelineSnapping = true
+        canvas.mouseDown(with: try mouse(.leftMouseDown, p(18.7), in: canvas, flags: .shift))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, p(18.7), in: canvas, flags: .shift))
+        #expect(model.timelineRange == nil)
+        #expect(model.selectedWordIDs == Set((12...18).map { "t\($0)" }), "Word grain: In snaps to word 12's start, Out to word 18's end")
+        #expect(model.undoSteps == 0)
+    }
+
+    @Test func severalRecordingsKeepTheRangeInTheRecordingItBeganIn() throws {
+        let shared = try SharedResources.locate()
+        var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/recordings/two-recordings.voxclip")))
+        project.edits.clips = []; project.edits.activeClipId = nil
+        let app = try app(), model = editor(app, project: project)
+        defer { model.close() }
+        model.showsCuts = true
+        model.timelineSnapping = false
+        let clock = try #require(model.recordingClock)
+        let second = try #require(clock.regions.last)
+        let offset = Double(second.offsetSamples) / Double(clock.sampleRate)
+        _ = model.setTimelineRange(from: offset + 0.2, to: offset - 2, on: .source)
+        let range = try #require(model.timelineRange)
+        #expect(range.recording == second.key && range.start == 0 && abs(range.end - 0.2) < 1e-6, "\(range)")
+        let source = try #require(model.timelineRangeSource)
+        #expect(abs(source.lowerBound - offset) < 1e-6 && abs(source.upperBound - offset - 0.2) < 1e-6)
+    }
+
+    // MARK: I and O
+
+    @Test func iAndOOnTheTimelineSetTheRangeAtThePlayheadAndTheTranscriptKeepsClipEdges() async throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = true
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        let clip = try #require(model.activeClip)
+        model.seekTimeline(12.34, on: .source); await settle()
+        canvas.keyDown(with: try key(34, "i")); await settle()
+        var range = try #require(model.timelineRange)
+        let scopeEnd = try #require(model.scopeSourceRange).upperBound
+        #expect(abs(range.start * 30 - 370) < 0.01 && abs(range.end * 30 - (scopeEnd * 30).rounded()) < 0.01, "Out defaults to the scope's end: \(range)")
+        model.seekTimeline(15.5, on: .source); await settle()
+        canvas.keyDown(with: try key(31, "o")); await settle()
+        range = try #require(model.timelineRange)
+        #expect(abs(range.end - 15.5) < 1e-6 && abs(range.start * 30 - 370) < 0.01)
+        #expect(model.activeClip == clip && model.undoSteps == 0, "The clip's edges stay where they were")
+        // In the transcript I still sets the clip's start at the caret.
+        model.selectedWordIDs = ["t12"]
+        #expect(model.timelineRange == nil)
+        model.transport("i")
+        #expect(model.activeClip?.startWordId == "t12")
+    }
+
     // MARK: Helpers
 
     private func settle() async { for _ in 0..<100 { await Task.yield() } }

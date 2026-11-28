@@ -385,8 +385,10 @@ import VoxClipCore
         case 27: editor.seek(source: 0)
         case 28: editor.seek(source: editor.sourceDuration)
         case 29: editor.makeClip()
-        case 30: editor.setClipEdge(start: true)
-        case 31: editor.setClipEdge(start: false)
+        case 30, 31:
+            // With timeline focus I and O set the exact range's In and Out at the playhead (issue #41).
+            if TimelineItemShortcut.focusedCanvas(NSApp.keyWindow?.firstResponder) != nil { editor.setTimelineRangeEdge(start: item.tag == 30) }
+            else { editor.setClipEdge(start: item.tag == 30) }
         case 32: editor.moveClip(-1)
         case 33: editor.moveClip(1)
         case 34: editor.requestFindClips(from: .clipBar)
@@ -533,7 +535,8 @@ import VoxClipCore
                 if responder is NSTableView && ![32, 33].contains(item.tag) { return false }
             }
             switch item.tag {
-            case 1, 3, 29: return editor.capabilities.edit && !editor.selectedIDs.isEmpty
+            case 1, 3: return editor.capabilities.edit && !editor.selectedIDs.isEmpty
+            case 29: return editor.capabilities.edit && (!editor.selectedIDs.isEmpty || editor.timelineRangeClipWords != nil)
             case 48: return !editor.selectedIDs.isEmpty
             case 2: return editor.capabilities.edit && (!editor.selectedWordIDs.isDisjoint(with: editor.cutWordIDs) || !editor.selectedPauseIDs.isDisjoint(with: editor.cutPauseIDs))
             case 40, 41: return editor.capabilities.edit && selectedClipID.map(editor.isSuggestion) == true
@@ -562,7 +565,9 @@ import VoxClipCore
             case 7: return editor.capabilities.edit && editor.summary.canCutFillers
             case 8: return editor.capabilities.edit && editor.summary.canTighten
             case 9: return editor.capabilities.edit && editor.summary.hasEdits
-            case 30, 31: return editor.capabilities.edit && editor.activeClip != nil
+            case 30, 31:
+                if TimelineItemShortcut.focusedCanvas(NSApp.keyWindow?.firstResponder) != nil { return !editor.words.isEmpty }
+                return editor.capabilities.edit && editor.activeClip != nil
             case 34: return editor.capabilities.ai && !editor.words.isEmpty
             case 11: item.title = editor.showPauses ? "Hide Pauses" : "Show Pauses"
             case 12: item.title = model.shell.viewerShown ? "Hide Viewer" : "Show Viewer"

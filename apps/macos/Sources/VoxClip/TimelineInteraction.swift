@@ -150,9 +150,15 @@ import VoxClipCore
             model.seekTimeline(time(point).clamped(to: canvas.content.displayRange), on: model.timelineAxis)
         } else if event.clickCount == 2, point.y >= canvas.rulerRow.maxY {
             model.restoreCut(at: time(point), on: model.timelineAxis, tolerance: Double(TimelineMetrics.reach) / canvas.viewport.ptPerSecond)
+        } else if event.modifierFlags.contains(.shift), model.timelineActionRange != nil {
+            // ⇧-click extends the range or the words to here: by frame with Snapping off (or ⌥), else by word.
+            model.selectTimelineItems([])
+            model.extendTimelineSelection(to: time(point), on: model.timelineAxis,
+                                          exact: !model.timelineSnapping || event.modifierFlags.contains(.option))
         } else {
             model.selectTimelineItems([])
             drag = .range(anchor: time(point), point: point, moved: false)
+            model.timelineRange = nil
             model.selectedWordIDs = []; model.selectedPauseIDs = []
             model.askClaude.timeRange = nil
             model.seekTimeline(time(point), on: model.timelineAxis)
@@ -184,7 +190,13 @@ import VoxClipCore
         case .range(let anchor, let start, let moved)?:
             guard moved || hypot(point.x - start.x, point.y - start.y) >= 3 else { return }
             drag = .range(anchor: anchor, point: start, moved: true)
-            selection = model.selectTimeline(from: anchor, to: time(point), on: model.timelineAxis, snap: snaps(event))
+            // Snapping selects words; with it off, or ⌥ or N held, the drag keeps an exact range (issue #41).
+            if snaps(event) {
+                model.timelineRange = nil
+                selection = model.selectTimeline(from: anchor, to: time(point), on: model.timelineAxis, snap: true)
+            } else {
+                selection = model.setTimelineRange(from: anchor, to: time(point), on: model.timelineAxis)
+            }
             // Update immediately; Observation will take the same IDs on its next turn.
             canvas.renderContent()
         case .trim(let clip, let start, let press, _, let preview)?:
@@ -210,7 +222,6 @@ import VoxClipCore
         // Take the final position too, even if AppKit coalesced the last drag event.
         if active { mouseDragged(event) }
         let ended = drag
-        let dragged = selection
         let command = itemCommand
         if case .item(let item)? = ended {
             if case .audioRange = item.gesture, let range = audioRangePreview {
@@ -224,12 +235,6 @@ import VoxClipCore
         if let command { model.commitTimelineItemEdit(command) }
         else if case .item(let transaction)? = ended, transaction.collapseOnClick {
             model.selectTimelineItems([transaction.fragment.display.item.id])
-        }
-        // A dragged range is what the toolbar's ✦ Ask Claude asks about (design.md §6.8), in source seconds.
-        if case .range(_, _, true)? = ended, let dragged {
-            let axis = model.timelineAxis
-            let lower = model.timelineSourceTime(dragged.lowerBound, on: axis), upper = model.timelineSourceTime(dragged.upperBound, on: axis)
-            model.askClaude.timeRange = upper - lower >= 0.1 ? lower...upper : nil
         }
         if case .trim(let clip, let start, _, let index?, _)? = ended {
             model.trimClip(clip, start: start, index: index)
@@ -446,6 +451,9 @@ import VoxClipCore
             if !model.timelineItemSelection.isEmpty {
                 model.selectTimelineItems([]); canvas.apply(); return true
             }
+            if model.timelineRange != nil {
+                model.clearTimelineRange(); canvas.renderContent(); return true
+            }
         }
         if code == 123 || code == 124 {
             if shift { model.selectTimelineItems([]) }
@@ -458,6 +466,10 @@ import VoxClipCore
             return true
         }
         keyAnchor = nil; keyHead = nil
+        // I and O on the timeline set the exact range's In and Out at the playhead (issue #41).
+        if !shift, let key = characters?.lowercased(), key == "i" || key == "o" {
+            model.setTimelineRangeEdge(start: key == "i"); canvas.renderContent(); return true
+        }
         return Self.handleKey(code, shift: shift, model: model, characters: characters)
     }
     @discardableResult static func handleKey(_ code: UInt16, shift: Bool, model: EditorModel, characters: String? = nil) -> Bool {

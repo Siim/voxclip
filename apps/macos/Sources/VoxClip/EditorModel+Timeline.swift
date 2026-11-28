@@ -124,9 +124,10 @@ extension EditorModel {
         return lower <= upper ? lower...upper : nil
     }
 
-    /// The selection on `axis`, or nil when nothing is selected.
+    /// The selection on `axis`: the exact range when there is one, else the selected words and
+    /// pauses, or nil when nothing is selected.
     func timelineSelection(on axis: TimelineAxis) -> ClosedRange<Double>? {
-        guard let source = selectionSourceRange else { return nil }
+        guard let source = timelineRangeSource ?? selectionSourceRange else { return nil }
         if let storyTimeline {
             let spans = storyTimeline.parts.compactMap { part -> ClosedRange<Double>? in
                 let lower = max(source.lowerBound, part.take.lowerBound), upper = min(source.upperBound, part.take.upperBound)

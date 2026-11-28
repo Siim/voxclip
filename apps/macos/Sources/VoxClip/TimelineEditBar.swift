@@ -24,9 +24,12 @@ extension EditorModel {
         rowTitle(.init(id: effect.id, decision: .overlay, action: .effect(effect), reason: ""))
     }
 
+    /// A title over the range or the selected words (issue #41), else from the playhead for 2 s.
     func addTimelineTitle(_ draft: String) throws {
-        let bounds = scopeSourceRange ?? 0...max(0, sourceDuration)
-        let start = sourceTime.clamped(to: bounds), end = min(start + 2, bounds.upperBound, sourceDuration)
+        let bounds = scopeSourceRange ?? 0...max(0, recordingTimelineDuration)
+        let range = timelineActionRange
+        let start = (range?.lowerBound ?? sourceTime).clamped(to: bounds)
+        let end = min(range?.upperBound ?? start + 2, bounds.upperBound, recordingTimelineDuration)
         guard capabilities.edit, end > start else { throw ClipEffectError.invalidEntry("Move the playhead inside the clip to add a title.") }
         let id = ClipEffects.nextID(.title, existing: Set(project.clipEffects.map(\.id)))
         let title = ClipEffect(id: id, clipId: activeClip?.id, kind: .title, start: start, end: end,
@@ -37,7 +40,7 @@ extension EditorModel {
     }
 
     var timelineCanCut: Bool {
-        capabilities.edit && (!selectedWordIDs.isSubset(of: cutWordIDs) || !selectedPauseIDs.isSubset(of: cutPauseIDs))
+        capabilities.edit && timelineRange == nil && (!selectedWordIDs.isSubset(of: cutWordIDs) || !selectedPauseIDs.isSubset(of: cutPauseIDs))
     }
 
     var timelineTrimBounds: ClosedRange<Int>? {
