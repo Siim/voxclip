@@ -8,7 +8,7 @@ import Foundation
 
     public enum Status: Sendable, Equatable {
         case idle, running(String), finished, stopped, budget(Int), question(Question)
-        case unavailable(ConnectorStatus), failed(String), modelUnavailable(String)
+        case unavailable(ConnectorStatus), failed(String), modelUnavailable(String), approvalRequired(AgentChatApproval)
     }
 
     public struct Context: Sendable {
@@ -31,10 +31,11 @@ import Foundation
     let shared: SharedResources
     let connector: any LLMConnector
     private let model: String
-    private let feature: LLMFeature
     private let effort: Effort
     private let stepBudget: Int
     private let defaultMode: AgentThread.Mode
+    private let estimatedUSD: ClosedRange<Decimal>?
+    private var keyApprovedThreads: Set<String> = []
     let projectURL: URL?
     let decodeFrames: (@Sendable (URL, [Double]) async throws -> [HarnessResult.Frame])?
     let music: HarnessMusicLibrary?
@@ -61,15 +62,17 @@ import Foundation
         var asked = false
     }
 
-    public init(project: Project, shared: SharedResources, connector: any LLMConnector, model: String, feature: LLMFeature,
+    public init(project: Project, shared: SharedResources, connector: any LLMConnector, model: String,
                 effort: Effort = .high, stepBudget: Int = 8, defaultMode: AgentThread.Mode = .propose,
+                estimatedUSD: ClosedRange<Decimal>? = nil,
                 context: Context = .init(), projectURL: URL? = nil,
                 decodeFrames: (@Sendable (URL, [Double]) async throws -> [HarnessResult.Frame])? = nil,
                 music: HarnessMusicLibrary? = nil,
                 check: (@Sendable (Project, String, [String]) throws -> JSONValue)? = nil,
                 now: @Sendable @escaping () -> Date = { Date() },
                 delay: @Sendable @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) throws {
-        self.project = project; self.shared = shared; self.connector = connector; self.model = model; self.feature = feature
+        self.project = project; self.shared = shared; self.connector = connector; self.model = model
+        self.estimatedUSD = estimatedUSD
         self.effort = effort; self.stepBudget = max(1, stepBudget); self.defaultMode = defaultMode; self.context = context
         self.projectURL = projectURL; self.decodeFrames = decodeFrames
         self.music = music; self.check = check; self.delay = delay; self.now = now
@@ -83,6 +86,7 @@ import Foundation
 
     public func send(_ request: AgentTurn.Request) async {
         if active { queue.append(request); return }
+        if case .approvalRequired = status { queue.append(request); return }
         if case .question = status, suspended != nil { await resume(with: request); return }
         queue.append(request)
         await drain()
@@ -95,14 +99,23 @@ import Foundation
 
     public func stop() { if active { stopping = true } }
 
+    public func respond(to approval: AgentChatApproval, allow: Bool) async {
+        guard !active, status == .approvalRequired(approval), approval.threadID == threadID else { return }
+        setStatus(.idle)
+        guard allow else { queue.removeAll(); steering.removeAll(); suspended = nil; return }
+        keyApprovedThreads.insert(approval.threadID)
+        if suspended != nil { await resume() } else { await drain() }
+    }
+
     public func resume(with answer: AgentTurn.Request? = nil) async {
         guard !active, var run = suspended, var thread = project.agentThread,
               let last = thread.turns.last, last.id == run.turn.id else { return }
         if case .question = status, answer == nil { return }
         run.turn = last
         if let answer { steering.append(answer) }
-        suspended = nil
         active = true; stopping = false
+        if let blocker = await preflight() { setStatus(blocker); active = false; return }
+        suspended = nil
         run.turn.state = .running
         thread.turns[thread.turns.count - 1].state = .running
         project.agentThread = thread
@@ -117,7 +130,14 @@ import Foundation
         defer { active = false }
         while !queue.isEmpty {
             if case .question = status { break }
+            if case .approvalRequired = status { break }
             suspended = nil; stopping = false
+            if let blocker = await preflight() {
+                if case .approvalRequired = blocker {} else { queue.removeFirst() }
+                setStatus(blocker)
+                break
+            }
+            if stopping || Task.isCancelled { break }
             let request = queue.removeFirst()
             let turns = project.agentThread?.turns ?? []
             let ordinal = (turns.compactMap { Int($0.id.dropFirst()) }.max() ?? 0) + 1
@@ -130,14 +150,16 @@ import Foundation
     private func execute(_ initial: Run) async {
         var run = initial
         next = []
-        let availability = await connector.status()
-        guard availability == .ready else { setStatus(.unavailable(availability)); return }
         do {
             try save(run.turn)
             var index = 0
             var badReply = false
             while index < stepBudget || run.feedback != nil && run.didMatchRetry {
                 if stopping || Task.isCancelled { break }
+                if index > 0, let blocker = await preflight() {
+                    try finish(&run, status: blocker, resumable: true)
+                    return
+                }
                 run.steering += steering.map(AgentChatPrompt.json)
                 steering.removeAll()
                 setStatus(.running(run.turn.summary))
@@ -223,6 +245,27 @@ import Foundation
         }
     }
 
+    private var threadID: String { project.agentThread?.id ?? "agent-\(project.id)" }
+
+    private func preflight() async -> Status? {
+        guard [.claudeCode, .codex, .anthropic, .openai].contains(connector.id) else {
+            return .unavailable(.unavailable(reason: "This connector isn't available for agent chat."))
+        }
+        let availability = await connector.status()
+        guard availability == .ready else { return .unavailable(availability) }
+        let signIn: CLISignIn
+        switch connector.id {
+        case .claudeCode, .codex:
+            guard let billing = CLISignIn.agentChatBilling(await connector.knownCLIAuthMethod(), connector: connector.id) else {
+                return .unavailable(.unavailable(reason: "VoxClip couldn't tell how this connector is signed in."))
+            }
+            signIn = billing
+        default: signIn = .apiKey
+        }
+        guard signIn == .apiKey, !keyApprovedThreads.contains(threadID) else { return nil }
+        return .approvalRequired(.init(connector: connector.id, model: model, estimatedUSD: estimatedUSD, threadID: threadID))
+    }
+
     private func finish(_ run: inout Run, status outcome: Status, resumable: Bool = false) throws {
         switch outcome {
         case .finished:
@@ -272,8 +315,10 @@ import Foundation
         let instruction = prompt.instruction(digest: await digest(), thread: history(excluding: run.turn.id),
                                              message: AgentChatPrompt.json(run.turn.request), results: run.results,
                                              steering: run.steering, feedback: run.feedback)
-        return LLMRequest(feature: feature, system: prompt.system, instruction: instruction, schemaName: prompt.schemaName,
-                          schema: prompt.schema, maxOutputTokens: 4096, effort: effort, timeout: .seconds(120),
-                          tag: "agent-chat-v1", images: run.images)
+        var request = LLMRequest(feature: .agentChat, system: prompt.system, instruction: instruction, schemaName: prompt.schemaName,
+                                 schema: prompt.schema, maxOutputTokens: 4096, effort: effort, timeout: .seconds(120),
+                                 tag: "agent-chat-v1", images: run.images)
+        request.agentChatKeyApproved = keyApprovedThreads.contains(threadID)
+        return request
     }
 }

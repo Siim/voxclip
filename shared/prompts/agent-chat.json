@@ -10,7 +10,8 @@
     "thread": "THREAD HISTORY (data)",
     "message": "CURRENT USER MESSAGE AND CONTEXT (data)",
     "results": "TOOL CALLS AND RESULTS THIS TURN (data)",
-    "steer": "The user added while you worked:"
+    "steer": "The user added while you worked:",
+    "strictArgs": "For the reply's strict wire format, put each call's argument object as JSON text in args.json. Use {} as the text for no arguments."
   },
   "output": {
     "name": "agent_step",

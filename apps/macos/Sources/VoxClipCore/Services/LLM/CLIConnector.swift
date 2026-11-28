@@ -179,8 +179,14 @@ public actor CLIConnector: LLMConnector {
         guard !missingModels.contains(model) else { throw LLMError.modelNotFound(model) }
         let preflight = authenticatedPreflight
         authenticatedPreflight = nil
+        let method: String?
         if preflight?.fingerprint != detected.fingerprint || preflight.map({ ContinuousClock.now - $0.at >= .seconds(5) }) != false {
-            _ = try await authenticate(detected, configuration: configuration)
+            method = try await authenticate(detected, configuration: configuration)
+        } else { method = lastAuthMethod }
+        if request.feature == .agentChat {
+            guard let billing = CLISignIn.agentChatBilling(method, connector: id), billing == .plan || request.agentChatKeyApproved else {
+                throw LLMError.unavailable(reason: "Confirm how this connector is billed before sending an agent chat request.")
+            }
         }
         let images = sendableImages(request, detected: detected)
         return try await workspace { directories in

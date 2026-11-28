@@ -27,7 +27,7 @@ import Testing
         defer { network.invalidateAndCancel() }
         var purchaseCount = 0
         let session = try AgentChatSession(project: project, shared: shared, connector: ScriptedConnector(replies: replay.replies),
-                                           model: "fixture", feature: .test, context: .init(capLeft: 2))
+                                           model: "fixture", context: .init(capLeft: 2))
         let purchases = AgentOffers(project: { session.project }, update: session.updateProject, shared: shared, capLeft: { 2 },
                                     purchase: { _, _ in
             purchaseCount += 1
@@ -52,7 +52,7 @@ import Testing
         let project = try ProjectJSON.decode(FixtureLoader.data(replay.project))
         let shared = try SharedResources.locate()
         let session = try AgentChatSession(project: project, shared: shared, connector: ScriptedConnector(replies: replay.replies),
-                                           model: "fixture", feature: .test, context: .init(capLeft: 2))
+                                           model: "fixture", context: .init(capLeft: 2))
         var count = 0
         var limit: Decimal = 0
         var opened: AgentTurn.Offer?

@@ -34,6 +34,7 @@ public enum LLMFeature: String, Codable, Sendable, Hashable, CaseIterable {
     case captionPick
     /// Ask Claude on a selection, clip or time range (AI §18, design.md §6.8): toolbox operations for one instruction.
     case askClaude
+    case agentChat
     case postingHelp
     case test
 }
@@ -68,6 +69,7 @@ public enum Effort: String, Codable, Sendable, Hashable, CaseIterable {
 
 /// Canonical request; AI §3.1. Credentials never enter this value.
 public struct LLMRequest: Sendable, Equatable {
+    var agentChatKeyApproved = false
     public var feature: LLMFeature
     public var system: String
     public var cachedBlock: String?

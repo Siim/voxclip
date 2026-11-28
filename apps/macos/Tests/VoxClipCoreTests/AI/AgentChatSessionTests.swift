@@ -9,7 +9,7 @@ import Testing
     private func session(_ connector: ScriptedConnector, budget: Int = 8) throws -> AgentChatSession {
         let project = try ProjectJSON.decode(FixtureLoader.data("fixtures/projects/clip-from-long-take.voxclip"))
         return try AgentChatSession(project: project, shared: SharedResources.locate(), connector: connector,
-                                    model: "fixture", feature: .test, stepBudget: budget)
+                                    model: "fixture", stepBudget: budget)
     }
 
     @Test func deliversRefusalsAndStopsAtTheStepBudget() async throws {

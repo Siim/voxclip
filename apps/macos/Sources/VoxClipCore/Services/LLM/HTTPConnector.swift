@@ -115,13 +115,16 @@ public actor HTTPConnector: LLMConnector {
     public func supportsImages() async -> Bool { catalog.supportsImages(for: id) }
 
     public func send(_ request: LLMRequest, model: String) async throws -> RawCompletion {
+        if request.feature == .agentChat, !request.agentChatKeyApproved {
+            throw LLMError.unavailable(reason: "Approve the API key before sending an agent chat request.")
+        }
         try catalog.validateKeylessAuth(for: id)
         guard !active else { throw LLMError.unavailable(reason: "An AI request is already running.") }
         active = true
         defer { active = false }
         if id == .ollama || id == .lmstudio { _ = await contextTokens(model: model) }
         let retry = catalog.document[ai: "policy"][ai: "retry"]
-        let singleSend = request.feature == .voiceRewrite || request.feature == .postingHelp
+        let singleSend = request.feature == .voiceRewrite || request.feature == .postingHelp || request.feature == .agentChat
         let attempts = singleSend ? 1 : max(1, retry[ai: "attempts"].aiInt ?? 3)
         let backoffs = retry[ai: "backoffSeconds"].aiArray.compactMap(\.aiDouble)
         let statuses = retry[ai: "retryStatuses"].aiArray.compactMap(\.aiInt)

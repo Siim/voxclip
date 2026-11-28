@@ -16,7 +16,18 @@ struct AgentChatPrompt {
             throw LLMError.invalidOutput(reason: "The agent chat prompt is missing or invalid.")
         }
         self.system = system; self.headings = headings; self.schemaName = schemaName
-        schema = prompt[ai: "output"][ai: "schema"]
+        let wire = prompt[ai: "output"][ai: "schema"]
+        guard var schema = wire.aiObject, var properties = schema["properties"]?.aiObject,
+              var calls = properties["calls"]?.aiObject, var items = calls["items"]?.aiObject,
+              var fields = items["properties"]?.aiObject else { throw LLMError.invalidOutput(reason: "Invalid agent_step schema.") }
+        fields["args"] = .object(["type": .string("object"), "additionalProperties": .bool(false),
+                                  "required": .array([.string("json")]),
+                                  "properties": .object(["json": .object(["type": .string("string")])])])
+        items["properties"] = .object(fields)
+        calls["items"] = .object(items)
+        properties["calls"] = .object(calls)
+        schema["properties"] = .object(properties)
+        self.schema = CanonicalResponseParser.strictSchema(.object(schema))
         tools = Self.text(.array(try HarnessTool.agentDefinitions(shared: shared)))
     }
 
@@ -25,6 +36,7 @@ struct AgentChatPrompt {
         let sections = [("tools", tools), ("project", Self.text(digest)), ("thread", Self.text(.array(thread))),
                         ("message", Self.text(message)), ("results", Self.text(.array(results)))]
         var blocks = sections.map { key, value in "\(headings[key]?.aiString ?? key)\n\(value)" }
+        if let strictArgs = headings["strictArgs"]?.aiString { blocks.append(strictArgs) }
         if !steering.isEmpty { blocks.append("\(headings["steer"]?.aiString ?? "Steer:")\n\(Self.text(.array(steering)))") }
         if let feedback { blocks.append(feedback) }
         return blocks.joined(separator: "\n\n")
@@ -57,8 +69,12 @@ struct AgentChatReply {
         self.say = say; self.done = done
         self.calls = try calls.map { call in
             guard let fields = call.aiObject, Set(fields.keys) == ["tool", "args"],
-                  let tool = fields["tool"]?.aiString, let args = fields["args"], args.aiObject != nil else { throw error }
-            return Call(tool: tool, args: args)
+                  let tool = fields["tool"]?.aiString, let args = fields["args"]?.aiObject else { throw error }
+            if Set(args.keys) == ["json"], let text = args["json"]?.aiString {
+                guard let value = StrictJSON.parse(text), value.aiObject != nil else { throw error }
+                return Call(tool: tool, args: value)
+            }
+            return Call(tool: tool, args: .object(args))
         }
         if let question = fields["question"], question != .null {
             guard let fields = question.aiObject, Set(fields.keys) == ["text", "answers"],
