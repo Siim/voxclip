@@ -154,9 +154,15 @@ extension EditorModel {
         _ = openRewrite
         let waveforms = [waveform?.identity] + recordingWaveforms.keys.sorted().map { recordingWaveforms[$0]?.identity }
         if let memo = cutEdgeOfferMemo, memo.edits == project.edits, memo.waveforms == waveforms { return memo.offer }
-        // With nothing cut there is nothing to count, and no levels to analyse.
-        let offer = project.edits.cutWordIds.isEmpty ? CutEdges.offer(project, envelopes: [:])
-            : CutEdges.offer(project, envelopes: cutEdgeEnvelopes, freeze: cutEdgeFreeze(project))
+        // With no kept/cut boundary left without a key there is nothing to count, and no levels to analyse.
+        let cut = Set(project.edits.cutWordIds), edges = project.edits.cutEdges
+        let open = !cut.isEmpty && CutEdges.recordings(project).contains { recording in
+            recording.words.indices.dropFirst().contains { index in
+                edges[recording.words[index].id] == nil && CutEdges.qualifies(recording.words[index - 1], recording.words[index], cutWordIds: cut)
+            }
+        }
+        let offer = open ? CutEdges.offer(project, envelopes: cutEdgeEnvelopes, freeze: cutEdgeFreeze(project))
+            : CutEdges.offer(project, envelopes: [:])
         cutEdgeOfferMemo = CutEdgeOfferMemo(edits: project.edits, waveforms: waveforms, offer: offer)
         return offer
     }
