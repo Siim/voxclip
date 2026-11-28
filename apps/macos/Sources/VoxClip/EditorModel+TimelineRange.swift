@@ -226,17 +226,26 @@ extension EditorModel {
         }
     }
 
+    /// The time ✦ Ask Claude asks about from the timeline: the exact range of at least 0.1 s, or
+    /// a drag across empty time that selected only pauses (design.md §6.8). Nil for words.
+    var timelineAskClaudeTimeRange: ClosedRange<Double>? {
+        if timelineRange != nil { return askClaude.timeRange }
+        guard selectedWordIDs.isEmpty, !selectedPauseIDs.isEmpty, let span = selectionSourceRange, span.upperBound - span.lowerBound >= 0.1 else { return nil }
+        return span
+    }
+
     /// Why ✦ Ask Claude can't ask about the range or words, or nil.
     var timelineAskClaudeReason: String? {
         guard capabilities.edit else { return Self.notReady }
         guard canAskClaude else { return "Choose an AI connector in Settings \u{203A} AI." }
         if timelineRange != nil { return askClaude.timeRange == nil ? "Mark at least 0.1 s to ask Claude." : nil }
-        return askClaudeWordSelection == nil ? Self.timelineRangeHint : nil
+        return askClaudeWordSelection == nil && timelineAskClaudeTimeRange == nil ? Self.timelineRangeHint : nil
     }
 
     func askClaudeOnTimelineRange() {
         guard timelineAskClaudeReason == nil else { return }
-        if timelineRange != nil { openAskClaudeOnTimeRange() } else { openAskClaudeOnSelection() }
+        if let range = timelineAskClaudeTimeRange { openAskClaude(AskClaudeSelection(scope: .time(range), clipID: activeClip?.id)) }
+        else { openAskClaudeOnSelection() }
     }
 
     /// Why Add title can't run over the range, or nil.

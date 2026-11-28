@@ -106,9 +106,9 @@ import VoxClipCore
             }
             Spacer(minLength: 0)
             // A dragged range: ✦ Ask Claude about it (design.md §6.8). The edit bar has it; a shallow timeline shows it here,
-            // only while a range is set and Claude can act.
-            if compactEdits, model.askClaude.timeRange != nil, model.canAskClaude {
-                Button { model.openAskClaudeOnTimeRange() } label: {
+            // only while an exact range or a pause-only drag is set and Claude can act.
+            if compactEdits, model.timelineAskClaudeTimeRange != nil, model.canAskClaude {
+                Button { model.askClaudeOnTimelineRange() } label: {
                     Text("\u{2726} Ask Claude").font(VCType.small.font(.medium)).padding(.horizontal, VCTokens.spacingRowGap).frame(height: 22)
                         .background(DesignValues.color("bg.selectedRow"), in: RoundedRectangle(cornerRadius: 5))
                 }
