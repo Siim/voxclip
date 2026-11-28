@@ -4,7 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
-- On Mac, mark an exact timeline range with Snapping off, step the playhead by frame with , and ., scrub on the ruler, and play, title, trim an item to or make a clip from the range (#41).
+- Mark an exact timeline range with Snapping off (Ctrl+drag on Windows), step the playhead by frame with , and ., scrub exactly, and play, title, trim an item to or make a clip from the range (#41).
 - The CLI can export and check a clip from another recording even if the unused original is missing.
 - CLI exports on Mac and Windows protect every spoken recording in a project, even those outside the selected clip.
 - On Windows, seek and preview cuts across recordings, recover left-out lines in order, and turn off automatic recording level matching.
