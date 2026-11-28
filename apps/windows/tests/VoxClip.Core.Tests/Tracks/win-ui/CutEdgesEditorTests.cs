@@ -359,6 +359,29 @@ public sealed class CutEdgesEditorTests
         finally { Directory.Delete(root, true); }
     }
 
+    /// <summary>Paid takes a Rewrite saved while it was open keep their edge after it closes, with no edit in between.</summary>
+    [Fact]
+    public void PaidTakesSavedByAClosedRewriteKeepTheirEdges()
+    {
+        var root = Directory.CreateTempSubdirectory("voxclip-cut-edges-").FullName;
+        try
+        {
+            var project = WithClip(Fixture("w2"));
+            var model = Editor(project, LateBoundary());
+            model.SetCutEdgePaidRoot(root);
+            var session = new RewriteSession(model, 2, 2, null, null, scope: RewriteScope.Clip("c3"));
+            // The open Rewrite keeps the edge; the offer reads the saved proposals now, before any are saved.
+            Assert.Equal((0, 1), (model.CutEdgeOffer.Count, model.CutEdgeOffer.Frozen));
+            var store = SavePaidProposal(root, project, RewriteScope.Clip("c3"));
+            session.Dispose();
+            Assert.Equal((0, 1), (model.CutEdgeOffer.Count, model.CutEdgeOffer.Frozen));
+            Assert.False(model.FixCutEdges());
+            Assert.Null(model.Project.Edits.CutEdges);
+            Assert.NotNull(store.Load(model.Project, DateTimeOffset.UtcNow));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Fact]
     public void FixCutEdgesSaysWhyItCannotRun()
     {

@@ -83,8 +83,10 @@ public sealed partial class EditorViewModel
         CutEdgeInputsChanged();
     }
 
+    /// <summary>A close may leave paid takes saved beside the project, which no edit announces: they are read again.</summary>
     internal void RewriteClosed(RewriteSession session)
     {
+        savedPaidScopesMemo = null;
         if (openRewrites.Remove(session)) CutEdgeInputsChanged();
     }
 
