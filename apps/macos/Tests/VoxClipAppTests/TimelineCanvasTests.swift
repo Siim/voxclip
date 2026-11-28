@@ -1917,14 +1917,14 @@ private actor TimelineTestSettings: SettingsStore {
         withExtendedLifetime((coordinator, scroll)) {}
     }
 
-    @Test func rulerDragSelectsBackwardsAndOptionBypassesTheMagnet() throws {
+    @Test func waveformDragSelectsBackwardsAndOptionBypassesTheMagnet() throws {
         let app = try app(), model = editor(app, project: try project())
         defer { model.close() }
         model.showsCuts = true
         let (canvas, window) = windowed(model)
         defer { canvas.tearDown(); window.close() }
         canvas.renderContent()
-        let y = TimelineMetrics.ruler.y + 12
+        let y = TimelineMetrics.audio.y + 12
         func p(_ source: Double) -> NSPoint { NSPoint(x: canvas.headerWidth + canvas.viewport.x(source), y: y) }
         for flags: NSEvent.ModifierFlags in [[], [.option]] {
             canvas.mouseDown(with: try mouse(.leftMouseDown, p(17.05), in: canvas, flags: flags))

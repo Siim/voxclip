@@ -184,6 +184,22 @@ public enum TimelineRuler {
         }
     }
 
+    /// Ticks between the whole seconds once 1 s minor ticks show (issue #41): every 0.5 s, every
+    /// 0.1 s, then every frame at `fps`, the finest that keeps them `minorSpacing` apart. Whole
+    /// seconds are left to `ticks`. Times are counted in steps, so they never drift.
+    public static func subsecondTicks(visible: ClosedRange<Double>, ptPerSecond: Double, fps: Double) -> [Double] {
+        guard visible.lowerBound.isFinite, visible.upperBound.isFinite, ptPerSecond.isFinite, ptPerSecond > 0,
+              minorStep(ptPerSecond: ptPerSecond) == 1 else { return [] }
+        let divisions = [2.0, 10] + (fps.isFinite && fps > 10 ? [fps] : [])
+        guard let perSecond = divisions.last(where: { ptPerSecond / $0 >= minorSpacing }) else { return [] }
+        let first = Int64((visible.lowerBound * perSecond).rounded(.up)), last = Int64((visible.upperBound * perSecond).rounded(.down))
+        guard first <= last, last - first < 100_000 else { return [] }
+        return (first...last).compactMap { index in
+            let time = Double(index) / perSecond
+            return abs(time - time.rounded()) < 1e-9 ? nil : time
+        }
+    }
+
     /// Where a label starts for the major tick at `tickX`, or nil where it must not draw
     /// (notes.md §6): 4 pt after the tick, 9 pt when an In bracket stands on it (to clear the
     /// bracket's foot); never across a bracket and never past `laneEnd` + 6.

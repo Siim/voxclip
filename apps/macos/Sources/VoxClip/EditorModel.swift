@@ -87,6 +87,9 @@ struct EditorRenderSnapshot {
     var timelineSnapping = true
     var timelineItemSelection: Set<TimelineItemID> = []
     var timelineItemRefusal: String?
+    /// The last frame or word-boundary step of the playhead (, / . on the timeline): where it
+    /// started and where it asked to go, so a key repeat steps on before the seek lands.
+    @ObservationIgnored var timelineStep: (axis: TimelineAxis, from: Double, to: Double)?
     /// The selection's first and last word or pause in reading order (a pause follows the
     /// word before it), one id when they are the same. A fold opens while one of them is in
     /// it (`openFoldEnds`), so what is selected always shows.

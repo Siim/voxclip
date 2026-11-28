@@ -14,7 +14,7 @@ import VoxClipCore
         let showsSurroundingContext: Bool
     }
     private enum Drag {
-        case overview
+        case overview, scrub
         case range(anchor: Double, point: NSPoint, moved: Bool)
         case trim(clip: ClipRange, start: Bool, point: NSPoint, index: Int?, time: Double?)
         case item(ItemDrag)
@@ -144,6 +144,10 @@ import VoxClipCore
         } else if point.y < canvas.rulerRow.maxY, let target = trimTarget(point) {
             model.selectTimelineItems([])
             drag = .trim(clip: target.0, start: target.1, point: point, index: nil, time: nil)
+        } else if point.y < canvas.rulerRow.maxY {
+            // The ruler scrubs: the playhead goes exactly where the pointer is, and nothing is selected.
+            drag = .scrub
+            model.seekTimeline(time(point).clamped(to: canvas.content.displayRange), on: model.timelineAxis)
         } else if event.clickCount == 2, point.y >= canvas.rulerRow.maxY {
             model.restoreCut(at: time(point), on: model.timelineAxis, tolerance: Double(TimelineMetrics.reach) / canvas.viewport.ptPerSecond)
         } else {
@@ -176,6 +180,7 @@ import VoxClipCore
             canvas.itemOverlay.preview = .init(rectangles: [rect], readout: nil, point: point, guide: nil, marquee: true)
             canvas.apply()
         case .overview?: seekOverview(point)
+        case .scrub?: model.seekTimeline(time(point).clamped(to: canvas.content.displayRange), on: model.timelineAxis)
         case .range(let anchor, let start, let moved)?:
             guard moved || hypot(point.x - start.x, point.y - start.y) >= 3 else { return }
             drag = .range(anchor: anchor, point: start, moved: true)

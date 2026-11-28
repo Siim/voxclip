@@ -467,7 +467,8 @@ struct TimelineContent: Equatable {
                                                     recordings: content.recordingRegions, parts: content.story?.parts ?? [], rate: content.recordingRate)
         ruler.state = TimelineRulerLane.State(viewport: viewport, inOut: shownInOut, selection: content.selection, changes: content.changes,
                                              trimHint: interaction.trimHint, partMarkers: content.partMarkers, storySource: content.axis == .source ? content.story : nil,
-                                             recordings: content.recordingRegions, recordingGaps: content.recordingGaps, recordingRate: content.recordingRate)
+                                             recordings: content.recordingRegions, recordingGaps: content.recordingGaps, recordingRate: content.recordingRate,
+                                             fps: model.timelineFrameRate)
         bed.state = TimelineTrackBed.State(width: Double(bounds.width))
         // On Source A1 dims outside the In/Out the ruler shows, the dragged edge included.
         audio.state = TimelineAudioLane.State(viewport: viewport, pieces: content.pieces, waveform: content.waveform, removed: content.removed,
@@ -992,6 +993,8 @@ struct TimelineOverviewLabel: Equatable {
         var recordings: [ProjectClock.Region] = []
         var recordingGaps: [Range<Double>] = []
         var recordingRate = 48_000.0
+        /// The take's frame rate, for frame ticks at the closest zoom.
+        var fps = 30.0
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
     static let labelFont = VCType.label.nsMono()
@@ -1028,6 +1031,11 @@ struct TimelineOverviewLabel: Equatable {
                 minor.setFill()
                 NSRect(x: tickX, y: 16, width: 1, height: 6).fill()
             }
+        }
+        // 0.5 s, 0.1 s or frame ticks between the seconds, half as tall (issue #41).
+        minor.setFill()
+        for time in TimelineRuler.subsecondTicks(visible: state.viewport.visible, ptPerSecond: state.viewport.ptPerSecond, fps: state.fps) where time >= 0 {
+            NSRect(x: x(time), y: 19, width: 1, height: 3).fill()
         }
         // Pending changes as 3 pt `change.add` bars, under the selection's (notes.md §6).
         DesignValues.nsColor("change.add").setFill()
