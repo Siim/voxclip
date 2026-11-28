@@ -53,6 +53,19 @@ class ProposalSchema(unittest.TestCase):
         for timelines in ([], [story] * 7, [dict(story, clipId="clip")], [dict(story, parts=story["parts"][:1])]):
             self.assertFalse(validator.is_valid(dict(envelope, version=2, timelines=timelines)))
 
+    def test_a_look_is_a_looks_file_id_with_an_amount(self):
+        # Looks spec 2026-11-28, section 8.5: any look ID of shared/looks/clip-looks.json, checked against that file at runtime,
+        # with an optional amount of 0-100.
+        validator = proposal_validator()
+        envelope = {"id": "83a63352-80f7-4500-82ca-9405899b0be6", "projectId": "project", "baseRevision": "a" * 64, "version": 2}
+        looks = [look["id"] for look in json.loads((ROOT / "shared/looks/clip-looks.json").read_text())["looks"]]
+        for look in looks:
+            timeline = {"clipId": "clip", "reason": "Warmer.", "look": {"id": look, "amount": 70, "reason": "Soft light"}}
+            validator.validate(dict(envelope, timelines=[timeline]))
+        for look in ({"id": "warm print"}, {"id": ""}, {"id": "warm", "amount": 120}, {"id": "warm", "amount": 0.7},
+                     {"id": "warm", "fix": True}):
+            self.assertFalse(validator.is_valid(dict(envelope, timelines=[{"clipId": "clip", "reason": "Warmer.", "look": look}])), look)
+
 
 class HarnessContract(unittest.TestCase):
     def setUp(self):

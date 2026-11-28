@@ -92,7 +92,11 @@ def main():
         "font": obj({"family": text(80), "weight": {"type": "integer", "minimum": 100, "maximum": 900}}, ["family", "weight"]),
         "case": {"enum": ["upper", "lower", "asSaid"]},
         "wordsPerCaption": {"type": "integer", "minimum": 1, "maximum": 12},
-        "look": obj({"id": {"enum": ["original", "muted", "warm", "bw"]}, "reason": reason}, ["id"]),
+        # A look ID of shared/looks/clip-looks.json, checked at runtime against that file (looks spec 2026-11-28, section 8.5),
+        # with the look's strength, 0-100 (100 when absent).
+        "look": obj({"id": {"type": "string", "pattern": "^[A-Za-z0-9]{1,40}$",
+                            "description": "A look ID from shared/looks/clip-looks.json, such as warm or warmPrint."},
+                     "amount": {"type": "integer", "minimum": 0, "maximum": 100}, "reason": reason}, ["id"]),
         "speed": obj({"rate": {"type": "number", "minimum": 0.5, "maximum": 2}, "reason": reason}, ["rate"]),
         "hook": text(80), "title": text(120), "postText": text(500), "coverTitle": text(80),
         "music": {**obj({"trackId": text(), "brief": text(500), **music_shape(index)}), **one_of("trackId", "brief")},
