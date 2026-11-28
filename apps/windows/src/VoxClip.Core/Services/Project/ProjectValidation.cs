@@ -30,10 +30,11 @@ internal static class ProjectValidation
         var supportsContext = schemaVersion >= 4;
         var supportsStories = schemaVersion >= 5;
         var supportsTimelineEdits = schemaVersion >= TimelineEditFields.Version;
-        var supportsThread = schemaVersion == ProjectSerialization.AgentThreadVersion;
+        var supportsFrame = schemaVersion >= ProjectSerialization.FrameVersion;
         var supportsSpokenSources = schemaVersion == ProjectSerialization.SpokenSourcesVersion ||
-            (supportsThread && root.TryGetProperty("media", out var mediaFields) && mediaFields.ValueKind == JsonValueKind.Object && mediaFields.TryGetProperty("spokenSources", out _));
-        Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab" + (supportsThread ? " agentThread" : ""), "title extensions clipStyle" + (supportsContext ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""), path: "/");
+            (supportsFrame && root.TryGetProperty("media", out var mediaFields) && mediaFields.ValueKind == JsonValueKind.Object && mediaFields.TryGetProperty("spokenSources", out _));
+        Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions clipStyle" + (supportsContext ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : "") + (supportsFrame ? " agentThread" : ""), path: "/");
+        if (root.TryGetProperty("agentThread", out var thread)) ExpectObject(thread, "agentThread");
         if (root.GetProperty("format").ValueKind != JsonValueKind.String || root.GetProperty("format").GetString() != "voxclip-project")
             throw Problem("format", "invalid value");
         if (schemaVersion < 1) throw Problem("schemaVersion", "expected a supported integer schema version");
@@ -133,7 +134,8 @@ internal static class ProjectValidation
             });
         }
         Nullable(root.GetProperty("transcript"), value => Transcript(value, normalizeWordText, "transcript"));
-        var edits = root.GetProperty("edits"); Object(edits, "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId", path: "edits");
+        var edits = root.GetProperty("edits"); Object(edits, "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId", supportsFrame ? "cutEdges" : "", path: "edits");
+        if (edits.TryGetProperty("cutEdges", out var cutEdges)) Dictionary(cutEdges, "edits/cutEdges", (_, value, _) => Number(value, 0), Id);
         Number(edits.GetProperty("pauseThresholdSeconds"), double.Epsilon, 10); Number(edits.GetProperty("pauseKeepSeconds"), 0, 1);
         UniqueStrings(edits.GetProperty("cutWordIds"), Id, "edits/cutWordIds"); UniqueStrings(edits.GetProperty("cutPauseIds"), "pause-after-" + Id, "edits/cutPauseIds");
         Dictionary(edits.GetProperty("corrections"), "edits/corrections", (_, value, _) => WordText(value, normalizeWordText), Id);

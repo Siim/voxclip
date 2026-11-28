@@ -8,8 +8,10 @@ namespace VoxClip.Core.Domain.Shared;
 public static class ProjectSerialization
 {
     internal const int SpokenSourcesVersion = 7;
-    internal const int AgentThreadVersion = 8;
-    internal const int CurrentVersion = AgentThreadVersion;
+    /// <summary>The v8 frame (editing §10.1): cut edges (§5.10) and the agent thread (ADR-R55) share it.</summary>
+    internal const int FrameVersion = 8;
+    internal const int AgentThreadVersion = FrameVersion;
+    internal const int CurrentVersion = FrameVersion;
     /// <summary>Read a project with source-generated metadata; unknown keys are refused except inside extensions and merge patches.</summary>
     public static Project Deserialize(string json) => Deserialize(json, CurrentVersion);
 
@@ -106,12 +108,34 @@ public static class ProjectSerialization
         return json;
     }
 
+    /// <summary>The version the fields present need: 8 with cut edges or an agent thread, 7 with spoken recordings, otherwise
+    /// none (1); story parts and timeline edit fields promote on their own.</summary>
+    internal static int RequiredVersion(Project project) =>
+        project.AgentThread is not null || project.Edits.CutEdges is { Count: > 0 } ? FrameVersion
+        : project.Media.SpokenSources is not null ? SpokenSourcesVersion : 1;
+
+    /// <summary>The version written: raised to <see cref="RequiredVersion"/>, and lowered from 7 or 8 once those fields are gone,
+    /// to 7 with spoken recordings and otherwise to 6, the timeline edit version every v7 or v8 project already meets.</summary>
+    internal static int WrittenVersion(Project project)
+    {
+        var required = RequiredVersion(project);
+        if (project.SchemaVersion >= 1 && project.SchemaVersion < required) return required;
+        if (project.SchemaVersion >= SpokenSourcesVersion && project.SchemaVersion > required) return Math.Max(required, TimelineEditFields.Version);
+        return project.SchemaVersion;
+    }
+
+    /// <summary>The project at <see cref="WrittenVersion"/>, upgraded to the v4 shape when it rises past 3.</summary>
+    internal static Project Framed(Project project)
+    {
+        var version = WrittenVersion(project);
+        if (version == project.SchemaVersion) return project;
+        return (project.SchemaVersion < 4 ? ContextDemoProject.UpgradeToV4(project) : project) with { SchemaVersion = version };
+    }
+
     internal static Project ForWriting(Project project)
     {
-        var featureVersion = project.AgentThread is not null ? AgentThreadVersion : project.Media.SpokenSources is not null ? SpokenSourcesVersion : 1;
-        return project.SchemaVersion >= 1 && project.SchemaVersion < featureVersion
-            ? (project.SchemaVersion < 4 ? ContextDemoProject.UpgradeToV4(project) : project) with { SchemaVersion = featureVersion }
-            : StoryClips.ForWriting(TimelineEditFields.Promoting(project));
+        if (project.Edits.CutEdges is { Count: 0 }) project = project with { Edits = project.Edits with { CutEdges = null } };
+        return StoryClips.ForWriting(TimelineEditFields.Promoting(Framed(project)));
     }
 
     /// <summary>Validate supported format, voice policy, context/motion invariants and immutable word timings.</summary>
@@ -133,8 +157,10 @@ public static class ProjectSerialization
             }
         }
         ProjectClock.Validate(project);
-        if ((project.SchemaVersion == AgentThreadVersion) != (project.AgentThread is not null))
+        if (project.AgentThread is not null && project.SchemaVersion < FrameVersion)
             throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Agent threads require project version 8.");
+        if (project.Edits.CutEdges is { Count: > 0 } && project.SchemaVersion < FrameVersion)
+            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Cut edges require project version 8.");
         if (project.AgentThread is { } thread) AgentThreadWire.Validate(thread);
         VoiceLabProject.Validate(project);
         ContextDemoProject.Validate(project);

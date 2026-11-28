@@ -227,9 +227,9 @@ public static partial class RecordingEdits
         var remaining = sources.Where(source => source.SourceKey != key).ToArray();
         var editsAfterRemoval = remaining.Length == 0 ? edits with { Clips = edits.Clips.Select(clip => clip.Parts is not { } parts ? clip :
             clip with { Parts = parts.Select(part => part with { TakeReason = null }).ToArray() }).ToArray() } : edits;
-        return project with { Media = project.Media with { SpokenSources = remaining.Length == 0 ? null : remaining },
-            SchemaVersion = remaining.Length == 0 && project.AgentThread is null ? TimelineEditFields.Version : project.SchemaVersion,
+        var result = project with { Media = project.Media with { SpokenSources = remaining.Length == 0 ? null : remaining },
             Edits = editsAfterRemoval, Extensions = extensions };
+        return result with { SchemaVersion = ProjectSerialization.WrittenVersion(result) };
     }
 
     private static int HighestPrefix(Project project)
