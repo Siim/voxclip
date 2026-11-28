@@ -291,11 +291,13 @@ public sealed class FrameComposer : IFrameComposer
     }
 
     /// <summary>The clip's color grade, Ask Claude's picture effects and its motion on the scaled frame, before captions (Mac FrameCompositor
-    /// order): the picture is graded first, so censors cover graded pixels and pointers, titles and stickers keep their colours;
-    /// then censors and pointers in picture space through <paramref name="crop"/> of the <paramref name="pictureWidth"/> ×
-    /// <paramref name="pictureHeight"/> oriented source, at the freeze-held source time; then the clip's motion cue crops the finished
-    /// picture (in output coordinates, so a flipped or turned clip zooms where it is seen); then titles, lower thirds, stickers and the
-    /// progress bar in the output frame, unzoomed. In preview, a title or lower third that can't be drawn is reported to
+    /// order): the picture is graded first with the clip's whole grade (<see cref="ClipGradeRecipe"/>: the Fix, the base look or a
+    /// timed colourLook in its place, the adjustments, tone and Amount), so censors cover graded pixels and pointers, titles and
+    /// stickers keep their colours; then censors and pointers in picture space through <paramref name="crop"/> of the
+    /// <paramref name="pictureWidth"/> × <paramref name="pictureHeight"/> oriented source, at the freeze-held source time; then the
+    /// clip's motion cue crops the finished picture (in output coordinates, so a flipped or turned clip zooms where it is seen); then
+    /// the companion footage; then the vignette and the rendered frame's grain on the output frame; then titles, lower thirds,
+    /// stickers and the progress bar in the output frame, unzoomed and clean. In preview, a title or lower third that can't be drawn is reported to
     /// <paramref name="failures"/> as <c>title</c>; it is left out of the frame either way.</summary>
     internal void FinishClipFrame(PixelBuffer output, ComposeSnapshot snapshot, double editedTime, int pictureWidth, int pictureHeight, RectD crop,
         CancellationToken ct, bool forPreview = false, PreviewFrameFailures? failures = null)
@@ -317,14 +319,32 @@ public sealed class FrameComposer : IFrameComposer
             DrawBlended(output, effect.ExplicitFadeOpacityAt(sourceTime), frame => Grade(frame, look), frame => Grade(frame, baseLook));
         else Grade(output, look);
         if (frames is { HasPicture: true }) frames.DrawPicture(output, pictureWidth, pictureHeight, crop, clip!.Effects!.PictureTime(sourceTime), clip.Controls, ct);
-        if (clip is { Motion.Count: > 0 } && !(forPreview && clip.ReduceMotionInPreview))
-            ClipPicture.Motion(output, VoxClip.Core.Domain.ContextDemo.MotionCueRendering.Transform(clip.Motion, sourceTime), forPreview, ct);
+        var motion = clip is { Motion.Count: > 0 } && !(forPreview && clip.ReduceMotionInPreview)
+            ? MotionCueRendering.Transform(clip.Motion, sourceTime) : MotionCropTransform.Identity;
+        ClipPicture.Motion(output, motion, forPreview, ct);
         try { DrawFootage(output, snapshot, editedTime, forPreview, ct); }
         catch (Exception exception) { PreviewFrameFailures.Failed(failures, forPreview, PreviewFailureReason.SourceFrame, exception); throw; }
+        // Vignette and grain sit on the output frame (looks spec §5.7): after the motion crop and the footage, so neither zooms and
+        // both run on across a cutaway; grain stays out of a screen recording, the vignette covers it.
+        var finish = new ClipGradeRecipe(baseLook, adjustments, grade);
+        if (finish.HasFinish)
+        {
+            var hole = snapshot.ContextDemo?.At(editedTime) is null ? null : ClipGrain.DemoHole(output.Width, output.Height, motion, WholeFrame);
+            ClipPicture.Finish(output, finish, ClipGrain.FrameHash(RenderedFrameIndex(snapshot, editedTime)), hole, ct);
+        }
         if (frames is { HasPicture: true })
             frames.DrawFrame(output, sourceTime, editedTime, timeline.MapTime, ct,
                 forPreview && failures is not null ? () => failures.Report(PreviewFailureReason.Title) : null, timeline.MapEndTime);
     }
+
+    /// <summary>Where a context demo sits: today it fills the frame (design §6.9).</summary>
+    private static readonly ClipEffectRect WholeFrame = new(0, 0, 1, 1);
+
+    /// <summary>The rendered frame index n = ⌊t·fps + 0.5⌋ of <paramref name="editedTime"/>, with t its rendered time at the clip's
+    /// speed (looks spec §5.7): export frame i is index i, a preview frame the nearest export frame, so preview, export and the
+    /// cover draw the same grain and a paused frame's grain stands still.</summary>
+    internal static uint RenderedFrameIndex(ComposeSnapshot snapshot, double editedTime)
+        => ClipGrain.FrameIndex(snapshot.Speed.Rendered(editedTime), snapshot.Output.FrameRate);
 
     /// <summary>The changed-duration crop for this output time: a zoomed span (Match video's 1.12× crop, a cut's 1.06×
     /// punch-in) crops the aspect crop in around its anchor, as Mac FrameCompositor does. Zoom-1 spans and legacy plans keep
