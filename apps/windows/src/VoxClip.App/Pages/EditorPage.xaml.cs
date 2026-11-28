@@ -146,6 +146,8 @@ public sealed partial class EditorPage : Page
             _ = RunAsync(() => SeekSourceAsync(time), "Preview");
         };
         Timeline.PlayRequested += (_, _) => _ = RunAsync(TogglePlaybackAsync, "Preview");
+        Timeline.MakeClipRequested += (_, _) => MakeClipAndReveal();
+        ViewModel.TimelineRangePlayRequested += (_, range) => _ = RunAsync(() => PlayTimelineRangeAsync(range), "Preview");
         Timeline.OpenMusicRequested += (_, _) =>
         {
             ShowCaptions();
@@ -1011,6 +1013,18 @@ public sealed partial class EditorPage : Page
     {
         await playback.EndCorrectionAsync(ViewModel);
         if (preview is null || ViewModel.PreviewCutRange() is not { } range) return;
+        await SourceTransportAsync(async token =>
+        {
+            await SeekSourceCoreAsync(range.Start, token);
+            previewStop = (range.End, false);
+            if (preview is not null && !ViewModel.IsReadOnly) await preview.PlayAsync(token);
+        });
+    }
+    /// <summary>The timeline edit bar's Play range: from In, stopping at Out (issue #41). Space playback is unchanged.</summary>
+    private async Task PlayTimelineRangeAsync(TimeRange range)
+    {
+        await playback.EndCorrectionAsync(ViewModel);
+        if (preview is null || ViewModel.IsReadOnly) return;
         await SourceTransportAsync(async token =>
         {
             await SeekSourceCoreAsync(range.Start, token);
