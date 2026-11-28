@@ -1,10 +1,11 @@
-// Prints what the hosted macOS runner offers for H.264 encoding, before the Swift tests run.
+// Prints what the hosted macOS runner offers for H.264 encoding, and its Metal GPU, before the Swift tests run.
 // Encoding uses VideoToolbox and CoreMedia only; Foundation bridges the encoder list and formats
 // output. Diagnostic only: every outcome is printed and the script always exits 0.
 // Usage: swift tools/ci/macos-encoder-probe.swift "$(xcrun --sdk macosx --show-sdk-version)"
 import CoreMedia
 import CoreVideo
 import Foundation
+import Metal
 import VideoToolbox
 
 setvbuf(stdout, nil, _IOLBF, 0)
@@ -43,6 +44,13 @@ print("hw.ncpu: \(sysctlInteger("hw.ncpu"))")
 print("hw.memsize: \(sysctlInteger("hw.memsize"))")
 print("os: macOS \(sysctlString("kern.osproductversion")) (\(sysctlString("kern.osversion")))")
 print("sdk: \(CommandLine.arguments.dropFirst().first ?? "unknown")")
+// The clip grade's kernels are precompiled because runtime Metal compilation needs dynamic libraries (looks spec 2026-11-28,
+// section 5.10); this records what the runner's GPU offers.
+if let device = MTLCreateSystemDefaultDevice() {
+    print("metal: \(device.name); dynamic libraries \(device.supportsDynamicLibraries); function pointers \(device.supportsFunctionPointers)")
+} else {
+    print("metal: no device")
+}
 
 var encoders: CFArray?
 print("VTCopyVideoEncoderList: status \(VTCopyVideoEncoderList(nil, &encoders))")

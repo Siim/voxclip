@@ -214,6 +214,77 @@ import Testing
         #expect(mean < 3, "mean difference \(mean)")
     }
 
+    /// Through the CLI, a project's grade reaches the render: the clip exported with a Fix decodes, above the captions,
+    /// within codec tolerance of the Fix applied to the same clip exported as filmed.
+    @Test(.timeLimit(.minutes(3))) func theCLIExportsTheClipsGrade() async throws {
+        let directory = try cliDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try await Self.clip()
+        var fixed = ProjectClipControls(clipId: "a")
+        fixed.colorGrade = ClipColorGrade(exposure: 40, temperature: -20)
+        var decoded: [Frame] = []
+        for (name, controls) in [("plain", nil), ("fixed", fixed)] as [(String, ProjectClipControls?)] {
+            let project = try await Self.project(source: source, in: directory, name: name, controls: controls)
+            let video = directory.appendingPathComponent("\(name).mp4")
+            let result = try runCLI(["--open", project.path, "--clip", "a", "--aspect", "9:16", "--export", video.path, "--json", "--quiet"],
+                                    directory: directory, timeout: 90)
+            try #require(result.status == 0, "CLI exit \(result.status): \(result.stderr)")
+            decoded.append(try await Self.decodedFrame(video, index: 15))
+        }
+        let (plain, graded) = (decoded[0], decoded[1])
+        let recipe = ClipGradeRecipe(controls: fixed)
+        var total = 0.0, count = 0
+        for y in 0..<(plain.height / 3) {
+            for x in 0..<plain.width {
+                let expected = recipe.apply(plain.rgb(x, y).map { Double($0) / 255 }).map(ClipGradeRecipe.byte)
+                total += zip(graded.rgb(x, y), expected).reduce(0.0) { $0 + abs(Double($1.0 - $1.1)) }
+                count += 3
+            }
+        }
+        #expect(total / Double(count) < 3, "mean difference \(total / Double(count))")
+        #expect(plain != graded)
+    }
+
+    static func decodedFrame(_ url: URL, index: Int) async throws -> Frame {
+        let file = AVURLAsset(url: url)
+        let track = try #require(try await file.loadTracks(withMediaType: .video).first)
+        let reader = try AVAssetReader(asset: file)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+        reader.add(output)
+        guard reader.startReading() else { throw reader.error ?? CocoaError(.fileReadUnknown) }
+        defer { reader.cancelReading() }
+        while let sample = output.copyNextSampleBuffer() {
+            if Int((CMSampleBufferGetPresentationTimeStamp(sample).seconds * 30).rounded()) == index, let buffer = CMSampleBufferGetImageBuffer(sample) {
+                return frame(buffer)
+            }
+        }
+        throw CocoaError(.fileReadCorruptFile)
+    }
+
+    /// A saved project of the synthetic clip with one clip "a" over its eight words.
+    static func project(source: URL, in directory: URL, name: String, controls: ProjectClipControls?) async throws -> URL {
+        let texts = ["The", "look", "is", "the", "grade", "that", "you", "chose"]
+        let words = texts.enumerated().map { index, text in
+            TimedWord(id: "w\(index)", text: text, start: 0.1 + Double(index) * 0.22, end: 0.28 + Double(index) * 0.22)
+        }
+        let transcript = Transcript(words: words, durationSeconds: 2, engine: EngineRef(id: .elevenlabs, engineVersion: "synthetic-fixture"),
+                                    rawKey: String(repeating: "0", count: 64), createdAt: Date(timeIntervalSince1970: 0))
+        let probe = try await AVMediaProbe().probe(source)
+        let attributes = try FileManager.default.attributesOfItem(atPath: source.path)
+        var project = Project(id: UUID().uuidString.lowercased(), createdAt: Date(), modifiedAt: Date(), savedBy: ProjectWriter(version: "9.8.7"),
+            media: ProjectMedia(source: MediaReference(absolutePath: source.path,
+                sizeBytes: try #require((attributes[.size] as? NSNumber)?.int64Value), durationSeconds: probe.durationSeconds,
+                contentKey: try JSONProjectStore.contentKey(for: source), video: probe.video, audio: probe.audio)),
+            transcript: transcript, edits: ProjectEdits(clips: [ClipRange(id: "a", startWordId: "w0", endWordId: "w7", title: "A")], activeClipId: "a"))
+        if let controls {
+            project = try ContextDemoProject.upgradeToV4(project)
+            project.clipControls = [controls]
+        }
+        let url = directory.appendingPathComponent("\(name).voxclip")
+        try await JSONProjectStore(appVersion: "9.8.7").save(project, to: url)
+        return url
+    }
+
     /// Amount 0 with no Fix is as filmed: the export takes the source-only path; a Fix alone, or a look above 0, doesn't.
     @Test func amountZeroWithoutAFixKeepsTheSourceOnlyPath() throws {
         let source = URL(fileURLWithPath: "/tmp/voxclip-grade-gate.mov")
