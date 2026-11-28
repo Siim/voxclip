@@ -350,6 +350,31 @@ public sealed class PicturePanelTests
         Assert.True(changes >= 6);
     }
 
+    /// <summary>Looks spec §3.3 and §3.5: one Shift+arrow press is ten points and one undo step, clamped at the end of the range; the
+    /// panel handles it before the slider's own one-point step.</summary>
+    [Fact]
+    public void ShiftArrowsStepTenPointsAsOneUndoStep()
+    {
+        var (editor, picture, _) = Open();
+        picture.Apply("warmPrint");
+        var vibrance = Slider(picture, PictureControl.Vibrance).Value;
+        Assert.True(picture.StepValue(PictureControl.Vibrance, 10));
+        Assert.Equal(vibrance + 10, Slider(picture, PictureControl.Vibrance).Value);
+        Assert.True(picture.StepAmount(-10));
+        Assert.Equal(90, picture.Amount);
+        Assert.True(picture.StepAmount(10));
+        Assert.False(picture.StepAmount(10));
+        Assert.True(picture.SetValue(PictureControl.Grain, 4));
+        Assert.True(picture.StepValue(PictureControl.Grain, -10));
+        Assert.Equal(0, Slider(picture, PictureControl.Grain).Value);
+        Assert.False(picture.StepValue(PictureControl.Grain, -10));
+        Assert.Equal(["Change grain", "Change grain", "Change look amount", "Change look amount", "Change vibrance", "Change look"], Undos(editor));
+        var panel = File.ReadAllText(Path.Combine(Path.GetDirectoryName(SharedResources.ResolveRoot())!, "apps", "windows", "src", "VoxClip.App", "Controls", "PicturePanel.cs"));
+        Assert.Contains("amount.PreviewKeyDown +=", panel);
+        Assert.Contains("row.Slider.PreviewKeyDown +=", panel);
+        Assert.DoesNotContain("AddHandler(KeyDownEvent, new KeyEventHandler((_, args) => SliderKey", panel);
+    }
+
     /// <summary>Looks spec §7.6: the tiles are drawn again when the Fix or the source changes (Auto, a Fix slider, Reset fix, a relink),
     /// never for choosing a look, its amount or a look value.</summary>
     [Fact]

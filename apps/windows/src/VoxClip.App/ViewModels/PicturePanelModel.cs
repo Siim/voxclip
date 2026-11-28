@@ -520,6 +520,12 @@ public sealed class PicturePanelModel(EditorViewModel editor)
         return true;
     }
 
+    /// <summary>Shift+←/→ on a slider: <paramref name="delta"/> points from its value as one "Change {name}" step (looks spec §3.5).</summary>
+    public bool StepValue(PictureControl control, int delta) => Controls is { } controls && SetValue(control, Value(controls, control) + delta);
+
+    /// <summary>Shift+←/→ on Amount: <paramref name="delta"/> points as one "Change look amount" step (looks spec §3.3).</summary>
+    public bool StepAmount(int delta) => SetAmount(Amount + delta);
+
     /// <summary>Double-click or Delete: the slider back to the look's value, or 0 without a preset origin.</summary>
     public bool ResetValue(PictureControl control) => SetValue(control, LookValue(control));
 

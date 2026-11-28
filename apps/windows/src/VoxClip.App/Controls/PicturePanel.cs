@@ -223,7 +223,7 @@ internal sealed class PicturePanel : Grid
             if (amountDragging) Model.PreviewAmount((int)args.NewValue);
             else Model.SetAmount((int)args.NewValue);
         };
-        amount.AddHandler(KeyDownEvent, new KeyEventHandler((_, args) => SliderKey(args, amount, value => Model.SetAmount(value), () => Model.SetAmount(100))), true);
+        amount.PreviewKeyDown += (_, args) => SliderKey(args, amount, Model.StepAmount, () => Model.SetAmount(100));
         amount.DoubleTapped += (_, _) => Model.SetAmount(100);
         CommitOnEnter(amountBox, text => PicturePanelModel.ParseAmount(text) is { } value && Model.SetAmount(value));
         body.Children.Add(Stacked(row, amountWhy));
@@ -357,8 +357,7 @@ internal sealed class PicturePanel : Grid
             if (row.Dragging) Model.PreviewValue(control, (int)args.NewValue);
             else Model.SetValue(control, (int)args.NewValue);
         };
-        row.Slider.AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
-            SliderKey(args, row.Slider, value => Model.SetValue(control, value), () => Model.ResetValue(control))), true);
+        row.Slider.PreviewKeyDown += (_, args) => SliderKey(args, row.Slider, delta => Model.StepValue(control, delta), () => Model.ResetValue(control));
         row.Slider.DoubleTapped += (_, _) => Model.ResetValue(control);
         row.Slider.SizeChanged += (_, _) => PlaceTick(row);
         CommitOnEnter(row.Box, text => PicturePanelModel.Parse(control, text) is { } value && Model.SetValue(control, value));
@@ -366,14 +365,15 @@ internal sealed class PicturePanel : Grid
         row.Panel.Children.Add(row.Why);
     }
 
-    /// <summary>Shift+arrows step ten, Delete and Backspace go back to the look's value; plain arrows are the slider's own one-point step.</summary>
-    private void SliderKey(KeyRoutedEventArgs args, Slider slider, Func<int, bool> set, Func<bool> back)
+    /// <summary>Shift+arrows step ten, Delete and Backspace go back to the look's value; plain arrows are the slider's own one-point step.
+    /// It runs on PreviewKeyDown, so a handled Shift+arrow never reaches the slider's own step: one press is one step of ten.</summary>
+    private static void SliderKey(KeyRoutedEventArgs args, Slider slider, Func<int, bool> step, Func<bool> back)
     {
         if (!slider.IsEnabled) return;
         if (args.Key is VirtualKey.Delete or VirtualKey.Back) { back(); args.Handled = true; return; }
         if (args.Key is VirtualKey.Left or VirtualKey.Right && InputState.Down(VirtualKey.Shift))
         {
-            set((int)Math.Clamp(slider.Value + (args.Key == VirtualKey.Right ? 10 : -10), slider.Minimum, slider.Maximum));
+            step(args.Key == VirtualKey.Right ? 10 : -10);
             args.Handled = true;
         }
     }
