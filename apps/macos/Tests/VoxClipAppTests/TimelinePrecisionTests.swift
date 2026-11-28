@@ -129,6 +129,52 @@ private actor PrecisionTestSettings: SettingsStore {
         #expect(model.undoSteps == 0 && !model.document.isDocumentEdited)
     }
 
+    /// Clip 1 plays 0.1 s before word 10 (from 9.9 s) and 0.1 s after word 29 (to 29.9 s): 18 s on Edited with words 14
+    /// and 15 cut. A frame step, a ruler scrub, I and O and an exact range reach those frames as the render plan maps
+    /// them; a word drag over the lead-in still selects word 10.
+    @Test func onEditedExactTimeReachesTheClipsLeadInAndTail() async throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = false
+        #expect(abs(model.duration - 18) < 1e-6 && abs(model.timelineTime(source: 10, on: .edited) - 0.1) < 1e-6)
+        // Frame steps from word 10's start into the lead-in, to the clip's first frame.
+        model.seek(source: 10); await settle()
+        model.stepTimelineFrame(-1); await settle()
+        #expect(abs(model.timelinePlayhead(on: .edited) - 2.0 / 30) < 1e-6 && abs(model.sourceTime - (9.9 + 2.0 / 30)) < 1e-6, "\(model.sourceTime)")
+        model.stepTimelineFrame(-1); await settle()
+        model.stepTimelineFrame(-1); await settle()
+        #expect(abs(model.timelinePlayhead(on: .edited)) < 1e-6 && abs(model.sourceTime - 9.9) < 1e-6, "\(model.sourceTime)")
+        // I there marks In at 9.9 s; Out defaults to the scope's last frame, 29.9 s.
+        model.setTimelineRangeEdge(start: true)
+        var range = try #require(model.timelineRange)
+        #expect(abs(range.start * 30 - 297) < 0.01 && abs(range.end * 30 - 897) < 0.01, "\(range)")
+        // Frame steps from word 29's end into the tail, to the clip's last frame.
+        model.clearTimelineRange()
+        model.seek(source: 29.8); await settle()
+        for _ in 0..<3 { model.stepTimelineFrame(1); await settle() }
+        #expect(abs(model.timelinePlayhead(on: .edited) - 18) < 1e-6 && abs(model.sourceTime - 29.9) < 1e-6, "\(model.sourceTime)")
+        // An exact range across the lead-in and one across the tail.
+        model.timelineSnapping = false
+        range = try #require(model.setTimelineRange(from: 0, to: 0.5, on: .edited).flatMap { _ in model.timelineRange })
+        #expect(abs(range.start * 30 - 297) < 0.01 && abs(range.end * 30 - 312) < 0.01, "\(range)")
+        range = try #require(model.setTimelineRange(from: 17.5, to: 18, on: .edited).flatMap { _ in model.timelineRange })
+        #expect(abs(range.start * 30 - 882) < 0.01 && abs(range.end * 30 - 897) < 0.01, "\(range)")
+        // A word drag keeps its word clamp.
+        model.clearTimelineRange()
+        _ = model.selectTimeline(from: 0, to: 0.5, on: .edited, snap: true)
+        #expect(model.selectedWordIDs == ["t10"])
+        // A ruler scrub from 2 s (a press within 12 pt of In grabs its bracket) into the lead-in.
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        func p(_ edited: Double) -> NSPoint { NSPoint(x: canvas.headerWidth + canvas.viewport.x(edited), y: TimelineMetrics.ruler.y + 12) }
+        canvas.mouseDown(with: try mouse(.leftMouseDown, p(2), in: canvas)); await settle()
+        #expect(abs(model.sourceTime - 11.9) < 0.02, "\(model.sourceTime)")
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, p(0.05), in: canvas)); await settle()
+        canvas.mouseUp(with: try mouse(.leftMouseUp, p(0.05), in: canvas)); await settle()
+        #expect(abs(model.sourceTime - 9.95) < 0.02, "\(model.sourceTime)")
+    }
+
     @Test func theRulerDrawsHalfSecondTicksBetweenTheSeconds() throws {
         let app = try app(), model = editor(app, project: try project())
         defer { model.close() }

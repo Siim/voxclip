@@ -69,6 +69,17 @@ extension EditorModel {
         return mapped.clamped(to: words[scope.lowerBound].start...words[scope.upperBound].end)
     }
 
+    /// The take time at `time` on `axis` for an exact position (issue #41: the frame step, the ruler scrub, I and O and
+    /// the exact range). On Edited it is the render plan's own mapping, without `timelineSourceTime`'s word clamp, so the
+    /// open clip's lead-in before its first word and its tail after its last are reachable; the scope's end is just
+    /// after the last sample it plays. Word selection keeps the clamp.
+    func timelineExactSourceTime(_ time: Double, on axis: TimelineAxis) -> Double {
+        guard axis == .edited, let renderTimeline, duration > 0 else { return timelineSourceTime(time, on: axis) }
+        let sample = 1 / renderTimeline.sampleRate
+        if time >= duration { return renderTimeline.sourceTime(max(0, duration - sample)) + sample }
+        return renderTimeline.sourceTime(max(0, time))
+    }
+
     /// The time on `axis` of the take time `source`: itself on Source, its place in the
     /// scope's output on Edited.
     func timelineTime(source: Double, on axis: TimelineAxis, edited: Double? = nil) -> Double {
@@ -165,9 +176,9 @@ extension EditorModel {
         seek(source: source)
     }
 
-    /// Seeks to `time` on the displayed axis.
-    func seekTimeline(_ time: Double, on axis: TimelineAxis) {
-        let source = timelineSourceTime(time, on: axis)
+    /// Seeks to `time` on the displayed axis: `exact` (a frame step, the ruler) without the word clamp on Edited.
+    func seekTimeline(_ time: Double, on axis: TimelineAxis, exact: Bool = false) {
+        let source = exact ? timelineExactSourceTime(time, on: axis) : timelineSourceTime(time, on: axis)
         if hasSeveralRecordings, let clock = recordingClock,
            let local = clock.localTime(source), transcriptRecordingScope != .recording(local.key) {
             let word = words.first { $0.end > source && clock.region(of: $0.id)?.key == local.key }

@@ -55,7 +55,7 @@ extension EditorModel {
     private func seekTimelineStep(_ time: Double, on axis: TimelineAxis) {
         let target = time.clamped(to: timelineDisplayRange(on: axis))
         timelineStep = (axis, timelinePlayhead(on: axis), target)
-        seekTimeline(target, on: axis)
+        seekTimeline(target, on: axis, exact: true)
     }
 
     // MARK: The exact range
@@ -113,11 +113,11 @@ extension EditorModel {
         }
         let start = anchor.clamped(to: limit), end = head.clamped(to: limit)
         let lower = min(start, end), upper = max(start, end)
-        let sourceLower = timelineSourceTime(lower, on: axis)
+        let sourceLower = timelineExactSourceTime(lower, on: axis)
         // An Edited seam is right-continuous: a range ending at it ends before the closed cut.
         let sample = 1 / (renderTimeline?.sampleRate ?? 48_000)
-        let sourceUpper = axis == .edited && upper > lower ? timelineSourceTime(max(lower, upper - sample), on: axis) + sample : timelineSourceTime(upper, on: axis)
-        guard setTimelineRange(source: min(sourceLower, sourceUpper)...max(sourceLower, sourceUpper), anchor: timelineSourceTime(start, on: axis)) else { return nil }
+        let sourceUpper = axis == .edited && upper > lower ? timelineExactSourceTime(max(lower, upper - sample), on: axis) + sample : timelineExactSourceTime(upper, on: axis)
+        guard setTimelineRange(source: min(sourceLower, sourceUpper)...max(sourceLower, sourceUpper), anchor: timelineExactSourceTime(start, on: axis)) else { return nil }
         return timelineSelection(on: axis)
     }
 
@@ -126,7 +126,8 @@ extension EditorModel {
     @discardableResult
     func extendTimelineSelection(to time: Double, on axis: TimelineAxis, exact: Bool) -> Bool {
         guard let base = timelineActionRange else { return false }
-        let point = timelineSourceTime(time.clamped(to: timelineDisplayRange(on: axis)), on: axis)
+        let shown = time.clamped(to: timelineDisplayRange(on: axis))
+        let point = exact ? timelineExactSourceTime(shown, on: axis) : timelineSourceTime(shown, on: axis)
         var lower = base.lowerBound, upper = base.upperBound
         if point < lower { lower = point }
         else if point > upper { upper = point }
@@ -149,8 +150,8 @@ extension EditorModel {
             .first(where: { $0.lowerBound <= playhead && playhead <= $0.upperBound }) {
             display = span.lowerBound...max(span.lowerBound, span.upperBound)
         }
-        let source = timelineSourceTime(playhead, on: axis)
-        let first = timelineSourceTime(display.lowerBound, on: axis), last = timelineSourceTime(display.upperBound, on: axis)
+        let source = timelineExactSourceTime(playhead, on: axis)
+        let first = timelineExactSourceTime(display.lowerBound, on: axis), last = timelineExactSourceTime(display.upperBound, on: axis)
         let current = timelineRangeSource
         let lower = start ? source : current.map { $0.lowerBound < source ? $0.lowerBound : first } ?? first
         let upper = start ? current.map { $0.upperBound > source ? $0.upperBound : last } ?? last : source

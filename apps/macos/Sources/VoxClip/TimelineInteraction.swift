@@ -149,7 +149,7 @@ import VoxClipCore
         } else if point.y < canvas.rulerRow.maxY {
             // The ruler scrubs: the playhead goes exactly where the pointer is, and nothing is selected.
             drag = .scrub
-            model.seekTimeline(time(point).clamped(to: canvas.content.displayRange), on: model.timelineAxis)
+            model.seekTimeline(time(point).clamped(to: canvas.content.displayRange), on: model.timelineAxis, exact: true)
         } else if event.clickCount == 2, point.y >= canvas.rulerRow.maxY {
             model.restoreCut(at: time(point), on: model.timelineAxis, tolerance: Double(TimelineMetrics.reach) / canvas.viewport.ptPerSecond)
         } else if event.modifierFlags.contains(.shift), model.timelineActionRange != nil {
@@ -191,7 +191,7 @@ import VoxClipCore
             canvas.itemOverlay.preview = .init(rectangles: [rect], readout: nil, point: point, guide: nil, marquee: true)
             canvas.apply()
         case .overview?: seekOverview(point)
-        case .scrub?: model.seekTimeline(time(point).clamped(to: canvas.content.displayRange), on: model.timelineAxis)
+        case .scrub?: model.seekTimeline(time(point).clamped(to: canvas.content.displayRange), on: model.timelineAxis, exact: true)
         case .extend(_, let start, _)?:
             // Moved 3 pt: not a click but the ⇧-drag, which selects words from the press (⇧ snaps it).
             guard hypot(point.x - start.x, point.y - start.y) >= 3 else { return }
