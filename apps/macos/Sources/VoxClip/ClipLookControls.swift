@@ -385,7 +385,8 @@ import VoxClipCore
 
 /// The tiles (one keyboard stop): square, at least 56 pt, 6 apart, as many columns as fit, or one row of at most `oneRow`.
 /// A click applies; hover for 120 ms or keyboard focus previews on the paused viewer; ←/→/↑/↓ move, Home and End jump,
-/// Return or Space apply, Escape ends the preview.
+/// Return or Space apply, Escape ends the preview. Focus lands on the tile under the pointer, else the applied one, else the
+/// first, and previews it.
 @MainActor struct ClipLookTileGrid: View {
     static let minimum: CGFloat = 56
     static let gap: CGFloat = 6
@@ -396,11 +397,23 @@ import VoxClipCore
     let editReason: String?
     @State private var width: CGFloat = 0
     @State private var focusedIndex: Int?
-    @State private var hoverTask: Task<Void, Never>?
     @FocusState private var focused: Bool
 
     /// Columns that fit `width`: 4 at 296, 6 at 376, 8 at 532.
     static func columns(width: CGFloat) -> Int { max(1, Int((width + gap) / (minimum + gap))) }
+
+    /// What redraws the tiles: the clip, their size, the project and, while paused, the playhead (spec section 7.1). During
+    /// playback only `isPlaying` is read, so the 30 Hz playhead never re-evaluates the grid.
+    static func stillKey(_ model: EditorModel, clipID: String, pixels: Int) -> String {
+        let time = model.isPlaying ? "playing" : String(Int(model.playhead * 100))
+        return "\(clipID):\(pixels):\(model.projectRevision):\(time)"
+    }
+
+    /// The tile keyboard focus lands on: the one under the pointer, else the applied or edited look, else the first.
+    static func entryIndex(_ shown: [ClipLookPreset], panel: ClipLookPanel, pointer: String?) -> Int {
+        if let pointer, let index = shown.firstIndex(where: { $0.id == pointer }) { return index }
+        return shown.firstIndex { panel.state(of: $0) != .none } ?? 0
+    }
 
     var body: some View {
         let columns = Self.columns(width: width)
@@ -414,22 +427,22 @@ import VoxClipCore
                              hovered: model.looks.hovered == look.id, focused: focused && focusedIndex == index,
                              playing: model.isPlaying, editReason: editReason)
                     .onTapGesture { apply(look) }
-                    .onHover { inside in hover(inside ? look.id : nil) }
+                    .onHover { inside in model.hoverLookTile(look.id, inside: inside) }
                     .accessibilityAction { apply(look) }
                     .id(look.id)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        .onHover { inside in if !inside { hover(nil) } }
+        .onHover { inside in if !inside { model.leaveLookTiles() } }
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
-        .onChange(of: focused) { if !focused { focusedIndex = nil; model.previewLook(nil) } }
+        .onChange(of: focused) { focusChanged(shown) }
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow, .home, .end, .return, .space, .escape]) { press in
             key(press.key, count: shown.count, columns: columns, shown: shown)
         }
-        .task(id: "\(panel.controls.clipId):\(pixels):\(model.projectRevision):\(model.isPlaying):\(Int(model.playhead * 100))") {
+        .task(id: Self.stillKey(model, clipID: panel.controls.clipId, pixels: pixels)) {
             guard !model.isPlaying, pixels > 0, width > 0 else { return }
             // The still follows the paused playhead once it has rested (spec section 7.1).
             try? await Task.sleep(for: .milliseconds(model.looks.tiles.isEmpty ? 0 : 500))
@@ -449,20 +462,20 @@ import VoxClipCore
         model.chooseLook(look.id)
     }
 
-    /// Hover previews after 120 ms; leaving ends it.
-    private func hover(_ id: String?) {
-        hoverTask?.cancel()
-        guard let id else { model.previewLook(nil); return }
-        hoverTask = Task {
-            try? await Task.sleep(for: .milliseconds(120))
-            guard !Task.isCancelled else { return }
-            model.previewLook(id)
-        }
+    /// Focus arriving shows its tile's ring and previews it (spec sections 3.4 and 3.9); a hover already previews the
+    /// tile under the pointer. Focus leaving ends the preview.
+    private func focusChanged(_ shown: [ClipLookPreset]) {
+        guard focused else { focusedIndex = nil; model.previewLook(nil); return }
+        guard !shown.isEmpty else { return }
+        let pointer = model.looks.pointerTile
+        let index = Self.entryIndex(shown, panel: panel, pointer: pointer)
+        focusedIndex = index
+        if pointer == nil { model.previewLook(shown[index].id) }
     }
 
     private func key(_ key: KeyEquivalent, count: Int, columns: Int, shown: [ClipLookPreset]) -> KeyPress.Result {
         guard count > 0 else { return .ignored }
-        let current = focusedIndex ?? shown.firstIndex { panel.state(of: $0) != .none } ?? 0
+        let current = focusedIndex ?? Self.entryIndex(shown, panel: panel, pointer: nil)
         var next = current
         switch key {
         case .leftArrow: next = current - 1
@@ -527,6 +540,10 @@ import VoxClipCore
             .clipShape(.rect(cornerRadius: 6))
             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DesignValues.color("line.default"), lineWidth: 1))
             .overlay(ring(state))
+            .overlay {
+                // Keyboard focus, on any tile: outside its state ring, so the applied tile shows focus too.
+                if focused { RoundedRectangle(cornerRadius: 8).strokeBorder(DesignValues.accentText, lineWidth: 2).padding(-3) }
+            }
             if panel.isClaudes(look) {
                 Image(systemName: "sparkle").font(.system(size: 9, weight: .bold)).foregroundStyle(DesignValues.color("ai.tint"))
                     .padding(3).background(.black.opacity(0.35), in: .circle).padding(3)
@@ -541,10 +558,10 @@ import VoxClipCore
 
     @ViewBuilder private func ring(_ state: ClipLookPanel.TileState) -> some View {
         switch state {
-        case .applied: RoundedRectangle(cornerRadius: 6).strokeBorder(Color.accentColor, lineWidth: 2)
-        case .edited: RoundedRectangle(cornerRadius: 6).strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [3, 2]))
+        case .applied: RoundedRectangle(cornerRadius: 6).strokeBorder(DesignValues.accentText, lineWidth: 2)
+        case .edited: RoundedRectangle(cornerRadius: 6).strokeBorder(DesignValues.accentText, style: StrokeStyle(lineWidth: 1.5, dash: [3, 2]))
         case .none:
-            if hovered || focused { RoundedRectangle(cornerRadius: 6).strokeBorder(DesignValues.color("text.secondary"), lineWidth: focused ? 2 : 1.5) }
+            if hovered { RoundedRectangle(cornerRadius: 6).strokeBorder(DesignValues.color("text.secondary"), lineWidth: 1.5) }
         }
     }
 }

@@ -95,6 +95,9 @@ struct ClipLookTileCache {
     @ObservationIgnored var tileCache = ClipLookTileCache()
     @ObservationIgnored var tileKey: ClipLookTileKey?
     @ObservationIgnored var previewTask: Task<Void, Never>?
+    /// The tile under the pointer, and its preview waiting out the 120 ms rest.
+    @ObservationIgnored var pointerTile: String?
+    @ObservationIgnored var hoverTask: Task<Void, Never>?
     @ObservationIgnored var tileTask: Task<Void, Never>?
     @ObservationIgnored var autoTask: Task<Void, Never>?
     @ObservationIgnored fileprivate var generation = 0
@@ -110,8 +113,8 @@ struct ClipLookTileCache {
     fileprivate func setComparing(_ on: Bool) { comparing = on }
 
     func reset() {
-        previewTask?.cancel(); tileTask?.cancel(); autoTask?.cancel()
-        preview = nil; hovered = nil; comparing = false; still = nil
+        previewTask?.cancel(); tileTask?.cancel(); autoTask?.cancel(); hoverTask?.cancel()
+        preview = nil; hovered = nil; comparing = false; still = nil; pointerTile = nil
     }
 
     /// `shared/looks/test-card.png`, the picture tiles show while the clip's frame is missing (spec section 7.7).
@@ -325,6 +328,30 @@ extension EditorModel {
         var controls = panel.controls
         controls.applyLook(look, amount: 100)
         showLookStill(controls, badge: "Preview \u{00B7} \(look.label)")
+    }
+
+    /// The pointer entered or left one tile (spec section 3.4): resting 120 ms on it previews it. Leaving a tile only
+    /// stops its own pending preview, in either order with the next tile's entry, so moving across the gap between tiles
+    /// keeps the last preview until the next one shows. Leaving the grid (`leaveLookTiles`) ends it.
+    func hoverLookTile(_ id: String, inside: Bool) {
+        guard inside else {
+            if looks.pointerTile == id { looks.pointerTile = nil; looks.hoverTask?.cancel() }
+            return
+        }
+        looks.pointerTile = id
+        looks.hoverTask?.cancel()
+        looks.hoverTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard let self, !Task.isCancelled, looks.pointerTile == id else { return }
+            previewLook(id)
+        }
+    }
+
+    /// The pointer left the tile grid: the preview ends.
+    func leaveLookTiles() {
+        looks.pointerTile = nil
+        looks.hoverTask?.cancel()
+        previewLook(nil)
     }
 
     /// A drag's values on the paused viewer; nil ends it (the release commits and reloads, as today).

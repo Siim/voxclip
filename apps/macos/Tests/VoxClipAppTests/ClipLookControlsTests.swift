@@ -36,6 +36,9 @@ private struct LookReader: FrameReading {
     }
 }
 
+/// Set when an observed value changes.
+private final class LookHeard: @unchecked Sendable { var value = false }
+
 /// A player stand-in that counts what reloads it: hover and Compare must never.
 @MainActor final class LookCountingPreview: PreviewEngine {
     let events: AsyncStream<PreviewEvent>
@@ -405,6 +408,78 @@ private struct LookReader: FrameReading {
         editor.setLookCompare(false)
         #expect(editor.isPlaying)
         editor.transport(" ")
+    }
+
+    /// The pointer moving from tile to tile keeps the last preview until the next one shows (spec section 3.4): leaving a
+    /// tile only stops its own pending preview, whichever of the two events comes first; leaving the grid ends it.
+    @Test(.timeLimit(.minutes(3))) func movingBetweenTilesKeepsThePreviewUntilTheNextShows() async throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let editor = fixture.editor
+        step(fixture) { editor.chooseLook("warmPrint") }
+        let still = try await still(editor)
+        editor.looks.stills = { _ in still }
+        let golden = "Preview \u{00B7} \(try #require(try library.look("goldenHour")).label)"
+        let bw = "Preview \u{00B7} \(try #require(try library.look("bw")).label)"
+        editor.hoverLookTile("goldenHour", inside: true)
+        await editor.looks.hoverTask?.value
+        await editor.looks.previewTask?.value
+        #expect(editor.looks.preview?.badge == golden && editor.looks.hovered == "goldenHour")
+        // Out of one tile into the gap: the preview stays.
+        editor.hoverLookTile("goldenHour", inside: false)
+        #expect(editor.looks.preview?.badge == golden && editor.looks.hovered == "goldenHour")
+        // Into the next tile, its entry before the last tile's exit: the late exit cancels nothing.
+        editor.hoverLookTile("bw", inside: true)
+        editor.hoverLookTile("goldenHour", inside: false)
+        #expect(editor.looks.preview?.badge == golden, "the viewer never shows the unpreviewed clip between tiles")
+        await editor.looks.hoverTask?.value
+        await editor.looks.previewTask?.value
+        #expect(editor.looks.preview?.badge == bw && editor.looks.hovered == "bw")
+        // Passing over a tile without resting previews nothing.
+        editor.hoverLookTile("softBW", inside: true)
+        editor.hoverLookTile("softBW", inside: false)
+        await editor.looks.hoverTask?.value
+        #expect(editor.looks.preview?.badge == bw)
+        editor.leaveLookTiles()
+        #expect(editor.looks.preview == nil && editor.looks.hovered == nil && editor.looks.pointerTile == nil)
+    }
+
+    /// Keyboard focus lands on the tile under the pointer, else the applied or edited look, else the first (spec section 3.9).
+    @Test func keyboardFocusLandsOnThePointersTileThenTheAppliedOne() throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let editor = fixture.editor
+        step(fixture) { editor.chooseLook("warmPrint") }
+        var shown = try panel(editor).looks(in: ClipLookPanel.all)
+        let warmPrint = try #require(shown.firstIndex { $0.id == "warmPrint" })
+        #expect(warmPrint > 0)
+        #expect(ClipLookTileGrid.entryIndex(shown, panel: try panel(editor), pointer: nil) == warmPrint)
+        step(fixture) { editor.setLookSlider(.vibrance, value: 20) }
+        #expect(ClipLookTileGrid.entryIndex(shown, panel: try panel(editor), pointer: nil) == warmPrint, "the edited look")
+        let bw = try #require(shown.firstIndex { $0.id == "bw" })
+        #expect(ClipLookTileGrid.entryIndex(shown, panel: try panel(editor), pointer: "bw") == bw)
+        shown.removeAll { $0.id == "warmPrint" }
+        #expect(ClipLookTileGrid.entryIndex(shown, panel: try panel(editor), pointer: nil) == 0)
+    }
+
+    /// The tiles' redraw key reads the playhead only while paused, so playback's 30 Hz playhead never re-evaluates the grid
+    /// (spec section 7.1); paused, a seek redraws them.
+    @Test func theTilesFollowThePausedPlayheadOnly() throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let editor = fixture.editor
+        func changes(_ change: () -> Void) -> Bool {
+            let changed = LookHeard()
+            withObservationTracking { _ = ClipLookTileGrid.stillKey(editor, clipID: "a", pixels: 96) } onChange: { changed.value = true }
+            change()
+            return changed.value
+        }
+        editor.isPlaying = true
+        #expect(!changes { editor.playhead += 1.0 / 30 }, "playback's playhead")
+        editor.isPlaying = false
+        let paused = ClipLookTileGrid.stillKey(editor, clipID: "a", pixels: 96)
+        #expect(changes { editor.playhead += 1 }, "a paused seek")
+        #expect(ClipLookTileGrid.stillKey(editor, clipID: "a", pixels: 96) != paused)
     }
 
     /// Tiles are each look at 100% with the clip's Fix on the paused frame before the grade, the export's tile exactly;
