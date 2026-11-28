@@ -347,6 +347,32 @@ private actor PrecisionTestSettings: SettingsStore {
         #expect(clip.startWordId == "t12" && clip.endWordId == "t16" && undo.undoActionName == "Make clip")
     }
 
+    @Test func editMenuCutAndRestoreSelectionAreOffWhileARangeIsSet() async throws {
+        let app = try app()
+        await app.shell.attachForTesting(VoxClipDocument(project: try project(), demo: true), preview: DemoPreviewEngine())
+        let controller = MainWindowController(shell: app.shell)
+        defer { controller.window?.close(); app.shell.editor?.close() }
+        let editor = try #require(app.shell.editor)
+        editor.mediaResolved = true; editor.refresh()
+        let delegate = AppDelegate(model: app)
+        delegate.commandWindowForTesting = controller.window
+        defer { delegate.commandWindowForTesting = nil }
+        func enabled(_ tag: Int) -> Bool {
+            let item = NSMenuItem(title: "", action: NSSelectorFromString("performEditorCommand:"), keyEquivalent: "")
+            item.tag = tag
+            return delegate.validateMenuItem(item)
+        }
+        // Words 14 (cut) to 16: Cut Selection and Restore Selection both apply.
+        editor.select("t14"); editor.select("t16", extend: true)
+        #expect(enabled(1) && enabled(2))
+        _ = editor.setTimelineRange(from: 13.9, to: 16.9, on: .source)
+        #expect(editor.timelineRange != nil && editor.selectedWordIDs.isSuperset(of: ["t14", "t16"]), "The words stay selected under the range")
+        #expect(!enabled(1) && !enabled(2), "Like the edit bar's Cut range, the menu cuts nothing from a range")
+        editor.clearTimelineRange()
+        editor.select("t14"); editor.select("t16", extend: true)
+        #expect(enabled(1) && enabled(2))
+    }
+
     @Test func trimToRangeReadsASongAcrossACutWhereItShows() throws {
         var fixture = try project()
         let asset = MusicAsset(file: "\(fixture.id)/music-night.wav", sha256: String(repeating: "a", count: 64), durationSeconds: 46)

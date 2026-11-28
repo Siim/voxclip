@@ -536,6 +536,8 @@ import VoxClipCore
                 if responder is NSTextField { return false }
                 if responder is NSTableView && ![32, 33].contains(item.tag) { return false }
             }
+            // An exact range cuts and restores nothing yet (issue #41), so the menu agrees with the edit bar's disabled Cut range.
+            if [1, 2].contains(item.tag), editor.timelineRange != nil { return false }
             switch item.tag {
             case 1, 3: return editor.capabilities.edit && !editor.selectedIDs.isEmpty
             case 29: return editor.capabilities.edit && (!editor.selectedIDs.isEmpty || editor.timelineRangeClipWords != nil)
