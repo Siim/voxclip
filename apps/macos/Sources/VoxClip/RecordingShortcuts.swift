@@ -59,7 +59,8 @@ extension EditorModel {
     }
 
     func requestBestRecordingVersions() {
-        requestFindClips(from: .sidebar)
+        guard recordingRegions.count > 1 else { return }
+        findClips(preset: .bestTakes, instruction: "")
     }
 
     var recordingClipLines: [RecordingClipLine] {

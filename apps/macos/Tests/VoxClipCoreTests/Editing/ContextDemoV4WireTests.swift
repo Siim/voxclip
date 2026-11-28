@@ -87,6 +87,15 @@ import Testing
         }
     }
 
+    @Test func aDemoFieldErrorNamesItsPathInsideTheProject() throws {
+        var project = try #require(try JSONSerialization.jsonObject(with: fixture()) as? [String: Any])
+        var demo = try #require(project["contextDemo"] as? [String: Any])
+        demo["revision"] = "not-a-number"
+        project["contextDemo"] = demo
+        let input = try JSONSerialization.data(withJSONObject: project)
+        #expect(throws: VoxClipError.projectUnreadable("contextDemo/revision: invalid value")) { try JSONProjectStore.decode(input) }
+    }
+
     @Test func realLegacyDocumentsPreserveVersionAndAbsentFieldShapes() throws {
         for item in try cases().legacy {
             let input = try FixtureLoader.data(item.path)

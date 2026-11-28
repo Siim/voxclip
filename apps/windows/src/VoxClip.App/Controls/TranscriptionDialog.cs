@@ -55,13 +55,13 @@ internal sealed class TranscriptionDialog : InlineEditorJob
     internal bool IsTranscribingRecording => recording is not null && running && transcribing is not null;
     private bool preparing;
     private readonly MediaReference? recording;
-    private readonly Func<Transcript, Task>? receiveRecording;
+    private readonly Func<Transcript, CancellationToken, Task>? receiveRecording;
     private readonly Action<string>? recordingProgress;
     private MediaReference Source => recording ?? baseline.Project.Media.Source;
     private bool ReplacesTranscript => recording is null && model.HasTranscript;
 
     internal TranscriptionDialog(MainWindow owner, EditorViewModel model, MediaReference? recording = null, bool local = false,
-        Func<Transcript, Task>? receiveRecording = null, Action<string>? recordingProgress = null) : base(model)
+        Func<Transcript, CancellationToken, Task>? receiveRecording = null, Action<string>? recordingProgress = null) : base(model)
     {
         JobLabel = "Transcribe";
         baseline = new(model);
@@ -461,7 +461,7 @@ internal sealed class TranscriptionDialog : InlineEditorJob
                     Ui.Show(notice, TranscriptionProgressCopy.Label(TranscriptionStage.Aligning, null, true));
                     var aligned = await retry.FinishAsync(token);
                     RequireCurrent();
-                    await ReceiveAsync(aligned);
+                    await ReceiveAsync(aligned, token);
                     if (!closed) Hide();
                     return;
                 }
@@ -529,7 +529,7 @@ internal sealed class TranscriptionDialog : InlineEditorJob
                     TranscriptionSpendState.Shared.Completed(jobId, approvedDay, paid, transcript.FromCache);
                 RequireCurrent();
                 HarnessRecording.CacheTranscript(source.ContentKey, App.Services.Data.Cache, transcript);
-                await ReceiveAsync(transcript);
+                await ReceiveAsync(transcript, token);
                 if (!closed) Hide();
             }
             catch (OperationCanceledException)
@@ -567,11 +567,12 @@ internal sealed class TranscriptionDialog : InlineEditorJob
         }
     }
 
-    private async Task ReceiveAsync(Transcript transcript)
+    private async Task ReceiveAsync(Transcript transcript, CancellationToken ct)
     {
         await RecordingTranscriptCache.WriteAsync(Source.ContentKey, transcript);
+        ct.ThrowIfCancellationRequested();
         if (!baseline.IsCurrent) return;
         if (receiveRecording is null) model.SetTranscript(transcript);
-        else await receiveRecording(transcript);
+        else await receiveRecording(transcript, ct);
     }
 }

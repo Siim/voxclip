@@ -38,7 +38,12 @@ public sealed class ProjectPatternTests
         var project = TestStorage.ProjectJson();
         Set(project, path, value);
         if (accepted) ProjectValidation.Validate(project.ToJsonString());
-        else Assert.Throws<JsonException>(() => ProjectValidation.Validate(project.ToJsonString()));
+        else
+        {
+            // A rejected value inside a list or map names its path as an unreadable project; elsewhere it stays a schema error.
+            var error = Record.Exception(() => ProjectValidation.Validate(project.ToJsonString()));
+            Assert.True(error is JsonException or VoxClipException { Code: VoxClipErrorCode.ProjectUnreadable }, error?.GetType().Name);
+        }
     }
 
     [Theory]
@@ -88,7 +93,7 @@ public sealed class ProjectPatternTests
     }
 
     [Fact]
-    public async Task MissingCandidateDiscriminatorMapsTheRawLookupFailure()
+    public async Task MissingCandidateDiscriminatorNamesTheField()
     {
         using var storage = new TestStorage();
         var fixture = Path.Combine(FixtureLoader.SharedRoot, "fixtures", "voice-lab", "passage-render-v3.voxclip");
@@ -99,7 +104,7 @@ public sealed class ProjectPatternTests
         await File.WriteAllTextAsync(file, json, TestContext.Current.CancellationToken);
         var error = await Assert.ThrowsAsync<VoxClipException>(() => new ProjectStore().LoadAsync(file, TestContext.Current.CancellationToken));
         Assert.Equal(VoxClipErrorCode.ProjectUnreadable, error.Code);
-        Assert.IsType<KeyNotFoundException>(error.InnerException);
+        Assert.Equal("voiceLab/segments/0/candidates/0/rejected: missing required field", error.Message);
         Assert.Equal(json, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
     }
 

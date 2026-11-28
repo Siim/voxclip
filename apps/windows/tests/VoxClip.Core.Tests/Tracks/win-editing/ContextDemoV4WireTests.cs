@@ -138,4 +138,13 @@ public sealed class ContextDemoV4WireTests
         Assert.Null(legacy.ContextDemo);
         Assert.Equal(1, legacy.SchemaVersion);
     }
+
+    [Fact]
+    public void ADemoFieldErrorNamesItsPathInsideTheProject()
+    {
+        var document = Fixture();
+        document["contextDemo"]!["revision"] = "not-a-number";
+        var error = Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+        Assert.Equal("contextDemo/revision: invalid value", error.Message);
+    }
 }

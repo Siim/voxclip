@@ -3,7 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace VoxClip.App.ViewModels;
 
-public enum SidebarKind { Home, Separator, Project, FullTake, Clip, SuggestedHeader, Suggestion, Action, RecentHeader, Recent, Empty, Finding, Callout, NoneFound, ClipsHeader, OutlineHeader, Outline }
+public enum SidebarKind { Home, Separator, Project, FullTake, Clip, SuggestedHeader, Suggestion, Action, RecentHeader, Recent, Empty, Finding, Callout, NoneFound, ClipsHeader, OutlineHeader, Outline, OmittedRecordingLine }
 
 /// <summary>A callout under the sidebar actions (design §13): no connector, or a problem finding clips. See <see cref="ClipCallouts"/>.</summary>
 public sealed record SidebarCallout(string Title, string Message, string Action);
@@ -290,10 +290,29 @@ public sealed class ShellViewModel
                     outline.Detail = editor.StoryRecordingHeading ?? (editor.IsStoryClip ? $"Clip {editor.Clips.FirstOrDefault(clip => clip.Id == active)?.Number} · {editor.ClipParts.Count} parts" : "");
                     outline.AccessibleName = editor.IsStoryClip ? "Outline, " + outline.Detail : "Transcript outline";
                     next.Add(outline);
+                    var parts = editor.ClipParts;
+                    var omitted = editor.OmittedRecordingLines.ToLookup(line =>
+                        parts.FirstOrDefault(part => part.Part.EndWordId == line.AfterWordId)?.Number ??
+                        (parts.FirstOrDefault(part => part.Id == line.BeforePartId)?.Number ?? parts.Count + 1) - 1);
+                    void AddOmittedLines(int slot)
+                    {
+                        foreach (var line in omitted[slot])
+                        {
+                            var row = Row(SidebarKind.OmittedRecordingLine, $"omitted:{active}:{line.Take.StartWordId}");
+                            row.WordIndex = editor.Index(line.Take.StartWordId);
+                            var words = editor.Words.Skip(row.WordIndex).Take(editor.Index(line.Take.EndWordId) - row.WordIndex + 1);
+                            row.Title = $"{line.Label} · {string.Join(" ", words.Select(editor.DisplayText))}";
+                            row.Detail = editor.RecordingUnavailable(line.Take.Key) ?? (editor.CanEditParts ? "" : "Finish the current edit first.");
+                            row.IsEnabled = row.Detail.Length == 0;
+                            row.AccessibleName = row.Title;
+                            next.Add(row);
+                        }
+                    }
                     if (editor.IsStoryClip)
                     {
-                        foreach (var part in editor.ClipParts)
+                        foreach (var part in parts)
                         {
+                            AddOmittedLines(part.Number - 1);
                             var row = Row(SidebarKind.Outline, $"outline:{active}:{part.Id}");
                             row.PartId = part.Id;
                             row.Number = part.Number.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -308,15 +327,20 @@ public sealed class ShellViewModel
                             next.Add(row);
                         }
                     }
-                    else foreach (var paragraph in editor.Paragraphs)
+                    else
                     {
-                        var row = Row(SidebarKind.Outline, "outline:" + editor.Words[paragraph.StartIndex].Id);
-                        row.WordIndex = paragraph.StartIndex;
-                        row.Title = string.Join(" ", editor.Words.Skip(paragraph.StartIndex).Take(Math.Min(8, paragraph.Count)).Select(editor.DisplayText));
-                        row.Detail = paragraph.Timecode;
-                        row.AccessibleName = $"Paragraph at {paragraph.Timecode}, {row.Title}";
-                        next.Add(row);
+                        if (parts.Count > 0) AddOmittedLines(0);
+                        foreach (var paragraph in editor.Paragraphs)
+                        {
+                            var row = Row(SidebarKind.Outline, "outline:" + editor.Words[paragraph.StartIndex].Id);
+                            row.WordIndex = paragraph.StartIndex;
+                            row.Title = string.Join(" ", editor.Words.Skip(paragraph.StartIndex).Take(Math.Min(8, paragraph.Count)).Select(editor.DisplayText));
+                            row.Detail = paragraph.Timecode;
+                            row.AccessibleName = $"Paragraph at {paragraph.Timecode}, {row.Title}";
+                            next.Add(row);
+                        }
                     }
+                    AddOmittedLines(parts.Count);
                 }
                 if (editor.ActiveClip is not null)
                 {

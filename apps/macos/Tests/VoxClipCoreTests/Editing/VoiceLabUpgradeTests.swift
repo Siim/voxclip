@@ -332,7 +332,8 @@ import Testing
             if index == 0 {
                 #expect(throws: VoxClipError.self) { try JSONProjectStore.decode(data) }
             } else {
-                #expect(throws: VoxClipError.projectUnreadable("/: missing required field \(keys[index - 1])")) { try JSONProjectStore.decode(data) }
+                let path = "voiceLab/segments/0/candidates/0/recipe/video/\(keys[index - 1])"
+                #expect(throws: VoxClipError.projectUnreadable("\(path): missing required field")) { try JSONProjectStore.decode(data) }
             }
             #expect(throws: VoxClipError.projectUnreadable("Incomplete Voice Lab render recipe")) { try ProjectJSON.decode(data) }
         }

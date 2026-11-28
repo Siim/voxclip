@@ -113,14 +113,23 @@ public sealed partial class EditorPage
             {
                 var menu = new MenuFlyout();
                 var start = new MenuFlyoutItem { Text = $"Start a New Clip from {region.Label}" };
+                var unmatch = new MenuFlyoutItem { Text = "Don't match level" };
                 menu.Opening += (_, _) =>
                 {
                     var reason = ViewModel.StartFromDisabledReason(region.Key);
                     start.IsEnabled = reason is null;
                     AutomationProperties.SetHelpText(start, reason ?? "");
+                    var levelReason = ViewModel.StopMatchingRecordingLevelReason(region.Key);
+                    unmatch.IsEnabled = levelReason is null;
+                    AutomationProperties.SetHelpText(unmatch, levelReason ?? "");
                 };
                 start.Click += (_, _) => StartFromRecording(region.Key);
                 menu.Items.Add(start);
+                if (region.Prefix.Length > 0)
+                {
+                    unmatch.Click += (_, _) => ViewModel.StopMatchingRecordingLevel(region.Key);
+                    menu.Items.Add(unmatch);
+                }
                 button.ContextFlyout = menu;
             }
             chips.Children.Add(button);
@@ -250,6 +259,7 @@ public sealed partial class EditorPage
         try
         {
             var token = lifetime.Token;
+            var original = ViewModel.Project;
             var info = await App.Services.Probe.ProbeAsync(path, token);
             if (info.Video is null || info.Audio is null || info.DurationSeconds <= 0)
             {
@@ -266,15 +276,19 @@ public sealed partial class EditorPage
             if (companion is not null && companion.ContentKey != key) throw new InvalidOperationException("Choose the original recording.");
             var source = companion ?? ProjectFactory.Create(path, info, key).Media.Source;
             source = source with { AbsolutePath = path, Video = info.Video, Audio = info.Audio, DurationSeconds = info.DurationSeconds };
-            if (await RecordingTranscriptCache.ReadAsync(key, token) is { } cached && await CommitAsync(cached))
+            var cached = await RecordingTranscriptCache.ReadAsync(key, token);
+            if (disposed || !ReferenceEquals(original, ViewModel.Project)) return;
+            if (cached is not null && await CommitAsync(cached, token))
             {
                 RevealRecordingStart();
                 return;
             }
+            if (disposed || !ReferenceEquals(original, ViewModel.Project)) return;
             pendingRecording = source;
-            var job = new TranscriptionDialog(owner, ViewModel, source, local, async transcript =>
+            var job = new TranscriptionDialog(owner, ViewModel, source, local, async (transcript, jobToken) =>
             {
-                if (await CommitAsync(transcript)) RevealRecordingStart();
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, jobToken);
+                if (await CommitAsync(transcript, linked.Token)) RevealRecordingStart();
             }, progress =>
             {
                 recordingProgress = progress;
@@ -290,13 +304,9 @@ public sealed partial class EditorPage
             };
             await job.ShowAsync();
 
-            async Task<bool> CommitAsync(Transcript transcript)
-            {
-                var prepared = ViewModel.WithRecordingReference(source);
-                var command = await RecordingLevelMatch.MatchOnAddAsync(prepared, new(key, transcript), App.Services.Projects,
-                    owner.ProjectPath ?? path, token);
-                return !disposed && ViewModel.AddSpokenRecording(source, transcript, command.GainDb);
-            }
+            Task<bool> CommitAsync(Transcript transcript, CancellationToken ct) => ViewModel.AddSpokenRecordingAsync(source, transcript,
+                (project, command, matchToken) => RecordingLevelMatch.MatchOnAddAsync(project, command, App.Services.Projects,
+                    owner.ProjectPath ?? path, matchToken), ct);
         }
         finally
         {

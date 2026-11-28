@@ -265,21 +265,53 @@ func musicFlagsRejectInvalidCombinationsBeforeOpeningInput(flags: [String], mess
     ("voices", "voiceLab/voices: missing required field"),
     ("videoAssets", "voiceLab/videoAssets: missing required field"),
     ("aspect", "export/aspect: invalid value"),
+    ("quality", "export/quality: invalid value"),
+    ("assetDuration", "voiceLab/assets/0/durationSeconds: invalid value"),
+    ("captionY", "captions/position/y: missing required field"),
+    ("captionX", "captions/position/x: invalid value"),
+    ("correctionKey", "edits/corrections: invalid value"),
+    ("aiPart", "ai/results/0/clips/0/parts/0/endWordId: missing required field"),
 ])
 func cliReportsSafeProjectFieldErrors(_ defect: String, _ problem: String) throws {
     let directory = try cliDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let data = try FixtureLoader.data("fixtures/story-clips/story-project.voxclip")
     var project = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-    project["title"] = "project-private-content-marker"
+    let privateContent = "project-private-content-marker"
+    project["title"] = privateContent
     if defect == "story" { project["schemaVersion"] = 4 }
-    else if defect == "aspect" {
+    else if defect == "correctionKey" {
+        // A rejected key is reported at its map, never printed: a newline would split the one-line diagnostic.
+        var edits = try #require(project["edits"] as? [String: Any])
+        edits["corrections"] = ["bad\n\(privateContent)": "fixed"]
+        project["edits"] = edits
+    }
+    else if defect == "aspect" || defect == "quality" {
         var settings = try #require(project["export"] as? [String: Any])
-        settings["aspect"] = "project-private-content-marker"
+        settings[defect] = privateContent
         project["export"] = settings
+    } else if defect == "captionY" || defect == "captionX" {
+        var captions = try #require(project["captions"] as? [String: Any])
+        captions["position"] = defect == "captionY" ? ["x": 0.5] : ["x": 2, "y": 0.5]
+        project["captions"] = captions
+    } else if defect == "aiPart" {
+        let part = ["startWordId": "w1"]
+        let clip: [String: Any] = ["title": privateContent, "reason": "", "score": 8,
+                                   "startWordId": "w1", "endWordId": "w2", "parts": [part]]
+        let result: [String: Any] = ["id": "result-1", "createdAt": try #require(project["createdAt"]),
+                                     "provider": "codex", "model": privateContent, "preset": "best",
+                                     "instructions": NSNull(), "language": NSNull(),
+                                     "inputSha256": String(repeating: "0", count: 64), "clips": [clip]]
+        project["ai"] = ["results": [result]]
     } else {
         var voiceLab = try #require(project["voiceLab"] as? [String: Any])
-        voiceLab.removeValue(forKey: defect)
+        if defect == "assetDuration" {
+            voiceLab["assets"] = [["id": "asset-1", "kind": "audio", "file": "asset.wav",
+                                   "sha256": String(repeating: "0", count: 64), "durationSeconds": privateContent,
+                                   "sampleRate": 48000, "createdAt": try #require(project["createdAt"])]] as [[String: Any]]
+        } else {
+            voiceLab.removeValue(forKey: defect)
+        }
         project["voiceLab"] = voiceLab
     }
     let input = directory.appendingPathComponent("invalid.voxclip")
@@ -287,12 +319,14 @@ func cliReportsSafeProjectFieldErrors(_ defect: String, _ problem: String) throw
     let arguments = ["plan", "--open", input.path]
     let human = try runCLI(arguments, directory: directory)
     #expect(human.status == 3)
-    #expect(human.stderr.contains(problem) && !human.stderr.contains("project-private-content-marker"))
+    #expect(human.stderr.contains(problem))
+    #expect(!(String(decoding: human.stdout, as: UTF8.self) + human.stderr).contains(privateContent))
     let machine = try runCLI(arguments + ["--json"], directory: directory)
     #expect(machine.status == 3)
     let error = try #require(try machine.json["error"] as? [String: String])
     #expect(error["code"] == "projectUnreadable")
-    #expect(error["message"]?.contains(problem) == true && error["message"]?.contains("project-private-content-marker") == false)
+    #expect(error["message"] == "projectUnreadable: \(problem). Your video and edits are unchanged.")
+    #expect(!(String(decoding: machine.stdout, as: UTF8.self) + machine.stderr).contains(privateContent))
 }
 
 private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdits = ProjectEdits()) async throws -> Project {

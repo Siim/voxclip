@@ -636,7 +636,7 @@ public sealed partial class EditorPage : Page
     private async Task SeekSourceCoreAsync(double source, CancellationToken token)
     {
         var snapshot = await SnapshotAsync(token);
-        if (preview is not null && !ViewModel.IsReadOnly) await preview.SeekAsync(snapshot.Timeline.MapTime(source), true, token);
+        if (preview is not null && !ViewModel.IsReadOnly) await preview.SeekAsync(snapshot.Timeline.MapTime(ViewModel.ClampProjectTime(source)), true, token);
     }
     private async Task RunAsync(Func<Task> action, string label)
     {
@@ -995,7 +995,7 @@ public sealed partial class EditorPage : Page
     private async void PlayClicked(object sender, RoutedEventArgs args) => await RunAsync(TogglePlaybackAsync, "Preview");
     private async void BackClicked(object sender, RoutedEventArgs args) => await RunAsync(() => SeekSourceAsync(Math.Max(0, ViewModel.SourceTime - 3)), "Preview");
     private async void ForwardClicked(object sender, RoutedEventArgs args) =>
-        await RunAsync(() => SeekSourceAsync(Math.Min(ViewModel.Project.Media.Source.DurationSeconds, ViewModel.SourceTime + 3)), "Preview");
+        await RunAsync(() => SeekSourceAsync(ViewModel.SourceTime + 3), "Preview");
     private async Task TogglePlaybackAsync()
     {
         previewStop = null;
