@@ -341,6 +341,8 @@ extension ProviderChoice {
         catch { shared = nil; reportStartupFailure(error) }
         // Share-text rules load now, so an invalid shared/data/share-text.json fails at launch, not in the Export sheet.
         if shared != nil { do { try SharePostText.preflight() } catch { reportStartupFailure(error) } }
+        // The looks load now too, so a broken shared/looks/clip-looks.json fails at launch instead of hiding the look chips.
+        if shared != nil, ClipLookLibrary.app == nil { reportStartupFailure(VoxClipError.sharedResourcesMissing) }
         loadCatalogue()
     }
 
