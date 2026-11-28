@@ -139,6 +139,7 @@ EditState {
   corrections: Map<wordId, String>     // only kind == word; value != the transcribed text
   clips: [ClipRange]                   // the clip range layer
   activeClipId: String?                // the selected clip, or null for the full take
+  cutEdges: Map<wordId, Double>        // §5.10: later word's clock id -> that recording's local seconds; v8 only
 }
 ClipRange { id, startWordId, endWordId, title?, origin: manual | ai, aiResultId?, aiClipIndex?, selected: Bool, parts?, kind? }
 ```
@@ -176,6 +177,8 @@ EditSegment {
   start: Double
   end: Double
   cut: Bool                            // kind == range is always cut
+  cutStart: Double?                    // kind == word, cut: a stored cut edge (§5.10) that replaces the padded start
+  cutEnd: Double?                      // kind == word, cut: a stored cut edge that replaces the padded end
 }
 ```
 
@@ -226,7 +229,7 @@ All values are exact decimal literals parsed to binary64.
 
 | Name | Value | Use | Reference |
 |---|---|---|---|
-| `WORD_REACH` | 0.1 s | Silence a cut word takes on each side, at most half the gap | mediaTimeline.ts:20 |
+| `WORD_REACH` | 0.1 s | Silence a cut word takes on each side, at most half the gap, unless a stored cut edge replaces it (§5.10) | mediaTimeline.ts:20 |
 | `pauseKeepSeconds` default | 0.15 s | Breath kept next to each kept word in a cut pause (both sides) | mediaTimeline.ts:21-22 |
 | `NEIGHBOUR_EPSILON` | 1e-6 s | Pause neighbour search tolerance | mediaTimeline.ts:30-31 |
 | `DEFAULT_SAMPLE_RATE` | 48000 | Sources without audio | mediaTimeline.ts:51 |
@@ -248,6 +251,10 @@ All values are exact decimal literals parsed to binary64.
 | `UNLABELED_MIN_GAP` | 0.25 s | Shortest gap searched for untranscribed speech | VoxClip (local-models research 7.4) |
 | `UNLABELED_MIN_FRAMES` | 10 | Shortest reported run, bridged frames included | VoxClip |
 | `UNLABELED_PEAK_FACTOR` | 0.25 | A run's loudest frame must reach this fraction of the median speech level | VoxClip |
+| `CUT_EDGE_REACH` | 0.15 s | How far a cut edge may move from the word edge (§5.10) | VoxClip |
+| `CUT_EDGE_MAX_GAP` | 0.2 s (exclusive) | Gaps this wide or wider keep the padded edge, which already lands in the gap | VoxClip |
+| `CUT_EDGE_MIN_RUN` | 2 | Quiet frames (20 ms) a cut edge's run needs | VoxClip |
+| Cut edge quiet levels | 0.35, ×0.5 | `Q0 = max(T, 0.35·S)`; run threshold `Q = max(T, min(0.5·Lb, 0.35·S))` | VoxClip |
 | Filler rule | `^(um+\|uh+\|erm+\|hmm+)[,.!?]?$`, ASCII case-insensitive | Cut fillers | VoiceRecorder.tsx:1054 |
 
 The VoxClip-only values (`TIGHTEN_*`, `UNLABELED_*`) were chosen on synthetic audio. Tune them on the bilingual test set before 0.1.0 ships. Any change goes through the generator and the fixture diff (11.3).
@@ -569,6 +576,56 @@ findUnlabeledSpeech(items, audio):        // items sorted by start
 
 A breath is usually audible but well below speech, so it fails the peak test. Fixtures: `gaps/*` (2).
 
+### 5.10 Cut edges in the quiet (VoxClip)
+
+Inside a phrase, words touch, so a cut word's padding is `min(0.1, gap/2) = 0` (§7.3) and the cut lands exactly on the stored word edge. Any timing error is then heard: the cut word's head or tail stays audible, or the next word loses its onset. When a cut is made, VoxClip moves each such edge to the nearest quiet point near the word edge and stores it in `edits.cutEdges`. Word times, captions and every other word keep their stored times. The design is `planning/specs/2026-11-28-cut-edges.md` (issue #42).
+
+**Stored form.** `edits.cutEdges` maps the **later** word at a kept/cut boundary, by clock id (so later recordings carry their `wordIdPrefix`), to the edge in that recording's **local** seconds, rounded to the clock sample rate R: `v = jsRound(t · R) / R`. Local seconds survive changes to clock offsets. The map is omitted when empty, and its first key makes the file schema v8 (§10.1). Cutting `w2` between `w1` and `w3` can give `{"w2": 0.705, "w3": 1.205}`.
+
+**Qualifying boundary.** Between `A = words[i−1]` and `B = words[i]` of one recording:
+
+- both are `word` or `unlabeledSpeech`;
+- exactly one of them is in `cutWordIds`;
+- the gap `g = B.start − A.end` satisfies `0 ≤ g < CUT_EDGE_MAX_GAP`. At 0.2 s or more the 0.1 s pad already lands in the gap.
+
+**Seat** (`CutEdges.seat`, pure). Its inputs are one recording's words in local seconds, the cut set after the change, that recording's cached envelope (10 ms frames at 16 kHz; the frame length always comes from the envelope rate, never the media rate), R, and the frozen ranges. `analyze` (§5.1) runs over all of that recording's words and gives the speech level `S` and the threshold `T`. For each qualifying boundary without a key:
+
+```text
+b  = (A.end + B.start) / 2                                  // today's edge for g < 0.2
+fb = frameAt(b); Lb = Double(level[fb])
+if Lb <= Q0 = max(T, 0.35·S): stop                           // b already sits in quiet; no key
+Q    = max(T, min(0.5·Lb, 0.35·S))                           // quiet(f) = Double(level[f]) <= Q
+lo_t = max(b − 0.15, A.start + max(0.04, 0.5·(A.end − A.start)))
+hi_t = min(b + 0.15, B.end − max(0.04, 0.5·(B.end − B.start)))   // never more than half of either word
+lo = max(0, ceil(lo_t / frameLength)); hi = min(frames − 1, floor(hi_t / frameLength) − 1)
+if lo > hi: stop
+runs = maximal runs [a, e] of quiet frames inside [lo, hi], at least CUT_EDGE_MIN_RUN frames long
+pick the run nearest fb by integer distance (a − fb after fb, fb − e before it);
+  ties: the lower minimum level, then the earlier run
+t = ((a + e + 1) / 2) · frameLength;  cutEdges[B.id] = jsRound(t · R) / R
+```
+
+No run means no key, so nothing is stored when nothing moves. Nearest beats deepest because a stop closure inside a word is deeper than the real junction. Numbers follow §2.6: binary64 in the written order, Float32 levels converted to Double before comparing, frame choices in integers.
+
+**Frozen boundaries** get no key and keep today's padding:
+
+- **Voice Lab overlap:** `[lo_t, hi_t]` overlaps the `replace` range of any `voiceLab` segment, enabled or not.
+- **Edge of a paid scope:** the kept word lies inside a paid scope's word range and the cut word outside it. Paid scopes are a clip with a whole-clip revoice or lip sync, an open Rewrite plan with takes, and a saved Rewrite proposal with paid takes. A cut *inside* a paid scope already changes `cutWordIds` there, so seating it adds no staleness.
+
+**When it runs.** Only for the boundaries whose kept/cut state changed in the commit, in the same undo step (`CutEdges.finalize` / `Finalize` from the before and after projects). The Mac editor calls it where every edit is committed; the Windows view model where it takes the next project. A recording without a loaded envelope gets no key, so today's padding applies; there is no asynchronous fill. A stored key is never recomputed, so a pin stays and a saved file plans the same wherever it is opened.
+
+**Normalize** (`CutEdges.normalize`, every commit) drops any key that is no longer at a qualifying boundary, so a cut followed by a restore leaves `edits` byte-identical, and writes the version the fields now need (§10.1).
+
+**Planner.** `buildSegments` (§7.1) sets `cutStart` on a cut word after a kept one and `cutEnd` on a cut word before a kept one from the later word's key, converted to clock time as words are. `cutRange` (§7.3) uses them in place of the padding; pauses, ranges and clip edges are unchanged. The scoped planner localizes them with the words. Preview, export, captions, the Voice Lab kept source and the CLI all read the same stored seconds.
+
+**Existing projects.** Opening a project changes nothing. For old cuts, `CutEdges.offer` counts N, the qualifying boundaries without a key that the seat would move after the freeze rules, and K, those kept beside voice patches; `CutEdges.fix` applies them as one step (design: "N cuts can land in the quiet · Fix cut edges"). The CLI and out-of-app writers have no envelope and write no keys.
+
+**Validation** (strict, before every commit). Cut edges need schema v8. Each key names a word at index 1 or later in the same recording as the word before it, with `0 ≤ g < 0.2`. Each value is finite, within `b ± (0.15 + 1/R)`, and strictly inside `(A.start, B.end)`. A key at a boundary that is no longer kept/cut is accepted and ignored by the planner, as unknown cut ids are, and the next normalize drops it.
+
+**Identity.** A key counts in a Rewrite's `rewriteInputs` and voice-take identity when word i−1 or word i lies in the scope's word range: the `cutWordIds` rule plus one neighbour (voice-lab.md §8.15).
+
+**Parity.** Envelopes differ by decoder, so the same cut made on each platform can store values one frame apart; the stored file then plans identically on both. Fixtures: `cut-edges/*` (the seat, normalize and the planner on `levels-v1` envelopes), `session/cut-edge-*` (finalize and normalize across commits), `plan/cut-edge-override`, `projects/cut-edges-*` (the v8 frame and validation), and four cases in `voice-lab/voice-take-identity-cases.json`.
+
 ## 6. Edit operations
 
 ### 6.1 Scope
@@ -665,6 +722,9 @@ buildSegments(state, activeClip?):        // activeClip = resolved indices or no
   for i, item in transcript.words:
     segs += { id: item.id, kind: word, wordKind: item.kind, text: textOf(item), start: item.start, end: item.end,
               cut: item.id in cutWordIds or !inScope(i) }
+  for i in 1 ..< count where cutEdges[words[i].id] exists:                // §5.10, in clock time
+    if segs[i].cut and !segs[i-1].cut: segs[i].cutStart = clock(cutEdges[words[i].id])
+    if !segs[i].cut and segs[i-1].cut: segs[i-1].cutEnd = clock(cutEdges[words[i].id])
   for p in pauses (derived order) where p.id in cutPauseIds:            // out-of-scope pause cuts are included
     segs += { id: p.id, kind: pause, start: p.start, end: p.end, cut: true }
   if activeClip:
@@ -707,7 +767,7 @@ cutRange(s):
   if earlierEnd >= s.end: return [s.start, s.end]                 // nested in an earlier word: exact
   nextStart = k + 1 < speech.count ? speech[k+1].start : duration
   reach(gap) = min(0.1, max(0, gap) / 2)
-  return [ s.start - reach(s.start - earlierEnd), s.end + reach(nextStart - s.end) ]
+  return [ s.cutStart ?? (s.start - reach(s.start - earlierEnd)), s.cutEnd ?? (s.end + reach(nextStart - s.end)) ]
 ```
 
 `before.cut`/`after.cut` are the segment flags, so out-of-scope words count as cut. Consequences:
@@ -915,14 +975,14 @@ On Windows, steps 1 and 2 probe a candidate only if it has one of two forms, che
 ### 10.4 Loading and validation
 
 - Schema-pattern checks have no wall-clock deadline: a valid project must not fail to open because the machine is busy. Windows uses non-backtracking regexes with an explicit infinite match timeout on both raw and model validation paths, preserving the schema's accepted patterns. Untyped load failures become `projectUnreadable`; cancellation and existing typed project and Voice Lab errors keep their meaning.
-- `format` must be `voxclip-project`. A file with a higher `schemaVersion` MUST NOT be edited ("made with a newer VoxClip"). Writers preserve the version unless the features in the project require another one. V7 is used only with `media.spokenSources`.
+- `format` must be `voxclip-project`. A file with a higher `schemaVersion` MUST NOT be edited ("made with a newer VoxClip"). Writers preserve the version unless the features in the project require another one. V7 is used only with `media.spokenSources`. V8 is the frame shared by `edits.cutEdges` (§5.10) and `agentThread` (§14): one `requiredVersion` decides it from the fields present, 8 with either, 7 with spoken recordings, otherwise none. A project whose v8 or v7 fields are gone is written at 7 with spoken recordings and otherwise at 6. Migration 8 is a no-op, and a v7 reader refuses v8 as too new.
 - The file must decode strictly into the typed project model, and the transcript invariants (2.2) must hold. Otherwise it is rejected as damaged (`projectUnreadable`). Strict decoding is the runtime form of schema validation (architecture 2.1): unknown keys are rejected except under `extensions`, required keys must be present (explicit `null` included), and the schema's enum, pattern, range and uniqueness rules are checked in code. No JSON Schema engine runs in the apps; the test suites validate every file the apps write with a real JSON Schema 2020-12 validator.
 - References are then checked against the transcript and the derived pauses. Unknown ids in `cutWordIds`, `cutPauseIds` or `corrections` are dropped. So are clips with an unknown word id or with start after end, corrections on non-`word` items, corrections equal to the transcribed text, an `activeClipId` that names no clip (set to null), `aiResultId` values that resolve to nothing (set to null together with `aiClipIndex`), and `share.captions` entries whose key is neither `full` nor an existing clip id. Each drop is reported in the open log, and the cleaned state is what the next save writes.
 - `media.source.durationSeconds` and `audio.sampleRate` feed `buildEditPlan`. A null `audio` means rate 48000.
 
 ### 10.5 Transcript replacement
 
-Re-transcribing ("Transcribe Again…", design 11.3) replaces `transcript` and assigns new ids. It MUST clear `edits.cutWordIds`, `cutPauseIds`, `corrections`, `clips` and `activeClipId`, `ai.results` and `share.captions`, after a confirmation that names what will be lost (copy in design 13). `pauseThresholdSeconds` is reset from the new `refined` flag.
+Re-transcribing ("Transcribe Again…", design 11.3) replaces `transcript` and assigns new ids. It MUST clear `edits.cutWordIds`, `cutPauseIds`, `corrections`, `cutEdges`, `clips` and `activeClipId`, `ai.results` and `share.captions`, after a confirmation that names what will be lost (copy in design 13). `pauseThresholdSeconds` is reset from the new `refined` flag.
 
 ### 10.6 AI results
 
@@ -1069,7 +1129,7 @@ Regenerate `shared/fixtures/recordings/command-cases.json` with `python3 tools/f
 
 ## 14. Agent turns
 
-[ADR-R55](../adr/R55-the-agent-thread-is-part-of-the-project.md) stores one `agentThread` in the same file as the edits. The writer promotes to v8 only when a thread exists; v8 can have zero or more spoken companions. A v7 reader refuses a v8 file. Pending turns are persisted applied, so reopening does not replay them. The project loader marks interrupted running turns stopped and leaves any applied changes available to Keep or Undo.
+[ADR-R55](../adr/R55-the-agent-thread-is-part-of-the-project.md) stores one `agentThread` in the same file as the edits. The writer promotes to v8 only when a thread or cut edges exist (§10.4); the thread is optional at v8, and v8 can have zero or more spoken companions. A v7 reader refuses a v8 file. Pending turns are persisted applied, so reopening does not replay them. The project loader marks interrupted running turns stopped and leaves any applied changes available to Keep or Undo.
 
 `AgentTurns.change` / `Change` captures one user-visible change from the before/after pair of an existing Core reducer. Call it for each independently undoable result, not for each field. `record` / `Record` stores the resulting change rows on the project that already contains the edits; it does not apply them a second time. A revision replaces a pending card using the original checkpoint as its basis. Writer metadata, source media and transcripts, caches, and paid Voice Lab asset catalogs are outside the patch surface. Removing a track or another placement does not delete its saved file.
 

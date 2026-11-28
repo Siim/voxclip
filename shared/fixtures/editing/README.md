@@ -13,7 +13,7 @@ shared/fixtures/editing/
 
 | Group | kind | Files | Spec section |
 |---|---|---|---|
-| `plan/` | `edit-plan` | 34 | 7.3 to 7.6 |
+| `plan/` | `edit-plan` | 35 | 7.3 to 7.6, 5.10 |
 | `fades/` | `join-fades` | 5 | 7.7 |
 | `session/` | `edit-session` | 3 | 6, 7.1 |
 | `projects/` | `project-plan` | 2 | 10.4, 7.1 |
@@ -30,6 +30,9 @@ shared/fixtures/editing/
 | `text/` | `text-whitespace` | 1 | 4.5 |
 | `media/` | `content-key` | 1 | 10.3 |
 | `caption-text/` | `caption-text` | 1 | informative only |
+| `cut-edges/` | `cut-edges` | 12 | 5.10 |
+| `session/cut-edge-*` | `cut-edge-session` | 2 | 5.10 |
+| `projects/cut-edges-*` | `cut-edge-project` | 9 | 5.10, 10.4 |
 
 ## File format
 
@@ -85,6 +88,9 @@ Every file is one JSON object:
 | `edit-plan` | `durationSeconds`, `sampleRate`, optional `pauseKeepSeconds` (default 0.15), `segments[{id, kind, wordKind?, text?, start, end, cut}]` in input order | `totalSamples`, `outputSamples`, `durationSeconds`, `segmentCuts[{id, rawStart, rawEnd, startSample, endSample, empty}]` (one per valid cut segment, input order, before merging), `cuts[[sa,sb]]`, `kept[[sa,sb]]`, `captions[{id, start, end}]`, `mapTime[[source, edited]]`, `sourceTime[[edited, source]]`, `previewSkip[[source, cutEnd or null]]` (`cutContaining`) |
 | `join-fades` | as `edit-plan` | `kept`, `outputSamples`, `parts[{outputStart, length, fadeIn, fadeOut}]`, `gains[[outputSample, gain]]` (every non-unity sample, or probes when there are many), `tolerance` |
 | `edit-session` | `durationSeconds`, `sampleRate`, `hasDecodedAudio`, `words[{id, text, start, end}]`, `ops[]` | `steps[]`, one for the initial state and one after each op: `{after, cutWords[], cutPauses[], texts{}, activeClip [s,e] or null, ui{…}, durationSeconds, captions[{text, start, end}]}` |
+| `cut-edges` | `durationSeconds`, `sampleRate` (the clock rate R), `envelope` (`levels-v1`), `words[{id, start, end, kind?}]` (one recording, local seconds), `cutWordIds[]`, optional `existing{id: seconds}` (stored keys) and `freeze{voiceRanges[[start, end]], paidScopes[[startWordId, endWordId]]}` | `cutEdges{id: seconds}` (existing keys plus the seat, normalized; compare exactly), `offerCount` (new keys), `frozen` (boundaries kept beside a voice patch or paid scope), `cuts[[sa,sb]]` (the full-take plan with the stored edges) |
+| `cut-edge-session` | `durationSeconds`, `sampleRate`, `startVersion`, `envelope`, `words[]`, `ops[{op: "toggle", id}]`; each op toggles one cut and the commit seats the boundaries it changed, then normalizes | `steps[]`, one for the initial state and one after each op: `{after, cutWords[], cutEdges{}, schemaVersion, editsEqualInitial}` (the encoded `edits` equal the initial ones) |
+| `cut-edge-project` | `projectPath`, `set[{path, value}]` (JSON pointers without escapes, applied in order) | `{valid: false, reason}` (load refuses the file), or `{valid: true, writtenVersion, edgeSamples[]}`: the version a save writes, and the clock samples where the full-take plan's cuts start or end at a stored edge |
 | `project-plan` | `projectPath` (relative to the repository root) | `sampleRate`, `sourceDurationSeconds`, `pauses[{id, start, end, label}]`, `take{outputSamples, durationSeconds, kept, captions[{id, text, start, end}]}`, `clips[{id, startWord, endWord, sourceStart, sourceEnd, outputSamples, durationSeconds, kept, captions}]` |
 | `pause-detection` | `hasDecodedAudio`, `words[{id, start, end}]` | `pauses[{id, start, end, duration, label}]` |
 | `pause-label` | `durations[]` | `labels[]` |
@@ -108,6 +114,10 @@ The session `ui` block keeps VoxConvo's English strings. Build it in test code f
 ### Synthetic audio
 
 `audio` objects are `{"generator": "vox-take-v1", "sampleRate": 16000, "seconds", "sections": [[from, to, "vowel" or "hiss"]]}`. Rebuild the PCM exactly as spec section 11.4 describes (Park-Miller noise with seed 7, a 180 Hz vowel, writes past the end discarded), then run the analysis on it as one channel at 16 kHz.
+
+### Envelopes ("levels-v1")
+
+Cut edge fixtures give the 10 ms RMS envelope itself as `{"generator": "levels-v1", "frames", "sampleRate": 16000, "base", "runs": [[fromFrame, toFrame, level]]}`. Every frame starts at `base`; each run then sets frames `fromFrame` to `toFrame` inclusive, in order, so a later run overrides an earlier one. The levels are exact binary32 values (0.5, 0.3, 0.0625, 2^-9), so no decoder or noise drift enters. The frame length is `max(1, jsRound(sampleRate · 0.01)) / sampleRate`.
 
 ## How the suites load the fixtures
 
