@@ -26,6 +26,7 @@ public sealed partial class EditorPage
         if (App.Services.Looks is { } looks)
             ViewModel.Picture.Services = new(looks)
             {
+                Measure = MeasurePictureAsync,
                 FineTuneOpen = App.Services.Get(PicturePanelModel.FineTuneSetting, false),
                 RememberFineTune = open => _ = RunAsync(() => App.Services.SetAsync(PicturePanelModel.FineTuneSetting, open, lifetime.Token), "Picture"),
             };
@@ -37,6 +38,24 @@ public sealed partial class EditorPage
         panel.BeforeGrade = ct => preview is { } engine ? engine.StillBeforeGradeAsync(ct) : Task.FromException<PixelBuffer>(new InvalidOperationException("No preview."));
         panel.HoldCompare = HoldCompareAsync;
         panel.SamplePicture = SamplePicture;
+    }
+
+    /// <summary>Auto's measurement: the clip's sheet frames from the frame pass, or without one (no face models on this PC) the paused
+    /// frame before the grade; null when neither can be read.</summary>
+    private async Task<ClipColorFix?> MeasurePictureAsync(string clipId, CancellationToken ct)
+    {
+        if (await ViewModel.MeasurePictureFixAsync(clipId, ct) is { } measured) return measured;
+        if (preview is not { } engine || engine.Position.IsPlaying || App.Services.Looks is not { } looks) return null;
+        try
+        {
+            var still = await engine.StillBeforeGradeAsync(ct);
+            return await Task.Run(() => VoxClip.Media.Frames.FrameLightSampling.Sample(still, looks.Measure.Auto.FrameSize, null) is { } sample
+                ? ClipColorFix.Measure([sample], looks.Measure.Auto) : (ClipColorFix?)null, ct);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or NotSupportedException or IOException or Core.Domain.Shared.VoxClipException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Make it's "All looks in Picture ›" and the palette's Open Picture: the clip's Picture tab.</summary>

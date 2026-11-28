@@ -71,6 +71,7 @@ internal sealed class PicturePanel : Grid
     private bool compareByPointer;
     private bool shown;
     private string? block;
+    private string? renderedClip;
 
     /// <summary>The paused frame before the grade (<c>IPreviewEngine.StillBeforeGradeAsync</c>); null without a preview.</summary>
     internal Func<CancellationToken, Task<PixelBuffer>>? BeforeGrade { get; set; }
@@ -235,6 +236,7 @@ internal sealed class PicturePanel : Grid
         ScrollViewer.SetVerticalScrollBarVisibility(tiles, ScrollBarVisibility.Disabled);
         tiles.ItemClick += (_, args) => { if (args.ClickedItem is FrameworkElement { Tag: string id }) Apply(id); };
         tiles.PointerExited += (_, _) => { hovered = null; hover.Stop(); Model.EndPreview(); };
+        tiles.LosingFocus += (_, args) => { if (args.NewFocusedElement is not DependencyObject next || !InputState.DescendsFrom(next, tiles)) Model.EndPreview(); };
         tiles.AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
         {
             if (args.Key == VirtualKey.Escape) { Model.EndPreview(); args.Handled = true; }
@@ -388,6 +390,8 @@ internal sealed class PicturePanel : Grid
     {
         if (!shown) return;
         Model.Opened();
+        // Another clip: a hover, drag or Compare of the last one ends.
+        if (renderedClip != Model.ClipId) { renderedClip = Model.ClipId; Model.EndCompare(); Model.EndPreview(); }
         syncing = true;
         try
         {
