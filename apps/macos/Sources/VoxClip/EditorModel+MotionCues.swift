@@ -53,11 +53,11 @@ struct TimelineMotionCue: Equatable {
     /// Undo, Redo, timeline edits and Ask Claude or Make it undo change the saved cue while the panel
     /// stays open. The draft takes the new saved values and keeps the fields the user changed but did not apply.
     func follow(_ model: EditorModel) {
-        guard let original = draft.original else { return }
+        guard let original = draft.original else { reopenRestoredCue(model); return }
         let stored = model.project.motionCues.first { $0.id == original.id }
         guard stored != original else { return }
         guard let stored, stored.clipID == draft.clipID else {
-            selectCue("", model: model)
+            resetAfterRemoving(original.id, model: model)
             status = model.undoManager?.isUndoing == true
                 ? "This cue was removed. Redo restores it." : "This cue was removed. Undo restores it."
             return
@@ -72,6 +72,23 @@ struct TimelineMotionCue: Equatable {
         selectedFrame = min(selectedFrame, next.keyframes.count - 1)
         if merged.replaced { status = "The saved cue's keyframes changed. Your keyframe edits were replaced." }
         else if kept { status = "The saved cue changed. Your unapplied edits are kept." }
+    }
+
+    /// The cue the panel was on before a delete reset it to a new cue, and that untouched reset draft.
+    @ObservationIgnored private var removed: (id: String, reset: MotionCueDraft)?
+
+    private func resetAfterRemoving(_ id: String, model: EditorModel) {
+        selectCue("", model: model)
+        removed = (id, draft)
+    }
+
+    /// The Undo or Redo the removal message suggests brings the cue back into the panel, unless the user
+    /// has since started editing the new cue or chosen another.
+    private func reopenRestoredCue(_ model: EditorModel) {
+        guard let removed, draft == removed.reset else { self.removed = nil; return }
+        guard model.clipMotionCues.contains(where: { $0.id == removed.id }) else { return }
+        self.removed = nil
+        selectCue(removed.id, model: model)
     }
 
     /// Keeps each keyframe value the user changed and takes the saved value for the rest. That needs the
@@ -160,7 +177,7 @@ struct TimelineMotionCue: Equatable {
             status = "This cue changed or is no longer editable. Choose it again before deleting."
             return
         }
-        selectCue("", model: model)
+        resetAfterRemoving(original.id, model: model)
         status = "Motion cue deleted. Undo restores it."
     }
 

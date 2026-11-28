@@ -366,13 +366,30 @@ private actor MotionCueTestSettings: SettingsStore {
         #expect(editing.status == "This cue was removed. Redo restores it.")
         undo.redo()
         #expect(model.project.motionCues == [stored])
+        // Redo brings the cue back into the panel, not a new cue that overlaps it.
+        #expect(editing.draft.original == stored && model.motionCueValidation(editing.draft) == nil)
+        #expect(editing.footerMessage(model: model) == "No unapplied changes.")
 
-        // A timeline Delete is undone with Undo.
-        #expect(model.openMotionCueJob(id: stored.id, in: shell))
-        let reopened = try #require(model.motionCueEditing)
+        // A timeline Delete is undone with Undo, and the panel reopens the cue.
         grouped(undo) { #expect(model.commitTimelineItemEdit(.delete(items: [.motion(stored.id)]))) }
-        #expect(model.project.motionCues.isEmpty && reopened.draft.original == nil)
-        #expect(reopened.status == "This cue was removed. Undo restores it.")
+        #expect(model.project.motionCues.isEmpty && editing.draft.original == nil)
+        #expect(editing.status == "This cue was removed. Undo restores it.")
+        undo.undo()
+        #expect(model.project.motionCues == [stored] && model.motionCueEditing === editing)
+        #expect(editing.draft.original == stored && model.motionCueValidation(editing.draft) == nil)
+
+        // So does Delete cue in the panel.
+        grouped(undo) { editing.deleteCue(model: model) }
+        #expect(model.project.motionCues.isEmpty && editing.status == "Motion cue deleted. Undo restores it.")
+        undo.undo()
+        #expect(editing.draft.original == stored && model.motionCueValidation(editing.draft) == nil)
+
+        // A new cue the user has started editing is not replaced when the removed cue comes back.
+        grouped(undo) { editing.deleteCue(model: model) }
+        editing.draft.sourceStart = 20; editing.draft.sourceEnd = 21
+        let started = editing.draft
+        undo.undo()
+        #expect(model.project.motionCues == [stored] && editing.draft == started)
     }
 
     @Test func openDraftMergesKeyframeEditsPerValueAndTakesSplitKeyframes() throws {
