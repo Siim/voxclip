@@ -6,6 +6,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 - Cutting one word out of fluent speech now ends the cut in the quiet between words, so you no longer hear part of the cut word or lose the start of the next one; word times, captions and paid voice stay as they are.
 - Projects on Mac and Windows can now save agent turns with their own undo history, separate from your manual edits.
+- On Mac, the Pan and zoom panel follows Undo and timeline edits to its cue, says why Apply is unavailable, and shows the edited keyframe in the paused viewer; the preview shows pan and zoom under Reduce Motion too, as the export does.
 - On Mac, Put Back shows leading and consecutive skipped lines and restores each in recording order.
 - On Mac, alternate versions and uninserted lines play in place without changing the clip.
 - On Mac, the timeline can open a line's other versions even when the transcript shows a single recording.

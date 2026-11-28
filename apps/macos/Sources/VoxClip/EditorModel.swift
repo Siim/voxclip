@@ -1082,6 +1082,8 @@ struct EditorRenderSnapshot {
             renderedActiveClipID = edits.activeClipId
             onActiveClipChange?(edits.activeClipId)
         }
+        // An open Motion draft follows outside changes to its saved cue (Undo, timeline edits, Ask Claude).
+        motionCueEditing?.follow(self)
         if clipsChanged { onClipsChange?() }
     }
     func word(at source: Double, nearest: Bool = false) -> TimedWord? {
