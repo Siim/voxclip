@@ -82,7 +82,7 @@ internal sealed class PicturePanel : Grid
 
     private PicturePanelModel Model => editor.Picture;
 
-    internal Control FocusTarget => tiles.Items.Count > 0 ? tiles : compare;
+    internal Control FocusTarget => tiles.IsEnabled && tiles.Items.Count > 0 ? tiles : compare;
 
     internal PicturePanel(EditorViewModel editor)
     {
@@ -431,7 +431,10 @@ internal sealed class PicturePanel : Grid
             {
                 claude.Visibility = Visibility.Visible;
                 claudeText.Text = "✦ " + line.Text + (line.Detail.Length > 0 ? " · " + line.Detail : "");
-                useIt.Visibility = line.CanUse ? Visibility.Visible : Visibility.Collapsed;
+                // Use it stays findable while the tab is blocked: disabled, with the reason as its help (the line at the top shows it).
+                useIt.Visibility = line.ShowsUseIt ? Visibility.Visible : Visibility.Collapsed;
+                useIt.IsEnabled = line.CanUse;
+                AutomationProperties.SetHelpText(useIt, line.UseItReason ?? "Use the look Claude chose for this clip");
             }
             else claude.Visibility = Visibility.Collapsed;
             // The Look row and Compare.
@@ -508,7 +511,10 @@ internal sealed class PicturePanel : Grid
         var list = model.Tiles;
         AutomationProperties.SetName(tiles, model.TilesName);
         AutomationProperties.SetItemStatus(tiles, model.TilesStatus);
-        var key = model.Category + "|" + string.Join(",", list.Select(tile => tile.Look.Id + tile.Status)) + "|" + Ui.HighContrast + "|" + model.Playing + "|" + model.HoverReason;
+        // A blocked tab keeps its tiles in view, disabled with the reason (looks spec §10); the line at the top shows it.
+        tiles.IsEnabled = model.Blocked is null;
+        AutomationProperties.SetHelpText(tiles, model.Blocked ?? "");
+        var key = model.Blocked + "|" + model.Category + "|" + string.Join(",", list.Select(tile => tile.Look.Id + tile.Status)) + "|" + Ui.HighContrast + "|" + model.Playing + "|" + model.HoverReason;
         if (key == tilesKey) { UpdateThumbnails(); _ = RefreshThumbnailsAsync(); return; }
         tilesKey = key;
         // The same looks keep their items, so keyboard focus stays on the tile just applied.
@@ -565,7 +571,7 @@ internal sealed class PicturePanel : Grid
         item.Content = stack;
         AutomationProperties.SetName(item, tile.Name);
         AutomationProperties.SetItemStatus(item, tile.Status);
-        AutomationProperties.SetHelpText(item, tile.Help);
+        AutomationProperties.SetHelpText(item, model.Blocked ?? tile.Help);
         ToolTipService.SetToolTip(item, model.Playing ? PicturePanelModel.PauseToPreview : tile.Look.Label + ": " + tile.Help);
     }
 

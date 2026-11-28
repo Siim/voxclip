@@ -429,10 +429,15 @@ public sealed class PicturePanelTests
         Assert.Null(picture.ClaudeLine);
         picture.NoteClaudePick("c1", new("warmPrint", 70, "Warm lamp light suits a travel memory", ["goldenHour", "softBW"], new(0, -12, 0)));
         Assert.Equal(("Claude's pick: Warm Print · 70%", true), (picture.ClaudeLine!.Text, picture.ClaudeLine.CanUse));
+        // With the video missing, Use it stays in view, disabled with the reason.
+        editor.SetMediaUnavailable(true);
+        Assert.Equal((true, false, "Locate the video to change the look."), (picture.ClaudeLine!.ShowsUseIt, picture.ClaudeLine.CanUse, picture.ClaudeLine.UseItReason));
+        Assert.False(picture.UseClaudeLook());
+        editor.SetMediaUnavailable(false);
         Assert.True(picture.UseClaudeLook());
         Assert.Equal("Use Claude's look", editor.UndoActionName);
         Assert.Equal(("Claude chose Warm Print · 70%", "Warm lamp light suits a travel memory · Fix: temperature −12", false),
-            (picture.ClaudeLine!.Text, picture.ClaudeLine.Detail, picture.ClaudeLine.CanUse));
+            (picture.ClaudeLine!.Text, picture.ClaudeLine.Detail, picture.ClaudeLine.ShowsUseIt));
         Assert.Equal(-12, Slider(picture, PictureControl.Temperature).Value);
         picture.Apply("moody");
         Assert.Equal(("Claude's pick: Warm Print · 70%", true), (picture.ClaudeLine!.Text, picture.ClaudeLine.CanUse));
@@ -549,6 +554,9 @@ public sealed class PicturePanelTests
         Assert.Contains("Ui.EffectsChanged -= EffectsChanged", panel);
         // The bubbled PointerExited of a tile doesn't end the hover preview; leaving the grid's bounds does.
         Assert.Contains("args.GetCurrentPoint(tiles).Position", panel);
+        // A blocked tab's tiles and Use it stay in view, disabled with the reason.
+        Assert.Contains("tiles.IsEnabled = model.Blocked is null;", panel);
+        Assert.Contains("useIt.IsEnabled = line.CanUse;", panel);
         Assert.DoesNotContain("Flyout", panel);
         Assert.DoesNotContain("ContentDialog", panel);
         Assert.DoesNotContain("App.Services", App("ViewModels/PicturePanelModel.cs"));

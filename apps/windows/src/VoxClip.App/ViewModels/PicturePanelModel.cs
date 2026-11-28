@@ -77,7 +77,12 @@ public sealed record PictureTile(ClipLookPreset Look, string CategoryLabel, bool
 public sealed record PicturePreview(ProjectClipControls Colour, string? Badge);
 
 /// <summary>The line about Claude's look: "Claude chose …" while it holds, "Claude's pick: …" with Use it after a hand change.</summary>
-public sealed record PictureClaudeLine(string Text, string Detail, bool CanUse);
+/// <param name="ShowsUseIt">Use it shows (after a hand change), disabled with <paramref name="UseItReason"/> while the tab is blocked.</param>
+public sealed record PictureClaudeLine(string Text, string Detail, bool ShowsUseIt, string? UseItReason = null)
+{
+    /// <summary>Use it can run.</summary>
+    public bool CanUse => ShowsUseIt && UseItReason is null;
+}
 
 /// <summary>A timed Ask Claude look over this clip (ai.md §18.5), which replaces the clip's base look for its stretch.</summary>
 public sealed record PictureTimedLook(string Id, string Text, double Start);
@@ -681,7 +686,7 @@ public sealed class PicturePanelModel(EditorViewModel editor)
             var amount = look.Id == Original ? 100 : pick.Amount;
             var name = amount < 100 ? look.Label + " · " + amount.ToString(CultureInfo.InvariantCulture) + "%" : look.Label;
             var holds = Match is { Edited: false } match && match.Look.Id == look.Id && AmountOf(controls) == amount;
-            if (!holds) return new("Claude's pick: " + name, pick.Reason, Blocked is null);
+            if (!holds) return new("Claude's pick: " + name, pick.Reason, true, Blocked);
             var fix = pick.Fix is { } applied && applied.Summary() is { Length: > 0 } summary ? "Fix: " + summary : null;
             return new("Claude chose " + name, string.Join(" · ", new[] { pick.Reason, fix }.Where(text => !string.IsNullOrEmpty(text))), false);
         }
