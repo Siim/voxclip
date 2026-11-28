@@ -316,6 +316,18 @@ private actor CutEdgeTestSettings: SettingsStore {
         }
     }
 
+    /// The app's own self-test cases (`-uiSelfTest`) run here too: the seam, A1, preview against export, undo steps and
+    /// disabled reasons.
+    @Test func theDebugCasesPass() async throws {
+        let app = try app()
+        defer { try? FileManager.default.removeItem(at: app.locations.root) }
+        let shared = try SharedResources.locate()
+        let fixture = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+        let results = try await DebugCutEdges.run(app: app, fixture: fixture)
+        #expect(results.count >= 14)
+        for result in results { #expect(result.passed, "\(result.name)") }
+    }
+
     @Test func editMenuListsFixCutEdges() throws {
         _ = NSApplication.shared
         let previous = NSApp.mainMenu
