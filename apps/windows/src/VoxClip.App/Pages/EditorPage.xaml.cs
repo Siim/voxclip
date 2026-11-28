@@ -424,11 +424,11 @@ public sealed partial class EditorPage : Page
             else if (ViewModel.Notice is noDevice or inUse) ViewModel.Notice = "";
         });
     }
-    /// <summary>Make clip needs words selected (design §6.2).</summary>
+    /// <summary>Make clip needs words selected, or an exact range that reaches a word (design §6.2, issue #41).</summary>
     private void SelectionChanged(object? sender, EventArgs args)
     {
         RefreshRecordingSelection();
-        MakeClipCommand.IsEnabled = ViewModel.HasSelection && !ViewModel.IsReadOnly && !ViewModel.Busy && !ViewModel.IsLeaving;
+        MakeClipCommand.IsEnabled = ViewModel.TimelineMakeClipReason is null;
         PreviewCutCommand.IsEnabled = ViewModel.CanPreviewCut;
         UpdateRewriteCommand();
         UpdateShellChrome();

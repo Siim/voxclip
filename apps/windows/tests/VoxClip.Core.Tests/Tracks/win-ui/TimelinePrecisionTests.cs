@@ -1,4 +1,5 @@
 #if WIN_UI_TESTS
+using System.Text.RegularExpressions;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
@@ -321,6 +322,19 @@ public sealed class TimelinePrecisionTests
         Assert.Equal(("t12", "t12"), (model.ActiveClip?.StartWordId, model.ActiveClip?.EndWordId));
     }
 
+    [Fact]
+    public void EveryMakeClipEntryPointGatesOnTheTimelineReason()
+    {
+        // A range that reaches a word without holding it whole selects no word, yet makes a clip: the ClipBar, the command palette
+        // and the edit bar all ask TimelineMakeClipReason, never HasSelection.
+        var pages = string.Concat(Directory.EnumerateFiles(Path.Combine(AppRoot, "Pages"), "EditorPage*.cs").Select(File.ReadAllText));
+        Assert.DoesNotMatch(@"MakeClipCommand\.IsEnabled\s*=[^;]*HasSelection", pages);
+        Assert.Equal(2, Regex.Matches(pages, @"MakeClipCommand\.IsEnabled\s*=[^;]*ViewModel\.TimelineMakeClipReason is null").Count);
+        Assert.Matches(@"Command\(""clip\.make"",[^\n]*ViewModel\.TimelineMakeClipReason is null", pages);
+        Assert.DoesNotMatch(@"Command\(""clip\.make"",[^\n]*HasSelection", pages);
+        Assert.Contains("model => model.TimelineMakeClipReason is null", EditBarSource, StringComparison.Ordinal);
+    }
+
     // MARK: Word ticks
 
     [Fact]
@@ -339,6 +353,9 @@ public sealed class TimelinePrecisionTests
         // Words outside the open clip get no ticks.
         Assert.Empty(model.TimelineWordEdges(0, 9.9, Same, Same, false).Starts);
     }
+
+    private static string AppRoot => Path.Combine(Path.GetDirectoryName(SharedResources.ResolveRoot())!, "apps", "windows", "src", "VoxClip.App");
+    private static string EditBarSource => File.ReadAllText(Path.Combine(AppRoot, "Controls", "TimelineView.EditBar.cs"));
 
     private static ClipEffect Effect(EditorViewModel model, string id) =>
         ClipEffect.Parse(model.Project.ClipEffects.Single(effect => effect.GetProperty("id").GetString() == id));

@@ -90,7 +90,7 @@ public sealed partial class EditorPage
         var clip = ViewModel.Clips.FirstOrDefault(clip => clip.Id == active);
         AutomationProperties.SetHelpText(Commands, clip is null ? "Full take" : $"Clip {clip.Number}: {clip.Title}");
         TightenCommand.IsEnabled = ShellEditable && (ViewModel.Summary.CanCutFillers || ViewModel.Summary.CanTighten);
-        MakeClipCommand.IsEnabled = ShellEditable && ViewModel.HasSelection;
+        MakeClipCommand.IsEnabled = ShellEditable && ViewModel.TimelineMakeClipReason is null;
         AskButton.IsEnabled = ShellJobAvailable(ShellJob.Rewrite);
         AutomationProperties.SetHelpText(AskButton, ViewModel.RecordingVoiceReason() ?? (ViewModel.IsStoryClip ? EditorViewModel.StoryRewriteReason : ""));
         HookCommand.IsEnabled = ShellJobAvailable(ShellJob.Hook);
@@ -190,7 +190,8 @@ public sealed partial class EditorPage
             new(id, title, shortcut, () => ShellReady && available(), action, reason ?? blocked);
         return [
             Command("scope.full", "Open Full take", "Ctrl+2", () => true, () => owner.ShowScope(null)),
-            Command("clip.make", "Make clip from selection", "Ctrl+Alt+K", () => ShellEditable && ViewModel.HasSelection, MakeClipAndReveal, "Select transcript words in an editable project first."),
+            Command("clip.make", "Make clip from selection", "Ctrl+Alt+K", () => ShellEditable && ViewModel.TimelineMakeClipReason is null, MakeClipAndReveal,
+                ShellEditable && ViewModel.ExactRange is not null ? ViewModel.TimelineMakeClipReason : "Select transcript words in an editable project first."),
             Command("edit.undo", "Undo", "Ctrl+Z", () => ShellEditable && ViewModel.CanUndo, ViewModel.Undo),
             Command("edit.redo", "Redo", "Ctrl+Y", () => ShellEditable && ViewModel.CanRedo, ViewModel.Redo),
             Command("edit.tighten", "Tighten scope (local)", "", () => ShellEditable && (ViewModel.Summary.CanCutFillers || ViewModel.Summary.CanTighten), TightenScope),
