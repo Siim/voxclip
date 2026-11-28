@@ -40,4 +40,33 @@ public sealed class SavedRewriteProposalTests
         }
         finally { Directory.Delete(root, true); }
     }
+
+    /// <summary>The cut edge freeze (editing §5.10) reads which scopes hold paid takes saved beside a project, without consuming or
+    /// expiring any record.</summary>
+    [Fact]
+    public void PaidScopesListsTheScopesWithPaidTakesWithoutChangingAnything()
+    {
+        var root = Directory.CreateTempSubdirectory("voxclip-rewrite-").FullName;
+        try
+        {
+            var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/music/music-project.voxclip"));
+            var stamp = new DateTimeOffset(2026, 11, 24, 0, 0, 0, TimeSpan.Zero);
+            var change = new SavedRewriteChange(new(VoiceLabDiffHunkKind.Voice, ["word"], ["New"], [], [], [], 0, 1, null), null, false, [], [], "pending");
+            void Save(RewriteScope scope, string? clip, int takes, DateTimeOffset at) =>
+                new SavedRewriteProposalStore(root, project.Id, scope, clip).Save(new("x", "Tighten", [change], [], [], null, takes, 0, []), at);
+            Save(RewriteScope.Clip("c3"), null, 1, stamp);
+            Save(RewriteScope.Selection(2, 4), "c1", 2, stamp);
+            Save(RewriteScope.FullTake, null, 0, stamp);
+            Save(RewriteScope.Clip("old"), null, 1, stamp.AddDays(-61));
+            Save(RewriteScope.Clip("c9"), null, 1, stamp);
+            var other = new SavedRewriteProposalStore(root, "another-project", RewriteScope.FullTake, null);
+            other.Save(new("x", "Tighten", [change], [], [], null, 1, 0, []), stamp);
+
+            Assert.Equal(["clip:c3", "clip:c9", "selection:2-4:c1"], SavedRewriteProposalStore.PaidScopes(root, project.Id, stamp).Order(StringComparer.Ordinal));
+            Assert.Empty(SavedRewriteProposalStore.PaidScopes(root, "absent", stamp));
+            Assert.Empty(SavedRewriteProposalStore.PaidScopes(Path.Combine(root, "absent"), project.Id, stamp));
+            Assert.Equal(6, Directory.EnumerateFiles(root, "*.json", SearchOption.AllDirectories).Count());
+        }
+        finally { Directory.Delete(root, true); }
+    }
 }
