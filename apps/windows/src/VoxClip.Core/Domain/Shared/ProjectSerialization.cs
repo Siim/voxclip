@@ -8,9 +8,11 @@ namespace VoxClip.Core.Domain.Shared;
 public static class ProjectSerialization
 {
     internal const int SpokenSourcesVersion = 7;
-    /// <summary>The v8 frame (editing §10.1): cut edges (§5.10) and the agent thread (ADR-R55) share it.</summary>
+    /// <summary>The v8 frame (editing §10.1): cut edges (§5.10), the agent thread (ADR-R55) and clip colour grades (looks spec §8.4)
+    /// share it.</summary>
     internal const int FrameVersion = 8;
     internal const int AgentThreadVersion = FrameVersion;
+    internal const int ColorGradeVersion = FrameVersion;
     internal const int CurrentVersion = FrameVersion;
     /// <summary>Read a project with source-generated metadata; unknown keys are refused except inside extensions and merge patches.</summary>
     public static Project Deserialize(string json) => Deserialize(json, CurrentVersion);
@@ -108,10 +110,10 @@ public static class ProjectSerialization
         return json;
     }
 
-    /// <summary>The version the fields present need: 8 with cut edges or an agent thread, 7 with spoken recordings, otherwise
-    /// none (1); story parts and timeline edit fields promote on their own.</summary>
+    /// <summary>The version the fields present need: 8 with cut edges, an agent thread or a clip's colour grade, 7 with spoken
+    /// recordings, otherwise none (1); story parts and timeline edit fields promote on their own.</summary>
     internal static int RequiredVersion(Project project) =>
-        project.AgentThread is not null || project.Edits.CutEdges is { Count: > 0 } ? FrameVersion
+        project.AgentThread is not null || project.Edits.CutEdges is { Count: > 0 } || project.ClipControls.Any(entry => entry.ColorGrade is not null) ? FrameVersion
         : project.Media.SpokenSources is not null ? SpokenSourcesVersion : 1;
 
     /// <summary>The version written: raised to <see cref="RequiredVersion"/>, and lowered from 7 or 8 once those fields are gone,

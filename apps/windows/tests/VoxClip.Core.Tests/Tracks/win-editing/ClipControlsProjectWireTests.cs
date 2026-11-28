@@ -13,6 +13,7 @@ public sealed class ClipControlsProjectWireTests
 {
     private static JsonObject Fixture() => JsonNode.Parse(FixtureLoader.ReadText("fixtures/clip-controls/clip-controls-project.voxclip"))!.AsObject();
     private static JsonObject Cases() => JsonNode.Parse(FixtureLoader.ReadText("fixtures/clip-controls/clip-controls-wire-cases.json"))!.AsObject();
+    private static JsonObject GradeCases() => JsonNode.Parse(FixtureLoader.ReadText("fixtures/clip-controls/clip-controls-color-grade-cases.json"))!.AsObject();
 
     private static JsonObject Applied(JsonNode item)
     {
@@ -120,6 +121,67 @@ public sealed class ClipControlsProjectWireTests
             if (item["tooNew"]?.GetValue<bool>() == true)
                 Assert.Equal(VoxClipErrorCode.ProjectTooNew, Assert.IsType<VoxClipException>(exception).Code);
         }
+    }
+
+    /// <summary>Looks spec §11.5: a colorGrade loads and saves unchanged at v8, a v7 reader refuses it as too new, and every
+    /// shared range, key set and version rule holds.</summary>
+    [Fact]
+    public void ColorGradeCasesRoundTripAtV8AndAV7ReaderRefusesThem()
+    {
+        var corpus = GradeCases();
+        Assert.Equal("voxclip-clip-color-grade-wire-cases/1", corpus["format"]!.GetValue<string>());
+        var valid = corpus["valid"]!.AsArray();
+        Assert.Equal(11, valid.Count);
+        foreach (var item in valid)
+        {
+            var id = item!["id"]!.GetValue<string>();
+            var input = Applied(item);
+            var project = ProjectSerialization.Deserialize(input.ToJsonString());
+            Assert.True(project.SchemaVersion == 8 && project.ClipControls.Any(entry => entry.ColorGrade is not null), id);
+            var encoded = ProjectSerialization.Serialize(project);
+            Assert.Equal(encoded, ProjectSerialization.Serialize(ProjectSerialization.Deserialize(encoded)));
+            var saved = JsonNode.Parse(encoded)!.AsObject();
+            Assert.True(JsonNode.DeepEquals(input["clipControls"], saved["clipControls"]), id + ": " + saved["clipControls"]?.ToJsonString());
+            Assert.Equal(VoxClipErrorCode.ProjectTooNew, Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(encoded, 7)).Code);
+        }
+        var invalid = corpus["invalid"]!.AsArray();
+        Assert.Equal(47, invalid.Count);
+        foreach (var item in invalid)
+        {
+            var exception = Record.Exception(() => ProjectSerialization.Deserialize(Applied(item!).ToJsonString()));
+            Assert.True(exception is VoxClipException { Code: VoxClipErrorCode.ProjectUnreadable }, item!["id"]!.GetValue<string>() + ": " + exception?.GetType().Name);
+        }
+    }
+
+    /// <summary>The first colour grade promotes a project to v8; without one it keeps its version, and a v7 project refuses a
+    /// colorGrade written at 7.</summary>
+    [Fact]
+    public void TheFirstColorGradePromotesToV8AndItsRemovalLeavesTheFrame()
+    {
+        var original = ProjectSerialization.Deserialize(Fixture().ToJsonString());
+        Assert.Equal(4, original.SchemaVersion);
+        var entry = Assert.Single(original.ClipControls);
+        var promoted = ClipControlsProject.Setting(entry with { ColorGrade = new ClipColorGrade { Exposure = 20 } }, original);
+        Assert.Equal(8, promoted.SchemaVersion);
+        var saved = ProjectSerialization.Serialize(promoted);
+        Assert.Equal(8, ProjectSerialization.Deserialize(saved).SchemaVersion);
+        Assert.Equal(VoxClipErrorCode.ProjectTooNew, Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(saved, 7)).Code);
+        var cleared = ClipControlsProject.Setting(entry, promoted);
+        Assert.Equal(TimelineEditFields.Version, cleared.SchemaVersion);
+        Assert.Equal(entry, Assert.Single(cleared.ClipControls));
+        // A neutral grade is not stored and promotes nothing.
+        var neutral = ClipControlsProject.Setting(entry with { ColorGrade = new ClipColorGrade { Preset = "warmPrint" } }, original);
+        Assert.Equal(4, neutral.SchemaVersion);
+        Assert.Null(Assert.Single(neutral.ClipControls).ColorGrade);
+        // Written below 8 by hand, a grade is refused.
+        Assert.Throws<VoxClipException>(() => ClipControlsProject.Validate(original with { ClipControls = [entry with { ColorGrade = new ClipColorGrade { Vibrance = 10 } }] }));
+        var spoken = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/recordings/two-recordings.voxclip"));
+        Assert.Equal(7, spoken.SchemaVersion);
+        var graded = ClipControlsProject.Controls("clip-main", spoken)! with { ColorGrade = new ClipColorGrade { Vibrance = 10 } };
+        Assert.Throws<VoxClipException>(() => ClipControlsProject.Validate(spoken with { ClipControls = [graded] }));
+        var regraded = ClipControlsProject.Setting(graded, spoken);
+        Assert.Equal(8, regraded.SchemaVersion);
+        Assert.Equal(7, ClipControlsProject.Setting(graded with { ColorGrade = null }, regraded).SchemaVersion);
     }
 
     [Fact]

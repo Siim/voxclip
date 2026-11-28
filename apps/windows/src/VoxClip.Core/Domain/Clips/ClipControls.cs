@@ -68,20 +68,36 @@ internal sealed class ClipColorAdjustmentsJsonConverter : JsonConverter<ClipColo
 
 /// <summary>One clip's speed, frame, color, source volume, fades, mute, flip and rotation; schema v4, design §6.9.
 /// Every key is written, null included, as the Mac Core writes it, except the optional <paramref name="Reframe"/> ("9:16 follows
-/// your face"), <paramref name="CoverSeconds"/> (the cover's source second), and <paramref name="ColorAdjustments"/>, omitted when null.
-/// An entry at its defaults is never stored.</summary>
+/// your face"), <paramref name="CoverSeconds"/> (the cover's source second), <paramref name="ColorAdjustments"/> and the schema-v8
+/// <paramref name="ColorGrade"/> (looks spec §8.1), omitted when null. An entry at its defaults is never stored.</summary>
 public sealed record ProjectClipControls(string ClipId, double Speed, ClipShape? Shape, ClipLook Look, double GainDb,
     double FadeInSeconds, double FadeOutSeconds, bool MuteSource, bool FlipHorizontal, int RotationDegrees,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ReframeSettings? Reframe = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? CoverSeconds = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ClipColorAdjustments? ColorAdjustments = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CoverTitle = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CoverTitle = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ClipColorGrade? ColorGrade = null)
 {
     /// <summary>Every control at its default.</summary>
     [JsonIgnore]
     public bool IsDefault => Speed == 1 && Shape is null && Look == ClipLook.Original && GainDb == 0 && FadeInSeconds == 0 &&
         FadeOutSeconds == 0 && !MuteSource && !FlipHorizontal && RotationDegrees == 0 && Reframe is null && CoverSeconds is null &&
-        ColorAdjustments is null && CoverTitle is null;
+        ColorAdjustments is null && CoverTitle is null && ColorGrade is null;
+
+    /// <summary><see cref="ClipControlsProject.SettingLookPreset"/>'s rule on these controls: the look's base, adjustments and
+    /// expanded grade with its preset and <paramref name="amount"/> (clamped to 0-100), keeping the Fix unless
+    /// <paramref name="fix"/> replaces it. As filmed has no look to blend, so it stores no preset and a full amount; a neutral
+    /// grade is not stored. Twin of the Mac <c>applyLook</c>.</summary>
+    public ProjectClipControls WithLook(ClipLookPreset look, int amount = 100, ClipColorFix? fix = null)
+    {
+        var blendless = look.Base == ClipLook.Original && look.Adjustments is null && look.Grade == ClipColorGrade.Neutral;
+        var grade = look.Grade.WithFix(fix ?? ColorGrade?.Fix ?? default) with
+        {
+            Amount = blendless ? 100 : Math.Clamp(amount, 0, 100),
+            Preset = blendless ? null : look.Id
+        };
+        return this with { Look = look.Base, ColorAdjustments = look.Adjustments, ColorGrade = grade.IsNeutral ? null : grade };
+    }
 
     /// <summary>The face-follow centre (0–1 from the top left of the source) for an output of width over height
     /// <paramref name="outputAspect"/>: only in face mode and for 9:16 and 1:1 (16:9 ignores it). Twin of the Mac <c>cropCenter</c>.</summary>
@@ -135,6 +151,8 @@ public static class ClipControlsProject
             if (entry.CoverSeconds is { } cover) Require(double.IsFinite(cover) && cover >= 0);
             if (entry.CoverTitle is { } title) Require(entry.CoverSeconds is not null && ClipHookTitle.Text(title) == title);
             if (entry.ColorAdjustments is { } adjustments) Require(adjustments.IsValid);
+            // A colour grade needs the v8 frame (looks spec §8.4); Setting and the writer promote to it.
+            if (entry.ColorGrade is { } grade) Require(grade.IsValid && project.SchemaVersion >= ProjectSerialization.ColorGradeVersion);
             Require(!entry.IsDefault && clips.Contains(entry.ClipId) && seen.Add(entry.ClipId));
         }
     }
@@ -147,7 +165,7 @@ public static class ClipControlsProject
         {
             Require(entry.ValueKind == JsonValueKind.Object);
             var keys = entry.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
-            keys.Remove("reframe"); keys.Remove("coverSeconds"); keys.Remove("coverTitle"); keys.Remove("colorAdjustments");
+            keys.Remove("reframe"); keys.Remove("coverSeconds"); keys.Remove("coverTitle"); keys.Remove("colorAdjustments"); keys.Remove("colorGrade");
             Require(keys.SetEquals("clipId speed shape look gainDb fadeInSeconds fadeOutSeconds muteSource flipHorizontal rotationDegrees".Split(' ')));
             if (entry.TryGetProperty("reframe", out var reframe))
             {
@@ -159,6 +177,7 @@ public static class ClipControlsProject
             if (entry.TryGetProperty("coverSeconds", out var cover)) Number(cover);
             if (entry.TryGetProperty("coverTitle", out var title)) Require(title.ValueKind == JsonValueKind.String);
             if (entry.TryGetProperty("colorAdjustments", out var adjustments)) ReadColorAdjustments(adjustments);
+            if (entry.TryGetProperty("colorGrade", out var grade)) Require(ClipColorGrade.Read(grade, look: false) is not null);
             Require(entry.GetProperty("clipId").ValueKind == JsonValueKind.String && entry.GetProperty("look").ValueKind == JsonValueKind.String);
             Require(entry.GetProperty("shape").ValueKind is JsonValueKind.String or JsonValueKind.Null);
             foreach (var key in new[] { "speed", "gainDb", "fadeInSeconds", "fadeOutSeconds" }) Number(entry.GetProperty(key));
@@ -188,15 +207,29 @@ public static class ClipControlsProject
         }
     }
 
-    /// <summary>Stores controls for their clip, removing the entry at the defaults; the first entry promotes to v4.</summary>
+    /// <summary>Stores controls for their clip, removing the entry at the defaults; the first entry promotes to v4, and the first
+    /// colour grade to v8 (<see cref="ProjectSerialization.RequiredVersion"/>). A neutral grade is not stored.</summary>
     public static Project Setting(ProjectClipControls controls, Project project)
     {
         Require(project.Edits.Clips.Any(clip => clip.Id == controls.ClipId));
+        if (controls.ColorGrade is { IsNeutral: true }) controls = controls with { ColorGrade = null };
         var kept = project.ClipControls.Where(entry => entry.ClipId != controls.ClipId).ToList();
         var result = project with { ClipControls = kept };
         if (!controls.IsDefault) result = ContextDemoProject.UpgradeToV4(result) with { ClipControls = kept.Append(controls).ToArray() };
+        result = ProjectSerialization.Framed(result);
         Validate(result);
         return result;
+    }
+
+    /// <summary>The project with one clip's colour set to a look from the library (looks spec §9.6): its base, adjustments and
+    /// grade, expanded, with its preset and <paramref name="amount"/>, as one change (<see cref="ProjectClipControls.WithLook"/>).
+    /// <paramref name="fix"/> replaces the clip's Fix (Auto's measurement); null keeps it. The other controls are kept. An ID the
+    /// library doesn't have is refused. Twin of the Mac <c>settingLookPreset</c>.</summary>
+    public static Project SettingLookPreset(string id, int amount, ClipColorFix? fix, string clipId, Project project, ClipLookLibrary looks)
+    {
+        var look = looks.Look(id) ?? throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "That look isn't available in this version of VoxClip.");
+        Require(project.Edits.Clips.Any(clip => clip.Id == clipId));
+        return Setting(Controls(clipId, project)!.WithLook(look, amount, fix), project);
     }
 
     /// <summary>The clip's controls, its defaults when none are stored; null for no clip.</summary>
