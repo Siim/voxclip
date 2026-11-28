@@ -323,8 +323,42 @@ extension WorkspaceShell {
     var body: some View {
         // The tab's name follows the scope and the clips' numbering, which only these make observable.
         let scope = model.renderedActiveClipID, _ = model.projectRevision
-        let look = lookInTitle ? model.lookPanel : nil
-        let context = job == .export ? model.exportJobContext : look.map { "\(model.scopeName(scope)) \u{00B7} \($0.lookValue)" } ?? model.scopeName(scope)
+        let context = job == .export ? model.exportJobContext : model.scopeName(scope)
+        if lookInTitle, let look = model.lookPanel { lookRow(look, context: context) } else { row(context) }
+    }
+
+    /// Picture in a short body (mockup frame 5): "Picture ▾ · Warm Print, edited · 70%" and Compare. The switcher folds into
+    /// the job's menu so the look's name keeps its room.
+    private func lookRow(_ look: ClipLookPanel, context: String) -> some View {
+        let jobs = PanelJob.available(in: model)
+        return HStack(spacing: 7) {
+            Menu {
+                ForEach(jobs, id: \.self) { item in
+                    Button { shell.choosePanelJob(item, for: model) } label: {
+                        Label(item.title, systemImage: item == job ? "checkmark" : item.symbol)
+                    }
+                }
+            } label: {
+                Text(job.title).font(VCType.body.font(.semibold)).foregroundStyle(DesignValues.color("text.primary"))
+            }
+            .menuStyle(.borderlessButton).fixedSize()
+            .help("Panels")
+            .accessibilityLabel("Panel, \(job.title)")
+            .accessibilityIdentifier("voxclip.panel.title")
+            .columnLayoutEvidence("panel.title", text: job.title)
+            Text("\u{00B7} \(look.lookValue)").font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                .lineLimit(1).truncationMode(.tail)
+                .layoutPriority(1)
+                .accessibilityLabel("\(context), look \(look.lookValue)")
+                .accessibilityIdentifier("voxclip.panel.context")
+                .columnLayoutEvidence("panel.context", text: look.lookValue)
+            Spacer(minLength: 4)
+            ClipLookCompareButton(model: model, panel: look, iconOnly: true)
+        }
+        .modifier(PanelHeaderChrome())
+    }
+
+    private func row(_ context: String) -> some View {
         HStack(spacing: 7) {
             if job != .music && job != .picture {
                 Text(job.title).font(VCType.body.font(.semibold)).foregroundStyle(DesignValues.color("text.primary"))
@@ -346,21 +380,11 @@ extension WorkspaceShell {
                     .accessibilityIdentifier("voxclip.panel.speed")
             }
             Spacer(minLength: 4)
-            if let look { ClipLookCompareButton(model: model, panel: look, iconOnly: true) }
             switcher(PanelJob.available(in: model))
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel("Panel")
         }
-        .padding(.leading, 14).padding(.trailing, 6)
-        .frame(height: PanelHost.headerHeight - 2)
-        .padding(.vertical, 1)
-        .frame(maxWidth: .infinity)
-        .background(DesignValues.color("bg.window"))
-        .overlay(alignment: .top) { Rectangle().fill(DesignValues.color("line.default")).frame(height: 1) }
-        .overlay(alignment: .bottom) { Rectangle().fill(DesignValues.color("line.default")).frame(height: 1) }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("voxclip.panel.header")
-        .columnLayoutEvidence("panel.header")
+        .modifier(PanelHeaderChrome())
     }
 
     @ViewBuilder private func switcher(_ jobs: [PanelJob]) -> some View {
@@ -423,5 +447,22 @@ extension WorkspaceShell {
         .accessibilityAddTraits(selected ? [.isSelected] : [])
         .accessibilityIdentifier("voxclip.panel.job.\(job.rawValue)")
         .columnLayoutEvidence("panel.job.\(job.rawValue)")
+    }
+}
+
+/// The panel header's 30 pt row: its padding, hairlines above and below, and its accessibility container.
+private struct PanelHeaderChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.leading, 14).padding(.trailing, 6)
+            .frame(height: PanelHost.headerHeight - 2)
+            .padding(.vertical, 1)
+            .frame(maxWidth: .infinity)
+            .background(DesignValues.color("bg.window"))
+            .overlay(alignment: .top) { Rectangle().fill(DesignValues.color("line.default")).frame(height: 1) }
+            .overlay(alignment: .bottom) { Rectangle().fill(DesignValues.color("line.default")).frame(height: 1) }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("voxclip.panel.header")
+            .columnLayoutEvidence("panel.header")
     }
 }

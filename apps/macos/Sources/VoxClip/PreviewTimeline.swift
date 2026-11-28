@@ -185,6 +185,8 @@ enum ViewerTag: Equatable {
         .columnLayoutEvidence("viewer.box")
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
+        // Playback starting ends a look's preview; Compare pauses it instead.
+        .onChange(of: model.isPlaying) { if model.isPlaying, !model.looks.comparing { model.endLookPreview() } }
         .animation(reduceMotion ? nil : .easeOut(duration: Double(VCTokens.motionDurationBase) / 1000), value: transport)
         .focusable()
         .focused($focus, equals: .box)
@@ -200,6 +202,13 @@ enum ViewerTag: Equatable {
             if !standIn, let native = model.nativePreview {
                 PlayerSurface(player: native.player, onDisplayStall: { Task { await model.previewDisplayStalled() } })
             } else { ViewerStandIn(model: model) }
+            if let look = model.looks.preview {
+                // A look's preview, Compare or a drag (looks spec §3.4): the export's frame with that colour over the paused player.
+                Image(decorative: look.image, scale: 1).resizable().interpolation(.high)
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(false)
+                    .columnLayoutEvidence("viewer.look", text: look.badge)
+            }
             if model.canMoveCaptions, let style = model.app.styles.first(where: { $0.id == model.activeCaptions.styleId }), style.position.userDraggable {
                 CaptionPositionOverlay(model: model, style: style, dragging: $captionDragging)
             }
@@ -211,7 +220,13 @@ enum ViewerTag: Equatable {
             }
         }
         .overlay(alignment: .topLeading) {
-            if let tag = Self.tag(for: model, standIn: standIn) {
+            if let badge = model.looks.preview?.badge {
+                MediaChip(text: badge)
+                    .columnLayoutEvidence("viewer.look.badge", text: badge)
+                    .accessibilityIdentifier("voxclip.viewer.look")
+                    .padding(10)
+                    .allowsHitTesting(false)
+            } else if let tag = Self.tag(for: model, standIn: standIn) {
                 MediaChip(text: tag.text, icon: tag == .aiVoice ? "waveform" : nil, tint: tag == .aiVoice ? DesignValues.color("ai.tint") : nil)
                     .columnLayoutEvidence("viewer.tag")
                     .accessibilityIdentifier("voxclip.viewer.tag")

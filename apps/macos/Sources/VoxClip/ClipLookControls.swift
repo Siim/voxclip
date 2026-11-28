@@ -57,7 +57,7 @@ import VoxClipCore
         } label: {
             Text("All looks and Fine-tune in Picture \u{203A}").font(VCType.callout.font())
         }
-        .buttonStyle(.link)
+        .buttonStyle(ClipLookLinkStyle())
         .help("Show every look and the Fine-tune sliders in the Picture panel")
         .accessibilityLabel("Show all looks and Fine-tune in Picture")
         .accessibilityIdentifier("voxclip.clip.look.picture")
@@ -73,6 +73,7 @@ import VoxClipCore
         Text(text).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier(identifier ?? "voxclip.picture.reason")
+            .columnLayoutEvidence((identifier ?? "voxclip.picture.reason").replacingOccurrences(of: "voxclip.", with: ""), text: text)
     }
 }
 
@@ -89,9 +90,10 @@ import VoxClipCore
             Text(text).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("voxclip.picture.claude")
+                .columnLayoutEvidence("picture.claude", text: text)
             if useIt {
                 Button("Use it") { model.useClaudesLook() }
-                    .buttonStyle(.link).font(VCType.small.font())
+                    .buttonStyle(ClipLookLinkStyle()).font(VCType.small.font())
                     .disabled(editReason != nil)
                     .help(editReason ?? "Use the look Claude chose for this clip")
                     .accessibilityIdentifier("voxclip.picture.claude.use")
@@ -231,7 +233,7 @@ import VoxClipCore
         Slider(value: Binding(get: { Double(value) }, set: { next in
             let point = Int(next.rounded())
             if dragging { if draft != point { draft = point; preview(point) } } else { commit(point) }
-        }), in: Double(range.lowerBound)...Double(range.upperBound), step: 1) { editing in
+        }), in: Double(range.lowerBound)...Double(range.upperBound)) { editing in
             dragging = editing
             if !editing {
                 if let draft { commit(draft) }
@@ -239,7 +241,7 @@ import VoxClipCore
             }
         }
         .controlSize(.mini)
-        .overlay { if let tick { tickMark(tick) } }
+        .background { if let tick { tickMark(tick) } }
         .simultaneousGesture(TapGesture(count: 2).onEnded { reset() })
         .onKeyPress(keys: [.leftArrow, .rightArrow, .delete, .deleteForward]) { press in
             switch press.key {
@@ -323,6 +325,7 @@ import VoxClipCore
                 Text(note).font(VCType.small.font()).foregroundStyle(DesignValues.color("status.warning"))
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("voxclip.picture.sample")
+                    .columnLayoutEvidence("picture.sample", text: note)
             }
             ClipLookCategories(model: model, panel: panel)
             ClipLookTileGrid(model: model, panel: panel, looks: looks, oneRow: nil, editReason: editReason)
@@ -574,15 +577,17 @@ import VoxClipCore
                 .accessibilityLabel("Fine-tune")
                 .accessibilityValue(open ? "expanded" : "collapsed")
                 .accessibilityIdentifier("voxclip.picture.finetune")
+                .columnLayoutEvidence("picture.finetune")
                 Spacer(minLength: 0)
                 if let label = panel.backToLabel {
                     let reason = editReason ?? panel.backToReason
                     Button(label) { model.backToLook() }
-                        .buttonStyle(.link).font(VCType.callout.font())
+                        .buttonStyle(ClipLookLinkStyle()).font(VCType.callout.font())
                         .disabled(reason != nil)
                         .help(reason ?? "Every value but the fix back to the look's; Amount stays")
                         .accessibilityHint(reason ?? "")
                         .accessibilityIdentifier("voxclip.picture.backto")
+                        .columnLayoutEvidence("picture.backto", text: reason ?? label)
                 }
             }
             if open { groups }
@@ -596,11 +601,12 @@ import VoxClipCore
         let clearReason = editReason ?? panel.clearReason
         HStack(spacing: VCTokens.spacingLabelGap) {
             Button("Clear all color") { model.clearColor() }
-                .buttonStyle(.link).font(VCType.callout.font())
+                .buttonStyle(ClipLookLinkStyle()).font(VCType.callout.font())
                 .disabled(clearReason != nil)
                 .help(clearReason ?? "The look, the fine-tuning and the fix, all removed")
                 .accessibilityHint(clearReason ?? "Removes the fix too")
                 .accessibilityIdentifier("voxclip.picture.clear")
+                .columnLayoutEvidence("picture.clear", text: clearReason ?? "Clear all color")
             Spacer(minLength: 0)
             Text(panel.clearReason ?? "removes the Fix too").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
         }
@@ -645,21 +651,23 @@ import VoxClipCore
             if group == .fix {
                 let reason = editReason ?? model.autoReason(panel)
                 Button("Auto") { model.fixLightAndColor() }
-                    .buttonStyle(.link).font(VCType.small.font())
+                    .buttonStyle(ClipLookLinkStyle()).font(VCType.small.font())
                     .disabled(reason != nil)
                     .help(reason ?? "Set exposure, temperature and tint from the clip's frames, measured on this Mac")
                     .accessibilityLabel("Auto fix light and color")
                     .accessibilityHint(reason ?? "")
                     .accessibilityIdentifier("voxclip.picture.auto")
+                    .columnLayoutEvidence("picture.auto", text: reason ?? "Auto")
             }
             let reason = editReason ?? panel.resetReason(group)
             Button("Reset") { model.resetLookGroup(group) }
-                .buttonStyle(.link).font(VCType.small.font())
+                .buttonStyle(ClipLookLinkStyle()).font(VCType.small.font())
                 .disabled(reason != nil)
                 .help(reason ?? (group == .fix ? "The fix back to 0" : "\(group.title) back to the look's values"))
                 .accessibilityLabel(group.resetName.capitalizedFirst)
                 .accessibilityHint(reason ?? "")
                 .accessibilityIdentifier("voxclip.picture.reset.\(group.rawValue)")
+                .columnLayoutEvidence("picture.reset.\(group.rawValue)", text: reason ?? "Reset")
         }
         .frame(height: 22)
     }
@@ -670,7 +678,7 @@ import VoxClipCore
                 .accessibilityIdentifier("voxclip.picture.toning")
             Spacer(minLength: 0)
             Button("Remove") { model.removeLookToning() }
-                .buttonStyle(.link).font(VCType.small.font())
+                .buttonStyle(ClipLookLinkStyle()).font(VCType.small.font())
                 .disabled(editReason != nil)
                 .help(editReason ?? "Remove the look's curve and split tone")
                 .accessibilityLabel("Remove toning")
@@ -742,9 +750,9 @@ import VoxClipCore
                 Button { model.seek(source: effect.start); if !model.isPlaying { model.transport(" ") } } label: {
                     Image(systemName: "play.fill").font(.system(size: 9))
                 }
-                .buttonStyle(.link).accessibilityLabel("Play the timed look")
+                .buttonStyle(ClipLookLinkStyle()).accessibilityLabel("Play the timed look")
                 Button("Remove") { model.removeTimedLook(effect.id) }
-                    .buttonStyle(.link).font(VCType.small.font())
+                    .buttonStyle(ClipLookLinkStyle()).font(VCType.small.font())
                     .disabled(model.lookEditReason != nil)
                     .accessibilityLabel("Remove the timed look")
             }
@@ -763,5 +771,16 @@ extension EditorModel {
         replace(next, name: "Remove timed look")
         announce("Timed look removed")
         return true
+    }
+}
+
+/// The panel's text actions: accent while they act, text.disabled while disabled (the system link style stays blue).
+struct ClipLookLinkStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(enabled ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(DesignValues.color("text.disabled")))
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .contentShape(.rect)
     }
 }
