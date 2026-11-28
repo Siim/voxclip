@@ -101,9 +101,11 @@ enum ProjectValidation {
             }
         }
         let edits = try object(root["edits"], required: "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId", optional: isV8 ? "cutEdges" : "", at: "edits")
-        for (id, seconds) in try edits["cutEdges"].map({ try map($0, at: "edits/cutEdges") }) ?? [:] {
-            guard case .number(let value) = seconds, value.isFinite, value >= 0 else { try fail("expected seconds", at: "edits/cutEdges") }
-            try text(id, pattern: idPattern, at: "edits/cutEdges")
+        if let cutEdges = edits["cutEdges"] {
+            for (id, seconds) in try map(cutEdges, at: "edits/cutEdges") {
+                guard case .number(let value) = seconds, value.isFinite, value >= 0 else { try fail("expected seconds", at: "edits/cutEdges") }
+                try text(id, pattern: idPattern, at: "edits/cutEdges")
+            }
         }
         for (index, clip) in try array(edits["clips"], at: "edits/clips").enumerated() {
             let path = "edits/clips/\(index)"
