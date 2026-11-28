@@ -1,5 +1,10 @@
 # Shared prompts
 
+`agent-chat.json` v1 defines the `agent_step` reply and the rules and request
+sections for an in-process turn. The reply carries up to six calls; each call's
+arguments are validated against the named harness tool before it runs. A paid
+action is only an offer, never an instruction to a provider.
+
 `voice-rewrite-fit.json` (`schemaVersion: 1`, `promptVersion: 1`) is the bounded,
 review-only wording-fit prompt. It contains longer/shorter and measured feedback
 templates and a strict `{phrases: [{ordinal, action, text}]}` schema. Only
