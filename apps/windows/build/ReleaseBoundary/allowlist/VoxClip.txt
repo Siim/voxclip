@@ -1114,6 +1114,7 @@ member VoxClip.App.Controls.TimelineView :: field private edited
 member VoxClip.App.Controls.TimelineView :: field private elapsed
 member VoxClip.App.Controls.TimelineView :: field private endHandle
 member VoxClip.App.Controls.TimelineView :: field private envelope
+member VoxClip.App.Controls.TimelineView :: field private extendPending
 member VoxClip.App.Controls.TimelineView :: field private fallbackDucking
 member VoxClip.App.Controls.TimelineView :: field private filmstrip
 member VoxClip.App.Controls.TimelineView :: field private filmstripRequest
