@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Windows now renders the new looks in preview and export as the Mac does: the Fix, Highlights and Shadows, Vibrance, the looks' curves, toning and Fade, Amount, the vignette and grain.
 - Mac and Windows now open and keep projects that use the new looks, their Amount and the new color adjustments (saved as project version 8, which older builds can't open), and Make it postable calls the original look As filmed on both.
 - Cutting one word out of fluent speech now ends the cut in the quiet between words, so you no longer hear part of the cut word or lose the start of the next one; word times, captions and paid voice stay as they are.
 - On Mac, older cuts can move into the quiet with one click: the timeline's edit bar offers Fix cut edges (also Edit ▸ Fix Cut Edges), and a selected cut can go back to its word edge or into the quiet again.
