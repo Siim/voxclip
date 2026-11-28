@@ -301,15 +301,34 @@ public sealed class PicturePanelTests
         Assert.False(picture.PreviewLook("goldenHour"));
         Assert.Null(picture.Preview);
         picture.SetPlaying(false);
+        editor.SetMediaUnavailable(true);
         picture.SetStillState(PictureStillState.Offline);
         Assert.Equal("Previews need the source video. Looks still apply when it's back.", picture.PreviewNote);
         Assert.Equal(picture.PreviewNote, picture.CompareReason);
         Assert.False(picture.PreviewLook("goldenHour"));
+        editor.SetMediaUnavailable(false);
         picture.SetStillState(PictureStillState.Unreadable);
         Assert.Equal("Showing looks on a sample picture: this frame couldn't be read.", picture.PreviewNote);
         Assert.Null(picture.CompareReason);
         Assert.Equal(["Change look amount", "Change look", "Change exposure"], Undos(editor));
         Assert.True(changes >= 6);
+    }
+
+    /// <summary>A frame read while the source was offline leaves Offline behind; once the video is relinked, hover, Compare and the
+    /// note follow the editor at once, before the tiles read the frame again.</summary>
+    [Fact]
+    public void PreviewsComeBackWhenTheVideoIsRelinked()
+    {
+        var (editor, picture, _) = Open();
+        picture.Apply("warmPrint");
+        editor.SetMediaUnavailable(true);
+        picture.SetStillState(PictureStillState.Offline);
+        Assert.Equal("Previews need the source video. Looks still apply when it's back.", picture.HoverReason);
+        editor.SetMediaUnavailable(false);
+        Assert.Equal(PictureStillState.Offline, picture.StillState);
+        Assert.Equal((null, null, null), (picture.PreviewNote, picture.CompareReason, picture.HoverReason));
+        Assert.True(picture.PreviewLook("goldenHour"));
+        Assert.True(picture.BeginCompare());
     }
 
     [Fact]

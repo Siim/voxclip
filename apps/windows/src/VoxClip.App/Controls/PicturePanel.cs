@@ -114,6 +114,7 @@ internal sealed class PicturePanel : Grid
         Model.Changed += ModelChanged;
         Model.Announced += Announced;
         editor.Changed += ModelChanged;
+        editor.PropertyChanged += EditorPropertyChanged;
         Ui.EffectsChanged += EffectsChanged;
         LosingFocus += (_, args) => { if (args.NewFocusedElement is not DependencyObject next || !InputState.DescendsFrom(next, this)) EndCompareForFocus(); };
         Loaded += (_, _) => { shown = true; Model.Opened(); Render(); _ = RefreshThumbnailsAsync(); };
@@ -380,6 +381,12 @@ internal sealed class PicturePanel : Grid
     {
         if (DispatcherQueue.HasThreadAccess) Render();
         else DispatcherQueue.TryEnqueue(Render);
+    }
+
+    /// <summary>The source went offline or was relinked: the reasons change and the tiles read the frame again.</summary>
+    private void EditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName == nameof(EditorViewModel.IsReadOnly)) ModelChanged(sender, args);
     }
 
     private void EffectsChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(() => { tilesKey = ""; Render(); });
@@ -698,7 +705,8 @@ internal sealed class PicturePanel : Grid
     {
         var controls = model.Controls;
         var framing = controls is null ? "" : (new ClipColorState().Applied(controls) with { ColorGrade = controls.ColorGrade?.Fix is { IsNeutral: false } fix ? ClipColorGrade.Neutral.WithFix(fix) : null }).GetHashCode().ToString(System.Globalization.CultureInfo.InvariantCulture);
-        return model.ClipId + "|" + framing + "|" + edge.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + model.StillState;
+        // The source going offline or coming back reads the frame again (the test card, or the relinked video).
+        return model.ClipId + "|" + framing + "|" + edge.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + editor.IsReadOnly;
     }
 
     private async Task RefreshThumbnailsAsync()

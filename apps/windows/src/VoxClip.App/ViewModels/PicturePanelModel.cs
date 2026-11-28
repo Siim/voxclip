@@ -233,9 +233,10 @@ public sealed class PicturePanelModel(EditorViewModel editor)
 
     // MARK: Compare and previews
 
-    /// <summary>Why the viewer can't preview here; null when it can.</summary>
+    /// <summary>Why the viewer can't preview here; null when it can. It follows the editor's source, so a frame read while the video was
+    /// offline stops blocking the moment it is relinked, before the tiles read the frame again.</summary>
     private string? PreviewBlocked => ClipId is null || !IsAvailable ? Blocked
-        : editor.IsReadOnly || StillState == PictureStillState.Offline ? "Previews need the source video. Looks still apply when it's back." : null;
+        : editor.IsReadOnly ? "Previews need the source video. Looks still apply when it's back." : null;
 
     /// <summary>The line above the grid when previews can't use this frame (looks spec §7.7); null otherwise.</summary>
     public string? PreviewNote => PreviewBlocked is { } blocked && ClipId is not null && IsAvailable ? blocked
