@@ -203,30 +203,44 @@ extension EditorModel {
 }
 
 /// The edit bar's cut edge row (editing §5.10, design.md "Manual cuts and trims on Mac"): its line, then its inline
-/// action, disabled with the reason beside it. No sheet, no confirmation; the action is one undo step.
+/// action, disabled with the reason beside it. No sheet, no confirmation; the action is one undo step. In a narrow bar
+/// (beside the range actions) only the action stays, and its help and VoiceOver label carry the line and the reason.
 @MainActor struct TimelineCutEdgeRow: View {
     let model: EditorModel
     let row: CutEdgeBarRow
     var body: some View {
-        HStack(spacing: 6) {
-            Text(row.text).foregroundStyle(.secondary).lineLimit(1).fixedSize()
-            if let action = row.action {
-                Text("·").foregroundStyle(.tertiary).accessibilityHidden(true)
-                Button(action) { model.runCutEdgeBarAction() }
-                    .fixedSize()
-                    .disabled(row.reason != nil || !model.capabilities.edit)
-                    .help(row.reason ?? help(action))
-                    .accessibilityIdentifier("voxclip.timeline.cutEdges.action")
-                    .columnLayoutEvidence("timeline.cutEdges.action")
-                if let reason = row.reason {
-                    // The reason gives way first in a narrow bar; its help keeps the whole of it.
-                    Text(reason).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail).layoutPriority(-1)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                Text(row.text).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                if let action = row.action {
+                    Text("·").foregroundStyle(.tertiary).accessibilityHidden(true)
+                    button(action, help: row.reason ?? help(action), label: action)
+                    if let reason = row.reason {
+                        // The reason gives way first in a narrow bar; its help keeps the whole of it.
+                        Text(reason).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail).layoutPriority(-1)
+                    }
                 }
+            }
+            if let action = row.action {
+                button(action, help: [row.text, row.reason ?? help(action)].joined(separator: ". "),
+                       label: [row.text, action, row.reason].compactMap { $0 }.joined(separator: ", "))
+            } else {
+                Text(row.text).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("voxclip.timeline.cutEdges")
         .columnLayoutEvidence("timeline.cutEdges")
+    }
+
+    private func button(_ action: String, help: String, label: String) -> some View {
+        Button(action) { model.runCutEdgeBarAction() }
+            .fixedSize()
+            .disabled(row.reason != nil || !model.capabilities.edit)
+            .help(help)
+            .accessibilityLabel(label)
+            .accessibilityIdentifier("voxclip.timeline.cutEdges.action")
+            .columnLayoutEvidence("timeline.cutEdges.action")
     }
 
     private func help(_ action: String) -> String {
