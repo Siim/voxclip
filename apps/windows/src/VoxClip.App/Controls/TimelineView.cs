@@ -77,6 +77,7 @@ public sealed partial class TimelineView : UserControl
     private bool Edited => edited;
     private TimelineStory? story;
     private readonly Canvas storyOverview = new() { IsHitTestVisible = false };
+    private readonly Canvas recordingOverview = new() { IsHitTestVisible = false };
     private readonly Canvas storyLane = new() { IsHitTestVisible = false };
     private double frameWidth;
     private string transportLength = "";
@@ -164,7 +165,9 @@ public sealed partial class TimelineView : UserControl
     private string shownClockFrames = "";
     private string shownSourceElapsed = "";
     private string shownSourceFrames = "";
-    public double PreferredPanelHeight => TimelineLayout.ToolbarHeight + metrics.Height + itemBarHeight;
+    public double PreferredPanelHeight => TimelineLayout.ToolbarHeight + metrics.Height + itemBarHeight + RecordingOverviewHeight;
+    private double RecordingOverviewHeight => (story?.RecordingOverview.Count ?? 0) * 18;
+    private double SourceDuration => model?.ProjectClockDuration ?? 1;
     public event EventHandler<double>? PreferredPanelHeightChanged;
     public int TrackSize { get => Math.Max(0, heightPicker.SelectedIndex); set => heightPicker.SelectedIndex = Math.Clamp(value, 0, 2); }
     public event EventHandler<int>? TrackSizeChanged;
@@ -187,7 +190,7 @@ public sealed partial class TimelineView : UserControl
         }
     }
     private double AxisDuration => story is not null ? Math.Max(.001, story.Duration(Edited)) :
-        model is null ? 1 : Edited && plan is not null ? plan.Duration : model.Project.Media.Source.DurationSeconds;
+        model is null ? 1 : Edited && plan is not null ? plan.Duration : SourceDuration;
 
     public TimelineView()
     {
@@ -210,6 +213,7 @@ public sealed partial class TimelineView : UserControl
         var layout = new Grid();
         layout.RowDefinitions.Add(new() { Height = new(TimelineLayout.ToolbarHeight) });
         layout.RowDefinitions.Add(new());
+        layout.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var toolbar = new Grid { ColumnSpacing = 8, Padding = new(8, 0, 8, 0) };
         toolbar.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         toolbar.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
@@ -231,7 +235,7 @@ public sealed partial class TimelineView : UserControl
         time.Inlines.Add(clockPrefix); time.Inlines.Add(elapsed); time.Inlines.Add(clockFrames); time.Inlines.Add(total);
         sourceClock.FontFamily = time.FontFamily; sourceClock.Inlines.Add(sourceElapsed); sourceClock.Inlines.Add(sourceFrames);
         var previous = Command("⏮", "Go to In", () => { if (ClipBounds() is { } bounds) Seek(bounds.Start); else Seek(0); });
-        var next = Command("⏭", "Go to Out", () => Seek(ClipBounds()?.End ?? model?.Project.Media.Source.DurationSeconds ?? 0));
+        var next = Command("⏭", "Go to Out", () => Seek(ClipBounds()?.End ?? SourceDuration));
         transport.Children.Add(previous); transport.Children.Add(play); transport.Children.Add(next); transport.Children.Add(time);
         transport.Children.Add(sourceClock); transport.Children.Add(selectionLength);
         Grid.SetColumn(mode, 1); toolbar.Children.Add(mode);
@@ -297,6 +301,8 @@ public sealed partial class TimelineView : UserControl
         track.Children.Add(canvas); track.Children.Add(slider); track.Children.Add(overview); track.Children.Add(scrollRange); track.Children.Add(handles); track.Children.Add(stateMessage);
         handles.Children.Add(startHandle); handles.Children.Add(endHandle);
         InitializeItemEditing(layout);
+        Grid.SetRow(recordingOverview, layout.RowDefinitions.Count - 1);
+        layout.Children.Add(recordingOverview);
         Content = layout;
         for (var index = 0; index < headerNames.Length; index++)
         {
@@ -402,6 +408,13 @@ public sealed partial class TimelineView : UserControl
         ToolTipService.SetToolTip(play, PlaybackPresentation.Hint(playing));
     }
     internal void SetWaveform(IReadOnlyList<float> levels) => LoadWaveform(levels, .05);
+    private IReadOnlyDictionary<string, MediaReference>? recordingMedia;
+    internal void SetRecordingMedia(IReadOnlyDictionary<string, MediaReference>? files)
+    {
+        recordingMedia = files;
+        ClearFilmstrip();
+        Draw();
+    }
     public void SetAudioEnvelope(AudioEnvelope? value) => LoadWaveform(value?.Rms ?? [], value?.FrameSeconds ?? .01);
     private async void LoadWaveform(IReadOnlyList<float> levels, double frameSeconds)
     {
@@ -533,7 +546,7 @@ public sealed partial class TimelineView : UserControl
             showCuts.Content = story is null ? "Source" : "Show cuts";
         viewport.Prepare(plan);
         var bounds = ClipBounds();
-        var source = TimelineLayout.Window(model.Project.Media.Source.DurationSeconds, bounds?.Start, bounds?.End);
+        var source = TimelineLayout.Window(SourceDuration, bounds?.Start, bounds?.End);
         var next = story is not null ? new(0, AxisDuration) : new TimelineWindow(ToDisplay(source.Start), ToDisplay(source.End));
         var changedScope = scope != model.State?.ActiveClipId || wasStory != (story is not null);
         scope = model.State?.ActiveClipId;
@@ -561,7 +574,7 @@ public sealed partial class TimelineView : UserControl
     private void Seek(double source)
     {
         if (model is null || renderingBlocked || model.IsReadOnly || !double.IsFinite(source)) return;
-        source = Math.Clamp(source, 0, model.Project.Media.Source.DurationSeconds);
+        source = model.ClampProjectTime(source);
         model.SourceTime = source;
         Position(source);
         SeekRequested?.Invoke(this, source);
@@ -872,22 +885,35 @@ public sealed partial class TimelineView : UserControl
     }
     private void DrawStory(double width)
     {
-        storyLane.Children.Clear(); storyOverview.Children.Clear();
+        storyLane.Children.Clear(); storyOverview.Children.Clear(); recordingOverview.Children.Clear();
+        recordingOverview.Height = RecordingOverviewHeight;
         if (story is null || model is null)
         {
             AutomationProperties.SetHelpText(slider, "");
+            DrawRecordingSource(width);
             return;
         }
-        var take = Math.Max(.001, model.Project.Media.Source.DurationSeconds);
+        var take = Math.Max(.001, SourceDuration);
+        var multiRecording = model.StoryRecordingRegions.Count > 1;
         var height = metrics.AudioHeight;
         foreach (var band in story.Bands(Edited))
         {
             var left = Math.Clamp(rendered.X(band.Range.Start, width), 0, width);
             var right = Math.Clamp(rendered.X(band.Range.End, width), 0, width);
             if (right <= left) continue;
-            var brush = StoryPartStyle.Brush(this, band.Part.Number);
+            var brush = multiRecording && band.Part.Recording is { } region
+                ? RecordingStyle.Brush(this, region, band.Part.RecordingShade) : StoryPartStyle.Brush(this, band.Part.Number);
             Paint(storyLane, brush, left, metrics.AudioTop, right - left, height, .14);
             Paint(storyLane, brush, left, metrics.AudioTop, right - left, 2, 1);
+            if (multiRecording && band.Part.Recording is { } recording)
+            {
+                Paint(storyLane, brush, left, metrics.VideoTop, right - left, 3, 1);
+                storyLane.Children.Add(StoryLabel($"{recording.Label} · {band.Part.LocalTime(band.Part.Start)}",
+                    left + 4, metrics.VideoTop + 5, Math.Max(0, right - left - 4)));
+                if (recording.GainDb != 0)
+                    storyLane.Children.Add(StoryLabel(FormattableString.Invariant($"{(recording.GainDb < 0 ? "−" : "+")}{Math.Abs(recording.GainDb):0.0} dB"),
+                        left + 4, metrics.AudioTop + 15, Math.Max(0, right - left - 4)));
+            }
             if (right - left >= 22)
             {
                 var label = StoryLabel(right - left >= 75 ? $"{band.Part.Number} · {EditorViewModel.Duration(band.Part.Start)}" : $"{band.Part.Number}",
@@ -902,24 +928,68 @@ public sealed partial class TimelineView : UserControl
             var left = rendered.X(seam.Position, width);
             if (left < 0 || left > width) continue;
             Paint(storyLane, Brush("VcTextPrimaryBrush"), left - seam.Width / 2.0, metrics.AudioTop, seam.Width, height, 1);
+            if (multiRecording) Paint(storyLane, Brush("VcTextPrimaryBrush"), left - seam.Width / 2.0, metrics.VideoTop, seam.Width, metrics.VideoHeight, 1);
             var label = StoryLabel(seam.Label, left + 3, metrics.AudioTop + height - 15, Math.Max(0, width - left - 3));
             AutomationProperties.SetName(label, seam.Description);
             storyLane.Children.Add(label);
         }
-        foreach (var position in story.Overview)
+        foreach (var position in story.RecordingOverview.Count == 0 ? story.Overview : [])
             Paint(storyOverview, StoryPartStyle.Brush(this, position.Part.Number), position.Range.Start / take * width, 7,
                 Math.Max(1, (position.Range.End - position.Range.Start) / take * width), 10, .9);
+        var rowIndex = 0;
+        foreach (var row in story.RecordingOverview)
+        {
+            var top = rowIndex++ * 18;
+            var laneStart = TimelineLayout.HeaderWidth;
+            var duration = Math.Max(.001, row.Duration);
+            recordingOverview.Children.Add(StoryLabel(row.Recording.Label, 8, top, laneStart - 8));
+            Paint(recordingOverview, Brush("VcLineStrongBrush"), laneStart, top + 12, width, 1, .5);
+            foreach (var band in row.Parts)
+            {
+                var left = laneStart + band.Range.Start / duration * width;
+                var length = Math.Max(1, (band.Range.End - band.Range.Start) / duration * width);
+                Paint(recordingOverview, RecordingStyle.Brush(this, row.Recording, band.Part.RecordingShade), left, top + 1, length, 11, .65);
+                recordingOverview.Children.Add(StoryLabel($"{band.Part.Number}", left + 2, top - 2, Math.Max(0, length - 2)));
+            }
+        }
         AutomationProperties.SetHelpText(slider,
             "Parts in play order. Take positions: " + string.Join(", ", story.Overview.Select(band => $"part {band.Part.Number}, {band.Part.TakeTime}")) +
             ". " + string.Join(". ", story.Seams(Edited).Select(seam => seam.Description)));
 
-        TextBlock StoryLabel(string text, double left, double top, double maxWidth)
+    }
+
+    private void DrawRecordingSource(double width)
+    {
+        if (Edited || model?.HasSeveralRecordings != true || model.RecordingClock is not { } clock) return;
+        double At(long sample) => Math.Clamp(rendered.X((double)sample / clock.SampleRate, width), 0, width);
+        foreach (var region in clock.Regions)
         {
-            var label = new TextBlock { Text = text, FontSize = 10, FontFamily = time.FontFamily, MaxWidth = maxWidth,
-                TextTrimming = TextTrimming.CharacterEllipsis, Foreground = Brush("VcTextPrimaryBrush") };
-            Canvas.SetLeft(label, left); Canvas.SetTop(label, top);
-            return label;
+            var left = At(region.OffsetSamples);
+            var right = At(region.EndSample);
+            if (right <= left) continue;
+            Paint(storyLane, RecordingStyle.Brush(this, region), left, metrics.VideoTop, right - left, 3, 1);
+            storyLane.Children.Add(StoryLabel(region.Label, left + 4, metrics.VideoTop + 5, Math.Max(0, right - left - 4)));
         }
+        foreach (var gap in clock.GuardGaps)
+        {
+            var left = At(gap.Start);
+            var right = At(gap.End);
+            if (right <= left) continue;
+            var height = metrics.AudioTop + metrics.AudioHeight - metrics.VideoTop;
+            for (var position = left; position < right; position += 5)
+                Paint(storyLane, Brush("VcLineStrongBrush"), position, metrics.VideoTop, Math.Min(2, right - position), height, .48);
+            var label = StoryLabel("Between recordings", left + 2, metrics.VideoTop + 5, Math.Max(0, right - left - 2));
+            ToolTipService.SetToolTip(label, "Between recordings");
+            storyLane.Children.Add(label);
+        }
+    }
+
+    private TextBlock StoryLabel(string text, double left, double top, double maxWidth)
+    {
+        var label = new TextBlock { Text = text, FontSize = 10, FontFamily = time.FontFamily, MaxWidth = maxWidth,
+            TextTrimming = TextTrimming.CharacterEllipsis, Foreground = Brush("VcTextPrimaryBrush") };
+        Canvas.SetLeft(label, left); Canvas.SetTop(label, top);
+        return label;
     }
     private static void Paint(Canvas canvas, Brush brush, double left, double top, double markWidth, double markHeight, double opacity)
     {
@@ -1061,12 +1131,26 @@ public sealed partial class TimelineView : UserControl
     {
         if (model is null) return;
         var source = model.Project.Media.Source;
+        var clock = model.State?.ProjectClock is { Regions.Count: > 1 } projectClock ? projectClock : null;
         var service = App.Services.Thumbnails;
         var count = TimelineFilmstrip.Fill(thumbnailSlots, tile.Pieces, rendered, width, Edited || story is not null ? TimelineAxis.Edited : TimelineAxis.Source);
+        var requests = new (MediaReference? Source, double Seconds, string? Key)[count];
+        for (var index = 0; index < count; index++)
+        {
+            var seconds = thumbnailSlots[index].SourceTime;
+            var reference = source;
+            if (clock is not null)
+            {
+                if (clock.LocalTime(seconds) is not { } local ||
+                    recordingMedia is null || !recordingMedia.TryGetValue(local.Key, out reference) || reference.Video is null) continue;
+                seconds = local.LocalSeconds;
+            }
+            requests[index] = (reference, seconds, service.TimelinePathFor(reference.ContentKey, seconds, reference.Video?.RotationDegrees ?? 0));
+        }
         var changed = false;
         for (var index = 0; index < thumbnails.Length; index++)
         {
-            var key = index < count ? service.TimelinePathFor(source.ContentKey, thumbnailSlots[index].SourceTime, source.Video?.RotationDegrees ?? 0) : null;
+            var key = index < count ? requests[index].Key : null;
             if (thumbnailKeys[index] != key) changed = true;
         }
         if (changed || filmstripRequest is null) { filmstripRequest?.Cancel(); filmstripRequest?.Dispose(); filmstripRequest = new(); }
@@ -1075,13 +1159,14 @@ public sealed partial class TimelineView : UserControl
         for (var index = 0; index < thumbnails.Length; index++)
         {
             var image = thumbnails[index];
-            var key = index < count ? service.TimelinePathFor(source.ContentKey, thumbnailSlots[index].SourceTime, source.Video?.RotationDegrees ?? 0) : null;
+            var item = index < count ? requests[index] : default;
+            var key = item.Key;
             if (thumbnailKeys[index] != key)
             {
                 image.Source = null; thumbnailLeases[index]?.Dispose(); thumbnailLeases[index] = null; thumbnailKeys[index] = key;
             }
-            if (key is not null && request is not null && thumbnailLeases[index] is null && !ReferenceEquals(thumbnailLoading[index], request))
-            { thumbnailLoading[index] = request; jobs.Add(LoadThumbnail(index, thumbnailSlots[index].SourceTime, key, source, service, request)); }
+            if (key is not null && item.Source is { } file && request is not null && thumbnailLeases[index] is null && !ReferenceEquals(thumbnailLoading[index], request))
+            { thumbnailLoading[index] = request; jobs.Add(LoadThumbnail(index, item.Seconds, key, file, service, request)); }
             image.Visibility = key is null ? Visibility.Collapsed : Visibility.Visible;
             if (index >= count) continue;
             Canvas.SetLeft(image, thumbnailSlots[index].X); image.Width = thumbnailSlots[index].Width; image.Height = Math.Max(0, metrics.VideoHeight - 11);
@@ -1100,7 +1185,7 @@ public sealed partial class TimelineView : UserControl
         {
             lease = await service.GetTimelineAsync(source.ContentKey, source.AbsolutePath, seconds, source.Video?.RotationDegrees ?? 0, request.Token);
             if (lease is null || disposed || request.IsCancellationRequested || !ReferenceEquals(filmstripRequest, request) ||
-                model?.Project.Media.Source != source || model.IsReadOnly || renderingBlocked || thumbnailKeys[index] != key || !IsLoaded) return;
+                model is null || model.IsReadOnly || renderingBlocked || thumbnailKeys[index] != key || !IsLoaded) return;
             var bitmap = new BitmapImage(new Uri(lease.Path));
             thumbnailLeases[index]?.Dispose(); thumbnailLeases[index] = lease; lease = null;
             thumbnails[index].Source = bitmap;
@@ -1196,7 +1281,7 @@ public sealed partial class TimelineView : UserControl
         SetClockRun(clockFrames, viewport.Frames(clock), ref shownClockFrames);
         SetClockRun(sourceElapsed, viewport.SourceClock(source), ref shownSourceElapsed);
         SetClockRun(sourceFrames, viewport.Frames(source), ref shownSourceFrames);
-        var overviewX = (story is not null ? source / Math.Max(.001, model!.Project.Media.Source.DurationSeconds) : ToDisplay(source) / Math.Max(.001, AxisDuration)) * frameWidth;
+        var overviewX = (story is not null ? source / Math.Max(.001, SourceDuration) : ToDisplay(source) / Math.Max(.001, AxisDuration)) * frameWidth;
         Canvas.SetLeft(overviewHead, Math.Clamp(overviewX, 0, Math.Max(0, frameWidth - 1.5)));
         for (var index = 0; index < overviewBadgeVisible.Length; index++)
             retained.Nodes[TimelineRetainedPool<object>.Layers + index].Visibility = overviewBadgeVisible[index] && Math.Abs(overviewBadgeLeft[index] + 9 - overviewX) > 14 ? Visibility.Visible : Visibility.Collapsed;

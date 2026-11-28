@@ -1,5 +1,6 @@
 using System.Globalization;
 using SkiaSharp;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Project;
 using VoxClip.Media.Thumbnails;
@@ -137,7 +138,8 @@ internal sealed class Thumbnails(string cacheRoot, Action<string>? warn = null, 
     public static IReadOnlyList<double> Candidates(Project project, string? clipId)
     {
         var duration = project.Media.Source.DurationSeconds;
-        var words = project.Transcript?.Words ?? [];
+        var clock = project.Media.SpokenSources is { Count: > 0 } ? ProjectClock.Build(project) : null;
+        var words = clock?.Words ?? project.Transcript?.Words ?? [];
         int IndexOf(string id) { for (var index = 0; index < words.Count; index++) if (words[index].Id == id) return index; return -1; }
         var (first, last) = (0, words.Count - 1);
         var range = clipId is null ? null : project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId);
@@ -151,7 +153,22 @@ internal sealed class Thumbnails(string cacheRoot, Action<string>? warn = null, 
         var end = scoped ? words[last].End : duration;
         var cut = project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal);
         var kept = words.Skip(first).Take(last - first + 1).FirstOrDefault(word => word.Kind == WordKind.Word && !cut.Contains(word.Id));
+        if (clock is not null && clock.RegionOf(kept?.Id ?? (scoped ? words[first].Id : "")) is { } recording)
+            duration = (double)recording.EndSample / clock.SampleRate;
         return PosterFrames.Candidates(kept?.Start ?? start, start, end - start, duration);
+    }
+
+    internal async Task<string?> GetProjectAsync(Project project, string? clipId, IReadOnlyDictionary<string, MediaReference> files, CancellationToken ct)
+    {
+        var clock = ProjectClock.Build(project);
+        var times = Candidates(project, clipId).Select(clock.LocalTime).Where(item => item.HasValue).Select(item => item.GetValueOrDefault());
+        foreach (var group in times.GroupBy(item => item.Key))
+        {
+            if (!files.TryGetValue(group.Key, out var source) || source.Video is not { } video) continue;
+            if (await GetAsync(group.Key, source.AbsolutePath, group.Select(item => item.LocalSeconds).ToArray(), video.RotationDegrees, ct) is { } found)
+                return found;
+        }
+        return null;
     }
 
     /// <summary>The poster's cache path, keyed by (content key, time rounded to 0.1 s, pixel size); null for a content key

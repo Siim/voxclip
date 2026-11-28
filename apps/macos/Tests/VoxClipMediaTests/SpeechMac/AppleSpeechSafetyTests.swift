@@ -34,10 +34,26 @@ struct AppleSpeechSafetyTests {
         #expect(reserves.withLock { $0 } == 1)
     }
 
-    @Test(arguments: [VoxClipError.transcriptionLanguageUnsupported("en"), .speechAssetsUnavailable("en")])
-    func voxClipCaseIndexCollisionsDoNotRecover(_ failure: VoxClipError) async throws {
-        let code = (failure as NSError).code
-        #expect([SFSpeechError.Code.assetLocaleNotAllocated.rawValue, SFSpeechError.Code.tooManyAssetLocalesAllocated.rawValue].contains(code))
+    static let assetCodes = [SFSpeechError.Code.assetLocaleNotAllocated.rawValue, SFSpeechError.Code.tooManyAssetLocalesAllocated.rawValue]
+
+    /// Only Speech's own asset errors recover: the same code in another domain is mapped once, with no reservation.
+    @Test(arguments: [NSCocoaErrorDomain, NSOSStatusErrorDomain], assetCodes)
+    func assetCodeFromAnotherDomainDoesNotRecover(_ domain: String, _ code: Int) async throws {
+        let calls = Mutex(0), recoveries = Mutex(0)
+        do {
+            try await AppleSpeechAssets.prepare(locale: "en-US", operation: {
+                calls.withLock { $0 += 1 }
+                throw NSError(domain: domain, code: code)
+            }, reserve: { recoveries.withLock { $0 += 1 } }, release: { recoveries.withLock { $0 += 1 } })
+            Issue.record("Expected mapped asset failure")
+        } catch let error as VoxClipError { #expect(error.code == .speechAssetsUnavailable) }
+        #expect(calls.withLock { $0 } == 1 && recoveries.withLock { $0 } == 0)
+    }
+
+    /// A VoxClipError bridges to an NSError code from its case index, which can equal an asset code; it passes through.
+    @Test(arguments: [VoxClipError.keyPermissionMissing, .quotaExceeded("en"), .rateLimited("en"), .mediaTooLong("en"),
+                      .transcriptionLanguageUnsupported("en"), .speechAssetsUnavailable("en"), .transcriptionFailed("en")])
+    func voxClipErrorPassesThroughWithoutRecovery(_ failure: VoxClipError) async throws {
         let recoveries = Mutex(0)
         await #expect(throws: failure) {
             try await AppleSpeechAssets.prepare(locale: "en-US", operation: { throw failure },

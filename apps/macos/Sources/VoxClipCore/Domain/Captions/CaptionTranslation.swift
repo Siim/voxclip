@@ -103,7 +103,7 @@ public enum CaptionTranslations {
     }
 
     static func wordOrder(_ project: Project) -> [String: Int] {
-        Dictionary((project.transcript?.words ?? []).enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
+        Dictionary(ProjectClock.build(project).words.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// The next free id: "tr-1", "tr-2"…

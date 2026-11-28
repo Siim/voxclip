@@ -1770,7 +1770,7 @@
       "patches": [
         {
           "path": "/schemaVersion",
-          "value": 7
+          "value": 8
         }
       ],
       "tooNew": true

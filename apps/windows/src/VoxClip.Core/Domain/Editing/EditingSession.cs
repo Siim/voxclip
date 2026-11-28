@@ -37,7 +37,7 @@ internal static class EditingSession
             var range = scope[0];
             // The clip's opening lead-in (ADR-R48 part 2) opens it earlier, inside the pause before its first word.
             var leadIn = state.Clips.FirstOrDefault(clip => clip.Id == state.ActiveClipId)?.LeadInSeconds;
-            var times = EditingAlgorithms.ClipTimes(words, range.Start, range.End, leadIn);
+            var times = EditingPlanner.ScopedClipTimes(state, range.Start, range.End, leadIn);
             if (times.Start > 0) segments.Add(new("clip-head", EditSegmentKind.Range, null, null, 0, times.Start, true));
             var tailEnd = Math.Max(times.End, words[^1].End) + 3600;
             if (tailEnd > times.End) segments.Add(new("clip-tail", EditSegmentKind.Range, null, null, times.End, tailEnd, true));
@@ -45,12 +45,13 @@ internal static class EditingSession
         return segments.Select((segment, index) => (segment, index)).OrderBy(pair => pair.segment.Start).ThenBy(pair => pair.index).Select(pair => pair.segment).ToArray();
     }
 
-    internal static EditState Reduce(EditState state, EditOperation operation, IReadOnlyList<AiResult>? aiResults = null, Project? project = null)
+    internal static EditState Reduce(EditState state, EditOperation operation, IReadOnlyList<AiResult>? aiResults = null,
+        Project? project = null, string copySuffix = "story")
     {
         if (operation is EditOperation.ReplaceTranscript replacement)
         {
             var newThreshold = replacement.Transcript.Refined ? 0.8 : 1.0;
-            return PreserveNoOp(state, state with { Transcript = replacement.Transcript, Pauses = EditingAlgorithms.DetectPauses(replacement.Transcript.Words, newThreshold),
+            return PreserveNoOp(state, state with { Transcript = replacement.Transcript, ProjectClock = null, Pauses = EditingAlgorithms.DetectPauses(replacement.Transcript.Words, newThreshold),
                 PauseThresholdSeconds = newThreshold, CutWordIds = new HashSet<string>(StringComparer.Ordinal), CutPauseIds = new HashSet<string>(StringComparer.Ordinal),
                 Corrections = new Dictionary<string, string>(StringComparer.Ordinal), Clips = [], ActiveClipId = null });
         }
@@ -109,7 +110,7 @@ internal static class EditingSession
                 var addedTitle = NormalizeTitle(add.Clip.Title);
                 if (!EditingLimits.ValidId(add.Clip.Id) || !ValidTitle(addedTitle) ||
                     add.Clip.AiResultId is { } resultId && !EditingLimits.ValidId(resultId) || add.Clip.AiClipIndex < 0 ||
-                    add.Clip.PlayPartIndices(words) is null || !StoryClips.Valid(add.Clip, words) || clips.Any(clip => clip.Id == add.Clip.Id)) return state;
+                    add.Clip.PlayPartIndices(words) is null || !ValidParts(add.Clip) || clips.Any(clip => clip.Id == add.Clip.Id)) return state;
                 if (project is not null && add.Clip.Parts is not null) StoryClips.ValidatePlacement(add.Clip, project, words);
                 clips.Add(add.Clip with { Selected = true, Title = addedTitle });
                 break;
@@ -123,7 +124,7 @@ internal static class EditingSession
                     var aiTitle = NormalizeTitle(clip.Title);
                     var parts = clip.Parts?.Select((part, partIndex) => new ClipPart($"part-{partIndex + 1}", part.StartWordId, part.EndWordId)).ToArray();
                     var candidate = new ClipRange("candidate", clip.StartWordId, clip.EndWordId, aiTitle, ClipOrigin.Ai, add.ResultId, index, true, Parts: parts);
-                    if (!ValidTitle(aiTitle) || candidate.PlayPartIndices(words) is null || !StoryClips.Valid(candidate, words) ||
+                    if (!ValidTitle(aiTitle) || candidate.PlayPartIndices(words) is null || !ValidParts(candidate) ||
                         clips.Any(existing => existing.PlayParts.Select(part => (part.StartWordId, part.EndWordId))
                             .SequenceEqual(candidate.PlayParts.Select(part => (part.StartWordId, part.EndWordId))))) continue;
                     var baseId = "ai-" + add.ResultId + "-" + index.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -143,6 +144,7 @@ internal static class EditingSession
                 break;
             case EditOperation.UpdateClip update:
                 if (update.StartIndex < 0 || update.EndIndex < update.StartIndex || update.EndIndex >= words.Count) return state;
+                if (state.ProjectClock?.ContainsRange(words[update.StartIndex].Id, words[update.EndIndex].Id) == false) return state;
                 // A new first word drops the opening lead-in, as the Mac's updateClip does.
                 ChangeClip(update.Id, clip => clip.Parts is not null ? clip : clip with { StartWordId = words[update.StartIndex].Id, EndWordId = words[update.EndIndex].Id,
                     LeadInSeconds = clip.StartWordId == words[update.StartIndex].Id ? clip.LeadInSeconds : null });
@@ -155,18 +157,24 @@ internal static class EditingSession
                     Kind = set.Parts.Count > 1 ? original.Kind ?? StoryClipKind.Story : null,
                     StartWordId = words[ranges.Min(range => range.Start)].Id, EndWordId = words[ranges.Max(range => range.End)].Id,
                     LeadInSeconds = original.PlayParts[0].StartWordId == set.Parts[0].StartWordId ? original.LeadInSeconds : null };
+                if (state.ProjectClock is { } clock && !changed.PlayParts.All(part => clock.ContainsRange(part.StartWordId, part.EndWordId)))
+                    throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "A part comes from one recording.");
                 if (!StoryClips.Valid(changed, words) || original.PlayParts.SequenceEqual(changed.PlayParts) && (original.Parts is null) == (changed.Parts is null)) return state;
                 if (project is not null)
                 {
                     var before = StoryClips.Times(original, words);
                     var after = StoryClips.Times(changed, words);
                     var keyed = project.VoiceLab.WholeClipRevoices?.Any(record => record.ClipId == original.Id) == true;
+                    var protectedSpans = copySuffix == "copy" ? RecordingEdits.ProtectedSpans(original.Id, project, words) : [];
                     var losesLipsync = StoryClips.LipsyncWindows(project).Any(window => before.Any(span => StoryClips.Overlaps(span, window)) &&
-                        !after.Any(span => StoryClips.Overlaps(span, window)));
+                        !after.Any(span => StoryClips.Overlaps(span, window)) && !protectedSpans.Any(span => span.Start <= window.Start && span.End >= window.End));
                     if (keyed && !before.SequenceEqual(after) || losesLipsync)
                     {
-                        var copyTitle = (original.Title ?? $"Clip {clipIndex + 1}") + " story";
-                        changed = changed with { Id = UniqueId(original.Id, "story"), Title = string.Concat(copyTitle.EnumerateRunes().Take(120)) };
+                        var originalTitle = original.Title ?? $"Clip {clipIndex + 1}";
+                        var suffix = " " + copySuffix;
+                        var copyTitle = copySuffix == "copy" ? string.Concat(originalTitle.EnumerateRunes().Take(120 - suffix.Length)) + suffix :
+                            string.Concat((originalTitle + suffix).EnumerateRunes().Take(120));
+                        changed = changed with { Id = UniqueId(original.Id, copySuffix), Title = copyTitle };
                         StoryClips.ValidatePlacement(changed, project, words);
                         clips.Add(changed);
                         active = changed.Id;
@@ -201,7 +209,7 @@ internal static class EditingSession
             case EditOperation.SetPauseThreshold update:
                 if (!double.IsFinite(update.Seconds) || update.Seconds <= 0 || update.Seconds > 10) return state;
                 threshold = update.Seconds;
-                pauses = EditingAlgorithms.DetectPauses(words, threshold);
+                pauses = state.ProjectClock?.Pauses(threshold) ?? EditingAlgorithms.DetectPauses(words, threshold);
                 cutPauses.IntersectWith(pauses.Select(pause => pause.Id));
                 break;
             default: throw new ArgumentException("Unknown edit operation.", nameof(operation));
@@ -216,6 +224,8 @@ internal static class EditingSession
             return normalized.Length == 0 ? null : normalized;
         }
         static bool ValidTitle(string? title) => title is null || EditingLimits.ValidLength(title, EditingLimits.MaxClipTitleCodePoints);
+        bool ValidParts(ClipRange clip) => StoryClips.Valid(clip, words) && (state.ProjectClock is not { } clock ||
+            clip.PlayParts.All(part => clock.ContainsRange(part.StartWordId, part.EndWordId)));
         void SetCuts(IReadOnlyList<string> ids, bool cut)
         {
             foreach (var id in ids)

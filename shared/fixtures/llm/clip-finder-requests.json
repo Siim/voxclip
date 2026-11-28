@@ -3,11 +3,36 @@
   "id": "clip-finder-requests",
   "origin": "voxclip",
   "sources": {
-    "shared/prompts/clip-finder.json": "01bbde496bb349d937781b36f1bb2a530591a497e31a9e75be8a59d542471669",
+    "shared/prompts/clip-finder.json": "92dd9f79bbd72aeda8221cdb275b846ba3642892faeb5a09527014c17be432b3",
     "shared/prompts/ai-tighten.json": "1cb479c404416b426bedfbbc937c8fa9614a7ae6511d3aeae0335375e88e0f79",
     "shared/catalog/llm-providers.json": "b19c861b1bd5d9b7b5ff5f24eece6f1caf178a470d66d83e785e6b6f22e4446c"
   },
   "cases": [
+    {
+      "id": "issue-31-best-versions",
+      "kind": "recording-request",
+      "origin": "voxclip",
+      "source": "issue #31; doc/spec/ai.md §11",
+      "input": {
+        "project": "reference-recordings.voxclip"
+      },
+      "expected": {
+        "contains": [
+          "Recording 0007: lines 1–5",
+          "Recording 0010: lines 6–8",
+          "0007 lines 1–1; flags:",
+          "0010 lines 6–6; flags:",
+          "Solo: lines 8–8"
+        ],
+        "instruction": "Make one clip from the best versions of the beats that tell the story.",
+        "system": "For Best versions, assemble one story from the recordings and takes listed with the transcript, in playback order. This replaces the one-part rule. Use one take of each beat you keep. Prefer the take that says it most precisely; when equal, choose the one with fewer fillers, pauses and restarts. Keep a beat that only one recording has when it earns its place. Never put lines from two recordings in one part. Say why in take_reason (up to 160 characters), quoting the words that decide it. Use an empty string when there is no reason to add.",
+        "reasonSchema": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "maxParts": 8
+      }
+    },
     {
       "id": "best-plain-single",
       "kind": "render-request",

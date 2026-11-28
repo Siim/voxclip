@@ -9,7 +9,17 @@ namespace VoxClip.Core.Domain.Shared;
 
 /// <summary>Probe result for the presentation timeline; architecture §4 and §6.2.</summary>
 public sealed record MediaInfo(string Path, double DurationSeconds, VideoTrackInfo? Video, AudioTrackInfo? Audio,
-    PixelSize OrientedSize, string? VideoCodec, string? AudioCodec, bool IsHdr, int VideoTrackIndex, int AudioTrackIndex, double AudioTimelineStart);
+    PixelSize OrientedSize, string? VideoCodec, string? AudioCodec, bool IsHdr, int VideoTrackIndex, int AudioTrackIndex, double AudioTimelineStart)
+{
+    /// <summary>The saved source geometry, for choosing an output before opening its recordings.</summary>
+    public static MediaInfo FromReference(MediaReference reference)
+    {
+        var video = reference.Video;
+        var size = video is { RotationDegrees: 90 or 270 } ? new PixelSize(video.Height, video.Width)
+            : new(video?.Width ?? 1920, video?.Height ?? 1080);
+        return new(reference.AbsolutePath, reference.DurationSeconds, video, reference.Audio, size, null, null, false, 0, reference.Audio is null ? -1 : 0, 0);
+    }
+}
 /// <summary>Audio extraction input; architecture §4 and transcription §4.</summary>
 public sealed record AudioExtractionRequest(MediaInfo Media, string ContentKey, string CacheDirectory);
 /// <summary>Media progress, throttled to at most 10Hz; architecture §7.2.</summary>
@@ -17,6 +27,19 @@ public sealed record MediaProgress(string Phase, double? Fraction);
 /// <summary>Exactly one immutable compose snapshot for preview/export; architecture §6.3–6.4.</summary>
 public sealed record ComposeSnapshot(MediaInfo Media, EditPlan Plan, CaptionTrack? Captions, OutputSpec Output)
 {
+    private readonly IReadOnlyList<RecordingRenderSource> recordingSources = [];
+    private readonly IReadOnlyList<RecordingRenderSource> spanSources = [];
+    /// <summary>Verified recordings, parallel to the kept intervals. Empty keeps the single-file path.</summary>
+    public IReadOnlyList<RecordingRenderSource> SpanSources
+    {
+        get => spanSources;
+        init { spanSources = value; recordingSources = value.DistinctBy(source => source.ContentKey).ToArray(); }
+    }
+    /// <summary>Find the recording under a sample on the project clock.</summary>
+    public RecordingRenderSource? RecordingAt(long sample) => recordingSources.FirstOrDefault(source =>
+        source.OffsetSamples <= sample && sample < source.OffsetSamples + source.DurationSamples);
+    /// <summary>Find the recording under a time on the project clock.</summary>
+    public RecordingRenderSource? RecordingAtTime(double sourceTime) => RecordingAt((long)EditingMath.Round(sourceTime * Plan.SampleRate));
     /// <summary>Captured v3 input; null keeps the existing source-only edit route.</summary>
     public VoiceLabRenderInput? VoiceLab { get; init; }
     /// <summary>The clip's controls and the scope's effects (design §6.9, ai.md §18.5); null renders exactly as before.</summary>
@@ -37,6 +60,14 @@ public sealed record ComposeSnapshot(MediaInfo Media, EditPlan Plan, CaptionTrac
     /// <summary>The single timeline used for duration, source frames, and audio.</summary>
     public RenderTimeline Timeline => VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true } input
         ? new RenderTimeline.VoiceLab(input.Prepared.OutputPlan) : new RenderTimeline.Legacy(Plan);
+}
+
+/// <summary>A verified local recording and its location and stored gain on the project clock.</summary>
+public sealed record RecordingRenderSource(string ContentKey, string Label, string Path, long OffsetSamples,
+    long DurationSamples, double GainDb, int RotationDegrees)
+{
+    /// <summary>Convert project seconds to this file's seconds, keeping effect seeks inside the recording.</summary>
+    public double LocalTime(double sourceTime, double rate) => Math.Clamp(sourceTime - OffsetSamples / rate, 0, Math.Max(0, (DurationSamples - 1) / rate));
 }
 
 /// <summary>A companion picture and its half-open interval on the edited timeline.</summary>
@@ -128,7 +159,7 @@ public sealed record ClipRenderInput(ProjectClipControls? Controls, ClipEffectsR
         var music = MusicRenderInput.Resolve(project, clipId, dataRoot);
         var motion = ContextDemo.MotionCueRendering.For(project, clipId);
         (TimeRange Source, ReframeSettings Reframe)[] reframes = [];
-        if (clipId is not null && project.Transcript is { } transcript &&
+        if (clipId is not null && ProjectClock.Build(project).Transcript is { } transcript &&
             project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is { Parts: { } parts } story)
             reframes = StoryClips.Times(story, transcript.Words).Zip(parts)
                 .Where(pair => pair.Second.Reframe is not null).Select(pair => (pair.First, pair.Second.Reframe!)).ToArray();

@@ -44,7 +44,7 @@ import Testing
     @Test func plannerOffersOrderedMomentParts() throws {
         let prompt = try ClipAutopilotPrompt(shared: ClipAutopilotTests.shared())
         let fields = prompt.momentsSchema[ai: "properties"][ai: "clips"][ai: "items"][ai: "properties"]
-        #expect(prompt.promptVersion == 12)
+        #expect(prompt.promptVersion == 13)
         #expect(fields[ai: "parts"][ai: "maxItems"].aiInt == 10)
         #expect(prompt.momentsSystem.contains("showreel"))
     }

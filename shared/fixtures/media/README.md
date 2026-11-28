@@ -6,6 +6,13 @@ an intentional content change, review decoded frames, and commit the media and
 the updated `index.json` together. No provider, model, or recorded speech is used.
 Every committed file must remain below 2,000,000 bytes.
 
+The Mac and Windows cross-recording story tests use `recording-0007.mp4` and
+`recording-0010.mp4`, outside the architecture §9.5 index. Both contain six
+seconds of a synthetic chirp and a visible binary frame counter. The companion
+is quieter, uses 44.1 kHz audio, and has a 90° rotation in its track metadata.
+Regenerate just these files with
+`swift tools/fixtures/media/generate.swift --recordings shared/fixtures/media`.
+
 ## Test-only Windows Main 10 input
 
 The Windows native suite also needs `hevc10-two-audio.mp4`, a four-second

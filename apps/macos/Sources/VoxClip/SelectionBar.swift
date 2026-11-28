@@ -62,6 +62,7 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
                     .accessibilityIdentifier("voxclip.selectionBar.rewriteAs")
             }
             if editWord != nil {
+                addRecordingPartButton
                 Menu {
                     if model.canAskClaude, model.askClaudeWordSelection != nil {
                         Button("Ask Claude") { askClaude() }
@@ -102,9 +103,18 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
             .background(Color(nsColor: .unemphasizedSelectedContentBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
             .focused($focused)
             .help(makeClipHelp)
+        addRecordingPartButton
         Button { cut() } label: { label("Cut", "⌫") }
         Button { restore() } label: { label("Restore", "⇧⌫") }
             .disabled(!canRestore)
+    }
+    @ViewBuilder private var addRecordingPartButton: some View {
+        if let title = model.recordingPartSelectionTitle {
+            Button { model.addSelectionAsStoryPart(); dismiss() } label: { label(title, "") }
+                .disabled(model.addStoryPartReason != nil)
+                .accessibilityHint(model.addStoryPartReason ?? "")
+                .accessibilityIdentifier("voxclip.selectionBar.addRecordingPart")
+        }
     }
     @ViewBuilder private var surface: some View {
         if forceOpaque || policy.opaqueSelectionBar {

@@ -7,6 +7,7 @@ namespace VoxClip.Core.Domain.Editing;
 
 internal static class StoryClips
 {
+    internal const int MaxTakeReasonScalars = 160;
     private static readonly Regex PartId = new(@"\A[A-Za-z0-9][A-Za-z0-9._:-]{0,63}\z", RegexOptions.CultureInvariant);
 
     internal static IReadOnlyList<(int Start, int End)>? Indices(IEnumerable<(string Start, string End)> parts, IReadOnlyList<TimedWord> words)
@@ -27,7 +28,7 @@ internal static class StoryClips
     {
         if (clip.Parts is not { } parts) return clip.Kind is null;
         return parts.Count is >= 2 and <= 12 && parts.Select(part => part.Id).Distinct(StringComparer.Ordinal).Count() == parts.Count &&
-            parts.All(part => PartId.IsMatch(part.Id) && (part.Reframe is null ||
+            parts.All(part => PartId.IsMatch(part.Id) && (part.TakeReason?.EnumerateRunes().Count() ?? 0) <= MaxTakeReasonScalars && (part.Reframe is null ||
                 part.Reframe is { Mode: ReframeSettings.FaceMode, Zoom: 1, CenterX: >= 0 and <= 1, CenterY: >= 0 and <= 1 })) &&
             clip.PlayPartIndices(words) is { } ranges && clip.StartWordId == words[ranges.Min(range => range.Start)].Id &&
             clip.EndWordId == words[ranges.Max(range => range.End)].Id;
@@ -48,19 +49,28 @@ internal static class StoryClips
 
     internal static void Validate(Project project)
     {
-        var words = project.Transcript?.Words ?? [];
+        var clock = ProjectClock.Build(project);
+        var words = clock.Words;
         Require(project.SchemaVersion >= TimelineEditFields.Version || (project.SchemaVersion == 5) == project.Edits.Clips.Any(clip => clip.Parts is not null), "Invalid story clip project version.");
         foreach (var clip in project.Edits.Clips)
         {
             Require(Valid(clip, words), "Invalid story clip parts or source hull.");
+            Require(project.SchemaVersion == ProjectSerialization.CurrentVersion || clip.PlayParts.All(part => part.TakeReason is null),
+                "Version reasons require project version 7.");
+            if (clock.Regions.Count > 1)
+                Require(clip.PlayParts.All(part => clock.ContainsRange(part.StartWordId, part.EndWordId)), "A part comes from one recording.");
             if (clip.Parts is not null) ValidatePlacement(clip, project, words);
         }
         foreach (var clip in project.Ai.Results.SelectMany(result => result.Clips))
         {
             Require(clip.NotInTake is null || clip.NotInTake.EnumerateRunes().Count() <= 200, "Invalid missing-from-take note.");
             if (clip.Parts is { } parts)
+            {
                 Require(parts.Count is >= 2 and <= 12 && Indices(parts.Select(part => (part.StartWordId, part.EndWordId)), words) is not null,
                     "Invalid AI clip parts.");
+                if (clock.Regions.Count > 1)
+                    Require(parts.All(part => clock.ContainsRange(part.StartWordId, part.EndWordId)), "A part comes from one recording.");
+            }
         }
     }
 
@@ -79,7 +89,9 @@ internal static class StoryClips
     internal static void ValidatePlacement(ClipRange clip, Project project, IReadOnlyList<TimedWord> words)
     {
         var spans = Times(clip, words);
-        if (LipsyncRefusal(spans, LipsyncWindows(project)) is { } refusal) Require(false, refusal);
+        var windows = LipsyncWindows(project);
+        if (RecordingEdits.IsRecordingCopy(clip.Id, project)) windows = windows.Where(window => spans.Any(span => Contains(span, window)));
+        if (LipsyncRefusal(spans, windows) is { } refusal) Require(false, refusal);
         if (project.SchemaVersion >= TimelineEditFields.Version) return;
         foreach (var effect in project.ClipEffects.Where(effect => effect.GetProperty("clipId").GetString() == clip.Id))
             Require(spans.Any(span => Contains(span, new(effect.GetProperty("start").GetDouble(), effect.GetProperty("end").GetDouble()))),
@@ -97,7 +109,7 @@ internal static class StoryClips
     }
 
     internal static bool Overlaps(TimeRange span, TimeRange window) => span.Start < window.End && window.Start < span.End;
-    private static bool Contains(TimeRange span, TimeRange window) => span.Start <= window.Start && window.End <= span.End;
+    internal static bool Contains(TimeRange span, TimeRange window) => span.Start <= window.Start && window.End <= span.End;
     internal static string Clock(double seconds) => $"{(long)seconds / 60}:{(long)seconds % 60:00}";
     private static void Require(bool condition, string message)
     {

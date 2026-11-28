@@ -121,7 +121,10 @@ import VoxClipMedia
         if pendingAlignment != nil { return "Retry" }
         if speechDidNotAnswer { return "Retry" }
         if again && !againConfirmed { return "Transcribe Again" + (paid ? " · " + price : "") }
-        if paid { return (error == nil ? "Upload and Transcribe" : "Retry") + " · " + price }
+        if paid {
+            let title = model.recordingTranscriptRecipient == nil ? "Upload and Transcribe" : "Transcribe with ElevenLabs"
+            return (error == nil ? title : "Retry") + " · " + price
+        }
         if downloadFailed || downloadCancelled || error != nil { return "Retry" }
         return needsDownload ? "Download and Transcribe" : "Transcribe"
     }
@@ -197,7 +200,7 @@ import VoxClipMedia
         pendingAlignment = nil
         await open(again: again)
     }
-    func open(automatic: Bool = false, again: Bool = false) async {
+    func open(automatic: Bool = false, again: Bool = false, onThisMac: Bool = false) async {
         guard !isRunning else { return }
         if pendingAlignment?.project == model.project {
             phase = .choosing; cancelledNote = nil
@@ -205,6 +208,7 @@ import VoxClipMedia
         }
         pendingAlignment = nil
         startedOnImport = false
+        if model.recordingTranscriptRecipient != nil { remember = false }
         revision += 1
         let request = revision
         downloadBaseline = nil
@@ -212,7 +216,7 @@ import VoxClipMedia
         error = nil; downloadFailed = false; downloadCancelled = false
         readiness = nil; key = ""; savingKey = false; uploadStarted = false; progress = nil; keyGuard.reset()
         language = model.project.transcript?.language ?? model.app.string("transcription.language", fallback: "auto")
-        let preferred = model.app.string("transcription.engineMode", fallback: "local")
+        let preferred = onThisMac ? "local" : model.app.string("transcription.engineMode", fallback: "local")
         // Settings' “On this Mac” routes English to Apple's installed engine; a Whisper choice in this block stays explicit.
         engine = preferred == "elevenlabs" ? "elevenlabs" : preferred == "apple" || (preferred == "local" && language == "en") ? "apple" : "local"
         if confirmsClaudeTranscript {
@@ -228,7 +232,7 @@ import VoxClipMedia
         guard request == revision, !Task.isCancelled else { return }
         if automatic && preferred != "ask" && !again && !paid && readiness == .ready && (language != "auto" || engine == "local") {
             startApprovedRun()
-            startedOnImport = activeRun != nil
+            startedOnImport = activeRun != nil && model.recordingTranscriptRecipient == nil
         }
     }
     func startLocalForRecordingFolder() async -> Bool {

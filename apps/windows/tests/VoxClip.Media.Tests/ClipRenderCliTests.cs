@@ -1,10 +1,13 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using VoxClip.Cli;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Media;
+using VoxClip.Core.Services.Project;
 using VoxClip.Media.Pipeline;
 using VoxClip.Tests.Support;
 using Xunit;
@@ -16,6 +19,194 @@ namespace VoxClip.Media.Tests;
 [Collection("CLI console")]
 public sealed class ClipRenderCliTests
 {
+    [Fact]
+    public async Task ExportRejectsAnUnusedSpokenRecordingAsADestination()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        var companion = story.Project.Media.AdditionalSources![0];
+        var original = await File.ReadAllBytesAsync(companion.AbsolutePath, ct);
+        var (code, json, error) = await RecordingCliAsync(["--open", story.Path, "--range", "0:0", "--export", companion.AbsolutePath,
+            "--style", "off", "--json"], ct, (_, _) => Task.FromResult<(Project?, MediaInfo)>((story.Project, story.Primary)),
+            (_, _, _) => throw new InvalidOperationException("The encoder must not overwrite a recording."));
+        Assert.NotEqual(0, code);
+        Assert.Contains("overwrite", json + error);
+        Assert.DoesNotContain("encoder", json + error);
+        Assert.Equal(original, await File.ReadAllBytesAsync(companion.AbsolutePath, ct));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AUsedRecordingThatIsMissingOrChangedStopsCliExport(bool changed)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        var companion = story.Project.Media.AdditionalSources![0];
+        if (changed)
+        {
+            var bytes = await File.ReadAllBytesAsync(companion.AbsolutePath, ct);
+            bytes[bytes.Length / 2] ^= 1;
+            await File.WriteAllBytesAsync(companion.AbsolutePath, bytes, ct);
+        }
+        else File.Delete(companion.AbsolutePath);
+        var destination = Path.Combine(directory.Path, "out.mp4");
+        var (code, json, error) = await RecordingCliAsync(["--open", story.Path, "--export", destination, "--style", "off", "--json"], ct,
+            (_, _) => Task.FromResult<(Project?, MediaInfo)>((story.Project, story.Primary)),
+            (_, _, _) => throw new InvalidOperationException("The encoder must not run without both recordings."));
+        Assert.NotEqual(0, code);
+        Assert.Contains("0010 is missing. Locate it to use its words.", json + error);
+        Assert.False(File.Exists(destination));
+    }
+
+    [Fact]
+    [Trait("Category", "RequiresFFmpeg")]
+    [Trait("Category", "RequiresWindows")]
+    public async Task WindowsCliExportsAndChecksTheSharedFivePartStory()
+    {
+        await NativeTest.RequireAsync(windows: true);
+        var ct = TestContext.Current.CancellationToken;
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        var destination = Path.Combine(directory.Path, "out.mp4");
+        var (exportCode, json, exportError) = await RecordingCliAsync(["--open", story.Path, "--export", destination, "--style", "off", "--loudness", "off", "--json"], ct);
+        Assert.True(exportCode == 0, json + exportError);
+        using var export = JsonDocument.Parse(json);
+        var plan = EditingEngine.BuildPlan(EditingEngine.FromProject(story.Project)!, story.Primary.DurationSeconds, 48_000);
+        Assert.Equal(plan.Duration, export.RootElement.GetProperty("durationSeconds").GetDouble(), 7);
+        var (checkCode, checkedJson, checkError) = await RecordingCliAsync(["check", destination, "--project", story.Path, "--clip", "clip-recordings",
+            "--aspect", "source", "--style", "off", "--loudness", "off", "--json"], ct);
+        Assert.True(checkCode is 0 or 8, checkedJson + checkError);
+        using var checkedReport = JsonDocument.Parse(checkedJson);
+        var report = checkedReport.RootElement.GetProperty("check");
+        Assert.False(report.TryGetProperty("recordingSeams", out _));
+        var sync = report.GetProperty("sync").GetProperty("items");
+        Assert.Equal(["0007", "0010", "0007"], sync.EnumerateArray().Where(item => item.GetProperty("kind").GetString() == "recordingSeam")
+            .Select(item => item.GetProperty("recordingSeam").GetProperty("to").GetString()));
+        Assert.DoesNotContain(sync.EnumerateArray(), item => item.GetProperty("kind").GetString() == "pictureSource");
+    }
+
+    /// <summary>Runs the CLI in process. Progress goes to stderr, so only stdout is the JSON document.</summary>
+    private static async Task<(int Code, string Json, string Error)> RecordingCliAsync(string[] args, CancellationToken ct,
+        VoxClip.Cli.ExportInputReader? open = null, VoxClip.Cli.ExportPreparer? prepare = null)
+    {
+        var previousOut = Console.Out;
+        var previousError = Console.Error;
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        try
+        {
+            Console.SetOut(output);
+            Console.SetError(error);
+            return (await AcceptedCli.RunAsync(args, ct, open, prepare), output.ToString(), error.ToString());
+        }
+        finally { Console.SetOut(previousOut); Console.SetError(previousError); }
+    }
+
+    private sealed class RecordingTemp : IDisposable
+    {
+        private readonly DirectoryInfo directory = Directory.CreateTempSubdirectory("voxclip-recording-cli-");
+        internal string Path => directory.FullName;
+        public void Dispose() => directory.Delete(true);
+    }
+
+    [Fact]
+    public async Task HarnessFramesRejectAProjectClockGuardGap()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        var harness = await HarnessProject.OpenAsync(story.Path, ct);
+        var clock = ProjectClock.Build(story.Project);
+        var (start, end) = Assert.Single(clock.GuardGaps);
+        var arguments = JsonSerializer.SerializeToElement(new { times = new[] { (start + end) / (2.0 * clock.SampleRate) } });
+        var error = await Assert.ThrowsAsync<HarnessException>(() => harness.CallAsync(HarnessTool.ReadFrames, arguments, ct));
+        Assert.Equal("Give one to four project times inside a recording.", error.Message);
+    }
+
+    [Fact]
+    [Trait("Category", "RequiresFFmpeg")]
+    public async Task HarnessFramesDecodeTheRecordingAtEachProjectClockTime()
+    {
+        await NativeTest.RequireAsync();
+        var ct = TestContext.Current.CancellationToken;
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        var harness = await HarnessProject.OpenAsync(story.Path, ct);
+        var offset = Assert.Single(story.Project.Media.SpokenSources!).OffsetSeconds;
+        double[] times = [offset, 0, offset];
+        var result = await harness.CallAsync(HarnessTool.ReadFrames, JsonSerializer.SerializeToElement(new { times }), ct);
+        var frames = Assert.IsAssignableFrom<IReadOnlyList<HarnessFrame>>(result.Frames);
+        Assert.Equal(times, frames.Select(frame => frame.Requested));
+        Assert.Equal(times, frames.Select(frame => frame.Actual));
+        Assert.True(frames[0].Jpeg == frames[2].Jpeg && frames[0].Jpeg != frames[1].Jpeg,
+            "Expected distinct thumbnails for distinct recordings.");
+    }
+
+    [Fact]
+    public async Task CompanionExportOnlyNeedsThePrimaryWhenItIsKept()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        File.Delete(story.Primary.Path);
+        string[] options = ["--open", story.Path, "--export", Path.Combine(directory.Path, "out.mp4"), "--style", "off"];
+
+        var companion = await CliOperations.PrepareExportAsync(CliApplication.Parse([.. options, "--range", "27:28"]), ct, null);
+        Assert.NotEmpty(companion.Snapshot.SpanSources);
+        Assert.All(companion.Snapshot.SpanSources, source => Assert.Equal("0010", source.Label));
+
+        var error = await Assert.ThrowsAsync<VoxClipException>(() => CliOperations.PrepareExportAsync(
+            CliApplication.Parse([.. options, "--clip", "clip-recordings"]), ct, null));
+        Assert.Equal(VoxClipErrorCode.MediaMissing, error.Code);
+    }
+
+    [Fact]
+    public async Task WordRangeUsesTheProjectClockButCannotCrossRecordings()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        string[] options = ["--open", story.Path, "--export", Path.Combine(directory.Path, "out.mp4"), "--style", "off", "--range"];
+        Task<(Project?, MediaInfo)> Open(string _, CancellationToken __) => Task.FromResult<(Project?, MediaInfo)>((story.Project, story.Primary));
+
+        var companion = await CliOperations.PrepareExportAsync(CliApplication.Parse([.. options, "27:28"]), ct, Open);
+        Assert.NotEmpty(companion.Snapshot.SpanSources);
+        Assert.All(companion.Snapshot.SpanSources, source => Assert.Equal("0010", source.Label));
+
+        var error = await Assert.ThrowsAsync<CliUsageException>(() => CliOperations.PrepareExportAsync(
+            CliApplication.Parse([.. options, "26:27"]), ct, Open));
+        Assert.Equal("A word range must come from one recording.", error.Message);
+    }
+
+    [Fact]
+    public async Task StoryPreparedByTheCliSeeksPreviewInEachRecordingsLocalTime()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var timeout = TimeSpan.FromSeconds(5);
+        using var directory = new RecordingTemp();
+        var story = await RecordingStoryFixture.CreateAsync(directory.Path, ct);
+        var arguments = CliApplication.Parse(["--open", story.Path, "--export", Path.Combine(directory.Path, "out.mp4"), "--style", "off"]);
+        var prepared = await CliOperations.PrepareExportAsync(arguments, ct,
+            (_, _) => Task.FromResult<(Project?, MediaInfo)>((story.Project, story.Primary)));
+        var snapshot = prepared.Snapshot;
+        Assert.Equal(["0010", "0007", "0007", "0010", "0007"], snapshot.SpanSources.Select(source => source.Label));
+        var workers = new Dictionary<string, Worker>();
+        await using var preview = new PreviewEngine(new Composer(), initialize: _ => { }, createWorker: (path, _) => workers[path] = new());
+        await preview.LoadAsync(snapshot, null, ct).WaitAsync(timeout, ct);
+        long cursor = 0;
+        foreach (var (part, source) in snapshot.Plan.Kept.Zip(snapshot.SpanSources))
+        {
+            var edited = (cursor + 4800) / snapshot.Plan.SampleRate;
+            await preview.SeekAsync(edited, true, ct).WaitAsync(timeout, ct);
+            Assert.Equal((part.StartSample + 4800 - source.OffsetSamples) / snapshot.Plan.SampleRate, workers[source.Path].Position, 8);
+            cursor += part.EndSample - part.StartSample;
+        }
+        Assert.Equal(2, workers.Count);
+    }
+
     private static Project Fixture()
     {
         var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/clip-controls/clip-controls-project.voxclip"));

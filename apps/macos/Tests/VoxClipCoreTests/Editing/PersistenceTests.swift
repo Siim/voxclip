@@ -17,6 +17,30 @@ private actor SettingsDebounceClock {
 }
 
 @Suite(.offlineFixtures) struct EditingPersistence {
+    @Test func spokenSourcesRequireV7AndV6ReaderRefusesThem() throws {
+        let original = try ContextDemoProject.upgradeToV4(project())
+        var document = try #require(JSONSerialization.jsonObject(with: ProjectJSON.encode(original)) as? [String: Any])
+        document["schemaVersion"] = 6
+        let legacy = try ProjectJSON.decode(JSONSerialization.data(withJSONObject: document))
+        #expect(try ProjectJSON.decode(ProjectJSON.encode(legacy)).schemaVersion == 6)
+        var media = try #require(document["media"] as? [String: Any])
+        var companion = try #require(media["source"] as? [String: Any])
+        let key = String(repeating: "b", count: 64)
+        companion["contentKey"] = key
+        companion.removeValue(forKey: "recordingHash")
+        media["additionalSources"] = [companion]
+        media["spokenSources"] = [["sourceKey": key, "offsetSeconds": 10_000,
+                                  "wordIdPrefix": "r2.", "transcript": try #require(document["transcript"])]]
+        document["media"] = media
+        #expect(throws: (any Error).self) { try ProjectJSON.decode(JSONSerialization.data(withJSONObject: document)) }
+        document["schemaVersion"] = 7
+        let data = try JSONSerialization.data(withJSONObject: document)
+        let raw = try ProjectJSON.decoder().decode(JSONValue.self, from: data)
+        #expect(throws: VoxClipError.projectTooNew) { try ProjectMigrations.checkVersion(raw, maximumSupportedVersion: 6) }
+        let spoken = try ProjectJSON.decode(data)
+        #expect(try ProjectJSON.decode(ProjectJSON.encode(spoken)) == spoken)
+    }
+
     struct WriterVersionCase: Decodable, Sendable {
         let runtime: String?
         let writer: String
@@ -165,7 +189,7 @@ private actor SettingsDebounceClock {
             else { #expect(throws: VoxClipError.self) { try JSONProjectStore.decode(data) } }
         }
         var changed = root; changed["unexpected"] = .bool(true); try rejected(changed)
-        changed = root; changed["schemaVersion"] = .number(7); try rejected(changed, error: .projectTooNew)
+        changed = root; changed["schemaVersion"] = .number(8); try rejected(changed, error: .projectTooNew)
         changed = root; changed["schemaVersion"] = .number(0); try rejected(changed)
         changed = root; changed["format"] = .string("another"); try rejected(changed)
         changed = root; changed["id"] = .string("not-uuid"); try rejected(changed)

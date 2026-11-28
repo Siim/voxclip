@@ -33,12 +33,14 @@ public struct TimelinePieces: Sendable, Equatable {
     public let pieces: [TimelinePiece]
     private let sourcePieces: [TimelinePiece]
     private let partSeams: Set<Double>
-    public init(_ pieces: [TimelinePiece]) { self.init(pieces, partSeams: []) }
+    private let recordingSeams: Set<Double>
+    public init(_ pieces: [TimelinePiece]) { self.init(pieces, partSeams: [], recordingSeams: []) }
 
-    private init(_ pieces: [TimelinePiece], partSeams: Set<Double>) {
+    private init(_ pieces: [TimelinePiece], partSeams: Set<Double>, recordingSeams: Set<Double>) {
         self.pieces = pieces
         sourcePieces = pieces.sorted { $0.source.lowerBound < $1.source.lowerBound }
         self.partSeams = partSeams
+        self.recordingSeams = recordingSeams
     }
 
     /// The kept intervals of a legacy plan, butted in output order, or a Voice Lab plan's pieces.
@@ -55,7 +57,8 @@ public struct TimelinePieces: Sendable, Equatable {
                                             edited: Double(output) / rate..<Double(output + length) / rate))
                 output += length
             }
-            self.init(pieces, partSeams: Set(plan.partSeams.map { Double($0) / rate }))
+            self.init(pieces, partSeams: Set(plan.partSeams.map { Double($0) / rate }),
+                      recordingSeams: Set(plan.recordingSeams.map { Double($0) / rate }))
         case .voiceLab(let plan):
             let rate = plan.sampleRate
             let pieces = plan.pieces.filter { $0.outputEndSample > $0.outputStartSample }.map { piece in
@@ -63,7 +66,8 @@ public struct TimelinePieces: Sendable, Equatable {
                               edited: Double(piece.outputStartSample) / rate..<Double(piece.outputEndSample) / rate,
                               kind: piece.kind == .synth ? .ai : .kept)
             }
-            self.init(pieces, partSeams: Set(plan.partSeams.map { Double($0) / rate }))
+            self.init(pieces, partSeams: Set(plan.partSeams.map { Double($0) / rate }),
+                      recordingSeams: Set(plan.recordingSeams.map { Double($0) / rate }))
         }
     }
 
@@ -89,6 +93,10 @@ public struct TimelinePieces: Sendable, Equatable {
     /// Whether this play-order piece begins a new part, even if its source is adjacent.
     public func isPartSeam(at index: Int) -> Bool {
         pieces.indices.contains(index) && partSeams.contains(pieces[index].edited.lowerBound)
+    }
+
+    public func isRecordingSeam(at index: Int) -> Bool {
+        pieces.indices.contains(index) && recordingSeams.contains(pieces[index].edited.lowerBound)
     }
 
     public func isBackwardPartSeam(at index: Int) -> Bool {

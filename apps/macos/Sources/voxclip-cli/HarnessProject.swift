@@ -30,8 +30,15 @@ struct HarnessProject {
         guard project.id == id else { throw HarnessError.invalid("The selected project changed. Restart the connection.") }
         switch tool {
         case .readTranscript:
-            let transcript = project.transcript
-            let words = transcript?.words ?? []
+            var project = project
+            if let requested = fields["recordingKey"] {
+                guard case .string(let key) = requested else { throw HarnessError.invalid("Choose a recording key from read_clips.") }
+                let source = try HarnessRecording.source(key, in: project)
+                guard let transcript = HarnessRecording.cachedTranscript(key, cache: DataLocations().cache) else { throw HarnessRecording.refusal(source) }
+                project = try HarnessRecording.add(key, transcript: transcript, to: project)
+            }
+            let clock = ProjectClock.build(project)
+            let words = clock.words
             let offset = try Self.integer(fields["offset"], default: 0, range: 0...Int.max)
             let limit = try Self.integer(fields["limit"], default: 200, range: 1...500)
             let first = min(offset, words.count)
@@ -41,19 +48,23 @@ struct HarnessProject {
                 let word = words[index]
                 return .object(["index": .number(Double(index)), "id": .string(word.id), "kind": .string(word.kind.rawValue),
                                 "start": .number(word.start), "end": .number(word.end), "text": .string(project.edits.corrections[word.id] ?? word.text),
-                                "cut": .bool(cut.contains(word.id))])
+                                "cut": .bool(cut.contains(word.id))].merging(Self.recording(clock.region(of: word.id))) { current, _ in current })
             }
             return .init(["words": .array(items), "total": .number(Double(words.count)), "nextOffset": end < words.count ? .number(Double(end)) : .null,
-                          "language": transcript?.language.map(JSONValue.string) ?? .null])
+                          "language": clock.transcript?.language.map(JSONValue.string) ?? .null,
+                          "recordings": Self.recordings(project, clock: clock)])
         case .readClips:
-            let indices = Dictionary(uniqueKeysWithValues: (project.transcript?.words ?? []).enumerated().map { ($0.element.id, $0.offset) })
+            let clock = ProjectClock.build(project)
+            let indices = Dictionary(uniqueKeysWithValues: clock.words.enumerated().map { ($0.element.id, $0.offset) })
             let clips: [JSONValue] = try project.edits.clips.map { clip in
-                let parts = clip.playParts.compactMap { part -> ClipProposal.Part? in
+                let parts = clip.playParts.compactMap { part -> JSONValue? in
                     guard let start = indices[part.startWordId], let end = indices[part.endWordId] else { return nil }
-                    return .init(startWord: start, endWord: end)
+                    var fields = Self.recording(clock.region(of: part.startWordId))
+                    fields["startWord"] = .number(Double(start)); fields["endWord"] = .number(Double(end))
+                    return .object(fields)
                 }
                 return .object(["id": .string(clip.id), "title": clip.title.map(JSONValue.string) ?? .null, "selected": .bool(clip.selected),
-                         "kind": .string(clip.kind?.rawValue ?? (clip.parts == nil ? "stretch" : "story")), "parts": try Self.json(parts),
+                         "kind": .string(clip.kind?.rawValue ?? (clip.parts == nil ? "stretch" : "story")), "parts": .array(parts),
                          "startWord": indices[clip.startWordId].map { .number(Double($0)) } ?? .null,
                          "endWord": indices[clip.endWordId].map { .number(Double($0)) } ?? .null,
                          "sourceSpan": try Self.json(ClipControlsProject.sourceSpan(of: clip.id, in: project).map {
@@ -64,7 +75,13 @@ struct HarnessProject {
                 .object(["sourceKey": .string($0.footageKey), "duration": .number($0.durationSeconds),
                          "name": .string(URL(fileURLWithPath: $0.absolutePath).lastPathComponent)])
             }
-            return .init(["projectId": .string(id), "clips": .array(clips), "footageSources": .array(sources)])
+            return .init(["projectId": .string(id), "clips": .array(clips), "footageSources": .array(sources),
+                          "recordings": Self.recordings(project, clock: clock)])
+        case .readTakes:
+            let clock = ProjectClock.build(project)
+            let matches = TakeMatch.build(clock: clock)
+            return .init(["beats": try Self.json(matches.beats), "solo": try Self.json(matches.solo),
+                          "recordings": Self.recordings(project, clock: clock)])
         case .readDecisions:
             guard case .string(let clipId) = fields["clipId"], let clip = project.edits.clips.first(where: { $0.id == clipId }) else {
                 throw HarnessError.invalid("Choose a clip id from read_clips.")
@@ -84,14 +101,18 @@ struct HarnessProject {
                                        "text": effect.text.map(JSONValue.string) ?? .null, "rect": try Self.json(effect.rect)])
                           }), "zooms": try Self.json(project.motionCues.filter { $0.clipID == clipId })])
         case .readFrames:
-            guard case .array(let requested) = fields["times"], (1...4).contains(requested.count),
-                  requested.allSatisfy({ if case .number(let time) = $0 { return time >= 0 && time < project.media.source.durationSeconds }; return false }) else {
-                throw HarnessError.invalid("Give one to four source times inside the video.")
+            guard case .array(let requested) = fields["times"], (1...4).contains(requested.count) else {
+                throw HarnessError.invalid("Give one to four project times inside a recording.")
             }
             let times = requested.compactMap { if case .number(let time) = $0 { return time }; return nil }
+            guard times.count == requested.count else { throw HarnessError.invalid("Give one to four project times inside a recording.") }
             return try await frames(times, project: project)
         case .proposeTimeline:
-            let timelines = try HarnessTimeline.readSeries(arguments)
+            let timelines = try HarnessTimeline.readSeries(arguments).map { timeline in
+                guard let key = timeline.recordingKey,
+                      let transcript = HarnessRecording.cachedTranscript(key, cache: DataLocations().cache) else { return timeline }
+                return try timeline.pinningRecordingTranscript(transcript)
+            }
             let shared = try SharedResources.locate()
             let proposal = try HarnessProposal(timelines: timelines, project: project)
             var actions: [JSONValue] = []
@@ -99,14 +120,19 @@ struct HarnessProject {
             var refusals: [JSONValue] = []
             for index in timelines.indices {
                 let review: (project: Project, operations: [ClipAutopilotOperation], pending: [ClipAutopilotOperation])
-                do { review = try proposal.review(project, shared: shared, at: index) }
+                let recording = timelines[index].recordingKey
+                let transcript = recording.flatMap { HarnessRecording.cachedTranscript($0, cache: DataLocations().cache) }
+                do { review = try proposal.review(project, shared: shared, at: index, recordingTranscript: transcript, preview: true) }
                 catch let refusal as TimelineEditRefusal {
                     refusals.append(.object(["timelineIndex": .number(Double(index)), "reason": .string(refusal.copy)]))
                     continue
                 }
-                guard review.project != project || !review.pending.isEmpty else { throw HarnessError.invalid("The timeline doesn't change the project.") }
+                guard recording != nil || review.project != project || !review.pending.isEmpty else {
+                    throw HarnessError.invalid("The timeline doesn't change the project.")
+                }
                 let approval: JSONValue = .string("In VoxClip only; the app confirms the price for the open clip.")
                 let position: JSONValue = .number(Double(index))
+                if let recording { free.append(.object(["kind": .string("useRecording"), "key": .string(recording), "timelineIndex": position])) }
                 let music = review.pending.filter { $0.decision == .music }
                 for operation in music + review.pending.filter({ $0.decision != .music }) {
                     switch operation.action {
@@ -138,8 +164,34 @@ struct HarnessProject {
         }
     }
 
-    private func frames(_ times: [Double], project: Project) async throws -> HarnessResult {
-        let media = project.media.source
+    private static func recording(_ region: ProjectClock.Region?) -> [String: JSONValue] {
+        ["recording": region.map { .string($0.label) } ?? .null, "recordingKey": region.map { .string($0.key) } ?? .null]
+    }
+
+    private static func recordings(_ project: Project, clock: ProjectClock) -> JSONValue {
+        var next = 0
+        func entry(_ key: String, _ label: String, _ duration: Double, _ count: Int?, _ gain: Double) -> JSONValue {
+            let first = next
+            next += count ?? 0
+            return .object(["key": .string(key), "label": .string(label), "durationSeconds": .number(duration),
+                            "firstWord": next > first ? .number(Double(first)) : .null,
+                            "lastWord": next > first ? .number(Double(next - 1)) : .null,
+                            "transcribed": .bool(count != nil), "gainDb": .number(gain)])
+        }
+        let spoken = project.media.spokenSources ?? []
+        let regions = clock.regions.map { region in
+            let count = region.prefix.isEmpty ? project.transcript?.words.count : spoken.first { $0.sourceKey == region.key }?.transcript.words.count
+            let duration = region.prefix.isEmpty ? project.media.source.durationSeconds :
+                project.media.additionalSources.first { $0.contentKey == region.key }?.durationSeconds ?? 0
+            return entry(region.key, region.label, duration, count, region.gainDb)
+        }
+        let keys = Set(clock.regions.map(\.key))
+        return .array(regions + project.media.additionalSources.filter { !keys.contains($0.contentKey) }.map {
+            entry($0.contentKey, ProjectClock.label($0), $0.durationSeconds, nil, 0)
+        })
+    }
+
+    private func frameSource(_ media: MediaReference) throws -> URL {
         var candidates = [URL(fileURLWithPath: media.absolutePath)]
         if let relative = media.relativePath { candidates.append(url.deletingLastPathComponent().appendingPathComponent(relative).standardizedFileURL) }
         guard let source = candidates.first(where: { candidate in
@@ -150,22 +202,42 @@ struct HarnessProject {
         }) else {
             throw HarnessError.invalid("The project's source video is missing. Relink it in VoxClip.")
         }
-        let asset = AVURLAsset(url: source, options: [AVURLAssetReferenceRestrictionsKey: AVAssetReferenceRestrictions.forbidAll.rawValue])
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 480, height: 480)
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
+        return source
+    }
+
+    private func frames(_ times: [Double], project: Project) async throws -> HarnessResult {
+        let clock = ProjectClock.build(project)
+        let rate = Double(clock.sampleRate)
+        let targets = try times.map { time in
+            guard let region = clock.regions.first(where: { Double($0.offsetSamples) / rate <= time && time < Double($0.endSample) / rate }) else {
+                throw HarnessError.invalid("Give one to four project times inside a recording.")
+            }
+            return (time: time, region: region, offset: Double(region.offsetSamples) / rate)
+        }
+        var generators: [String: AVAssetImageGenerator] = [:]
         var images: [HarnessResult.Frame] = []
-        for time in times {
-            let frame = try await generator.image(at: CMTime(seconds: time, preferredTimescale: 60_000))
+        for (time, region, offset) in targets {
+            let generator: AVAssetImageGenerator
+            if let existing = generators[region.key] { generator = existing }
+            else {
+                let media = region.prefix.isEmpty ? project.media.source : project.media.additionalSources.first { $0.contentKey == region.key }
+                guard let media else { throw HarnessError.invalid("The project's source video is missing. Relink it in VoxClip.") }
+                let asset = AVURLAsset(url: try frameSource(media), options: [AVURLAssetReferenceRestrictionsKey: AVAssetReferenceRestrictions.forbidAll.rawValue])
+                generator = AVAssetImageGenerator(asset: asset)
+                generator.appliesPreferredTrackTransform = true
+                generator.maximumSize = CGSize(width: 480, height: 480)
+                generator.requestedTimeToleranceBefore = .zero
+                generator.requestedTimeToleranceAfter = .zero
+                generators[region.key] = generator
+            }
+            let frame = try await generator.image(at: CMTime(seconds: time - offset, preferredTimescale: 60_000))
             let bytes = NSMutableData()
             guard let jpeg = CGImageDestinationCreateWithData(bytes, UTType.jpeg.identifier as CFString, 1, nil) else {
                 throw HarnessError.invalid("Can't encode a preview frame.")
             }
             CGImageDestinationAddImage(jpeg, frame.image, [kCGImageDestinationLossyCompressionQuality: 0.72] as CFDictionary)
             guard CGImageDestinationFinalize(jpeg) else { throw HarnessError.invalid("Can't encode a preview frame.") }
-            images.append(.init(requested: time, actual: frame.actualTime.seconds, jpeg: bytes.base64EncodedString()))
+            images.append(.init(requested: time, actual: offset + frame.actualTime.seconds, jpeg: bytes.base64EncodedString()))
         }
         return .init(["frames": try Self.json(images.map { ["requested": $0.requested, "actual": $0.actual] })], images: images)
     }
@@ -214,8 +286,11 @@ struct HarnessTranscript: AsyncParsableCommand {
     @OptionGroup var scope: HarnessProjectOptions
     @Option var offset = 0
     @Option var limit = 200
+    @Option var recordingKey: String?
     func run() async throws {
-        try await HarnessProject(path: scope.project).call(.readTranscript, arguments: .object(["offset": .number(Double(offset)), "limit": .number(Double(limit))])).writeCLI()
+        var fields: [String: JSONValue] = ["offset": .number(Double(offset)), "limit": .number(Double(limit))]
+        fields["recordingKey"] = recordingKey.map(JSONValue.string)
+        try await HarnessProject(path: scope.project).call(.readTranscript, arguments: .object(fields)).writeCLI()
     }
 }
 
@@ -224,6 +299,14 @@ struct HarnessClips: AsyncParsableCommand {
     @OptionGroup var scope: HarnessProjectOptions
     func run() async throws {
         try await HarnessProject(path: scope.project).call(.readClips, arguments: .object([:])).writeCLI()
+    }
+}
+
+struct HarnessTakes: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "takes", abstract: "Read matched takes across recordings as JSON.")
+    @OptionGroup var scope: HarnessProjectOptions
+    func run() async throws {
+        try await HarnessProject(path: scope.project).call(.readTakes, arguments: .object([:])).writeCLI()
     }
 }
 
@@ -237,7 +320,7 @@ struct HarnessDecisions: AsyncParsableCommand {
 }
 
 struct HarnessFrames: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "frames", abstract: "Read local JPEG thumbnails at source times as JSON.")
+    static let configuration = CommandConfiguration(commandName: "frames", abstract: "Read local JPEG thumbnails at project times as JSON.")
     @OptionGroup var scope: HarnessProjectOptions
     @Option(name: .customLong("time"), help: "Source seconds. Repeat up to four times.") var times: [Double]
     func run() async throws {

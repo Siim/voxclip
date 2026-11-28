@@ -100,6 +100,7 @@ public sealed partial class Exporter : IExporter
                     VoxClip.Core.Domain.VoiceLab.VoiceLabProjectErrorCode.StaleRenderContract);
         }
         var protectedPaths = new List<string> { snapshot.Media.Path };
+        protectedPaths.AddRange(snapshot.SpanSources.Select(source => source.Path));
         protectedPaths.AddRange(snapshot.Footage.Select(layer => layer.Path));
         if (snapshot.Clip?.Effects is { } effects)
         {
@@ -168,7 +169,6 @@ public sealed partial class Exporter : IExporter
         var fps = output.FrameRate;
         snapshot = snapshot with { Output = output };
         // A clip's speed renders edited ÷ speed seconds; each frame looks up its edited time (design §6.9).
-        var freezes = snapshot.Clip?.Effects;
         var (frames, samples) = RenderedCounts(snapshot, fps);
         var destination = OutputSafety.Resolve(job.OutputPath);
         var partial = destination + ".partial";
@@ -216,7 +216,7 @@ public sealed partial class Exporter : IExporter
             using (var video = new EncoderSession(encoderName, output))
             using (var audio = HasOutputAudio(snapshot) ? new EncoderSession("aac", output, true) : null)
             using (var mux = CreateMux(partial, video, audio, snapshot.Clip?.Effects?.Credits, out var videoStream, out var audioStream))
-            using (var decoder = new VideoDecoder(snapshot.Media.Path))
+            using (var decoder = new RecordingVideo(snapshot.Media.Path))
             using (var nv12Handle = NativeHandle.Own(Native.Frame(AVPixelFormat.AV_PIX_FMT_NV12, size.Width, size.Height), NativeKind.Frame))
             using (var scaling = NativeHandle.Own(ffmpeg.sws_getContext(size.Width, size.Height, AVPixelFormat.AV_PIX_FMT_BGRA,
                 size.Width, size.Height, AVPixelFormat.AV_PIX_FMT_NV12, (int)SwsFlags.SWS_BILINEAR, null, null, null), NativeKind.Scale))
@@ -244,7 +244,8 @@ public sealed partial class Exporter : IExporter
                     var editedTime = EditedTime(snapshot, index, fps);
                     var sourceTime = cursor.Source(editedTime);
                     var synced = voiceSession?.Lipsync?.Read(editedTime, ct);
-                    var decoded = synced ?? decoder.ReadAt(freezes?.PictureTime(sourceTime) ?? sourceTime, false, ct);
+                    var (recording, localTime) = cursor.Picture(snapshot, sourceTime);
+                    var decoded = synced ?? decoder.Read(recording, localTime, ct);
                     if (synced is not null && composer is FrameComposer sharedComposer)
                         sharedComposer.Compose(decoded, bgra, snapshot, editedTime, false, null, ct, renderedVoicePicture: true);
                     else composer.Compose(decoded, bgra, snapshot, editedTime, false, ct);

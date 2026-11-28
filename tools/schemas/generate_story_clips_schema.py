@@ -18,8 +18,9 @@ def part_array(definition):
 
 def main():
     schema = json.loads(SCHEMA.read_text())
-    schema['title'] = 'VoxClip project file (.voxclip), schemaVersion 1, 2, 3, 4, 5 or 6'
-    schema['properties']['schemaVersion']['enum'] = [1, 2, 3, 4, 5, 6]
+    versions = sorted(set(schema['properties']['schemaVersion']['enum']) | {5, 6})
+    schema['title'] = 'VoxClip project file (.voxclip), schemaVersion ' + ', '.join(map(str, versions[:-1])) + f' or {versions[-1]}'
+    schema['properties']['schemaVersion']['enum'] = versions
     for rule in schema['allOf']:
         versions = rule['if']['properties']['schemaVersion'].get('enum')
         if versions in ([3, 4], [3, 4, 5]):
@@ -30,6 +31,7 @@ def main():
     defs['clipWordRange'] = {'type': 'object', 'additionalProperties': False, 'required': list(words), 'properties': words}
     defs['clipPart'] = {'type': 'object', 'additionalProperties': False, 'required': ['id', *words], 'properties': {
         'id': {'$ref': '#/$defs/id'}, **words, 'reframe': {'$ref': '#/$defs/clipControls/properties/reframe'},
+        'takeReason': {'type': 'string', 'maxLength': 160},
     }}
     clip = defs['clipRange']
     clip['description'] = 'A clip in the range layer. For a story the inclusive outer word range is the source hull of its parts.'

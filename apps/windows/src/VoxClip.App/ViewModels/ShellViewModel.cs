@@ -3,7 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace VoxClip.App.ViewModels;
 
-public enum SidebarKind { Home, Separator, Project, FullTake, Clip, SuggestedHeader, Suggestion, Action, RecentHeader, Recent, Empty, Finding, Callout, NoneFound, ClipsHeader, OutlineHeader, Outline }
+public enum SidebarKind { Home, Separator, Project, FullTake, Clip, SuggestedHeader, Suggestion, Action, RecentHeader, Recent, Empty, Finding, Callout, NoneFound, ClipsHeader, OutlineHeader, Outline, OmittedRecordingLine }
 
 /// <summary>A callout under the sidebar actions (design §13): no connector, or a problem finding clips. See <see cref="ClipCallouts"/>.</summary>
 public sealed record SidebarCallout(string Title, string Message, string Action);
@@ -32,6 +32,8 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     private MediaTile? media;
     private bool showsKeepAll;
     private bool showsCancel;
+    private IReadOnlyList<string> recordingReasons = [];
+    public IReadOnlyList<string> RecordingReasons { get => recordingReasons; set => SetProperty(ref recordingReasons, value); }
     private string cancelName = "";
     private ClipExportState exportState;
     private double? exportProgress;
@@ -226,6 +228,7 @@ public sealed class ShellViewModel
                 row.Title = clip.Title;
                 row.Number = number.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 row.MetaTime = EditorViewModel.Duration(clip.DurationSeconds);
+                row.RecordingReasons = clip.IsSuggested ? editor.ProposalRecordingReasons(clip.Clip) : [];
                 row.Badge = clip.PartsBadge;
                 row.MetaStatus = suggestion ? " · Suggested" : "";
                 var export = suggestion ? new ExportRowState(ClipExportState.None) : editor.ExportStatus(clip.Id);
@@ -284,13 +287,32 @@ public sealed class ShellViewModel
                 {
                     var outline = Row(SidebarKind.OutlineHeader, "outline");
                     outline.Title = "OUTLINE";
-                    outline.Detail = editor.IsStoryClip ? $"Clip {editor.Clips.FirstOrDefault(clip => clip.Id == active)?.Number} · {editor.ClipParts.Count} parts" : "";
+                    outline.Detail = editor.StoryRecordingHeading ?? (editor.IsStoryClip ? $"Clip {editor.Clips.FirstOrDefault(clip => clip.Id == active)?.Number} · {editor.ClipParts.Count} parts" : "");
                     outline.AccessibleName = editor.IsStoryClip ? "Outline, " + outline.Detail : "Transcript outline";
                     next.Add(outline);
+                    var parts = editor.ClipParts;
+                    var omitted = editor.OmittedRecordingLines.ToLookup(line =>
+                        parts.FirstOrDefault(part => part.Part.EndWordId == line.AfterWordId)?.Number ??
+                        (parts.FirstOrDefault(part => part.Id == line.BeforePartId)?.Number ?? parts.Count + 1) - 1);
+                    void AddOmittedLines(int slot)
+                    {
+                        foreach (var line in omitted[slot])
+                        {
+                            var row = Row(SidebarKind.OmittedRecordingLine, $"omitted:{active}:{line.Take.StartWordId}");
+                            row.WordIndex = editor.Index(line.Take.StartWordId);
+                            var words = editor.Words.Skip(row.WordIndex).Take(editor.Index(line.Take.EndWordId) - row.WordIndex + 1);
+                            row.Title = $"{line.Label} · {string.Join(" ", words.Select(editor.DisplayText))}";
+                            row.Detail = editor.RecordingUnavailable(line.Take.Key) ?? (editor.CanEditParts ? "" : "Finish the current edit first.");
+                            row.IsEnabled = row.Detail.Length == 0;
+                            row.AccessibleName = row.Title;
+                            next.Add(row);
+                        }
+                    }
                     if (editor.IsStoryClip)
                     {
-                        foreach (var part in editor.ClipParts)
+                        foreach (var part in parts)
                         {
+                            AddOmittedLines(part.Number - 1);
                             var row = Row(SidebarKind.Outline, $"outline:{active}:{part.Id}");
                             row.PartId = part.Id;
                             row.Number = part.Number.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -298,20 +320,27 @@ public sealed class ShellViewModel
                             row.Title = part.Excerpt;
                             row.Detail = part.TakeTime;
                             row.IsActive = editor.SelectedPart?.Id == part.Id;
-                            row.Edits = editor.CanEditParts;
-                            row.AccessibleName = $"Part {part.Number} of {editor.ClipParts.Count}, {part.Excerpt}, take time {part.TakeTime}" + (row.IsActive ? ", selected" : "");
+                            row.Edits = editor.CanRemovePart;
+                            row.AccessibleName = $"Part {part.Number} of {editor.ClipParts.Count}, " +
+                                (editor.StoryRecordingRegions.Count > 1 ? $"recording {part.Recording?.Label}, " : "") +
+                                $"{part.Excerpt}, {(editor.StoryRecordingRegions.Count > 1 ? "recording" : "take")} time {part.TakeTime}" + (row.IsActive ? ", selected" : "");
                             next.Add(row);
                         }
                     }
-                    else foreach (var paragraph in editor.Paragraphs)
+                    else
                     {
-                        var row = Row(SidebarKind.Outline, "outline:" + editor.Words[paragraph.StartIndex].Id);
-                        row.WordIndex = paragraph.StartIndex;
-                        row.Title = string.Join(" ", editor.Words.Skip(paragraph.StartIndex).Take(Math.Min(8, paragraph.Count)).Select(editor.DisplayText));
-                        row.Detail = paragraph.Timecode;
-                        row.AccessibleName = $"Paragraph at {paragraph.Timecode}, {row.Title}";
-                        next.Add(row);
+                        if (parts.Count > 0) AddOmittedLines(0);
+                        foreach (var paragraph in editor.Paragraphs)
+                        {
+                            var row = Row(SidebarKind.Outline, "outline:" + editor.Words[paragraph.StartIndex].Id);
+                            row.WordIndex = paragraph.StartIndex;
+                            row.Title = string.Join(" ", editor.Words.Skip(paragraph.StartIndex).Take(Math.Min(8, paragraph.Count)).Select(editor.DisplayText));
+                            row.Detail = paragraph.Timecode;
+                            row.AccessibleName = $"Paragraph at {paragraph.Timecode}, {row.Title}";
+                            next.Add(row);
+                        }
                     }
+                    AddOmittedLines(parts.Count);
                 }
                 if (editor.ActiveClip is not null)
                 {
@@ -322,6 +351,12 @@ public sealed class ShellViewModel
                     add.ToolTip = add.Detail;
                     add.AccessibleName = add.Detail.Length == 0 ? add.Title : $"{add.Title}, {add.Detail}";
                     next.Add(add);
+                }
+                if (editor.HasSeveralRecordings || editor.RecordingCompanions.Count > 0)
+                {
+                    var recordings = Row(SidebarKind.Action, "action:recordings");
+                    recordings.AccessibleName = "Outline recordings";
+                    next.Add(recordings);
                 }
                 next.Add(Row(SidebarKind.Separator, "separator:actions"));
                 var make = Row(SidebarKind.Action, "action:make");

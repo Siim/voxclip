@@ -4,6 +4,31 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, the Pan and zoom panel follows Undo and timeline edits to its cue, says why Apply is unavailable, and shows the edited keyframe in the paused viewer; the preview shows pan and zoom under Reduce Motion too, as the export does.
+- On Mac, Put Back shows leading and consecutive skipped lines and restores each in recording order.
+- On Mac, alternate versions and uninserted lines play in place without changing the clip.
+- On Mac, the timeline can open a line's other versions even when the transcript shows a single recording.
+- On Mac, added spoken recordings match the primary's speech level, with an undoable Don't match level action.
+- On Mac, Make one clip checks each metered planning request against the card's AI cap before sending.
+- On Mac, clips that mix recordings keep playing paid voice patches from the primary recording.
+- On Mac, the export check skips cutaways when checking the camera at a recording seam.
+- On Mac, a freeze holds across ordinary cuts in a recording, then stops at a recording change.
+- The CLI can export and check a clip from another recording even if the unused original is missing.
+- CLI exports on Mac and Windows protect every spoken recording in a project, even those outside the selected clip.
+- On Windows, seek and preview cuts across recordings, recover left-out lines in order, and turn off automatic recording level matching.
+- On Mac, make one clip from the best lines across card recordings, or combine them in a project without AI; the Outline’s ✦ chip runs Best versions.
+- On Windows, start a clip from one recording, audition and swap individual line versions, and insert lines only another recording says.
+- Claude Code and Codex can read recordings and matched takes and propose a story across recordings, without sending media or spending money.
+- On Mac, start a clip from one recording, audition and swap in another recording's version of a line, or insert a line only another recording has.
+- On Windows, switch between recordings, build clips from their words, and compare or swap part versions without losing paid lip sync.
+- Best versions and the autopilot planner can pick one take per beat across recordings; Mac proposal cards show why each part was chosen.
+- On Mac, view and edit story parts from several recordings in the Outline, with recording colours and times local to each recording.
+- On Windows, preview and export story clips from several recordings, with matched speech levels and a check for the picture and voice at each recording change.
+- On Mac, preview and export story clips from multiple recordings with matched speech levels, separate Final Cut Pro assets, and an export check that flags the wrong picture or a level jump.
+- Mac and Windows can build a clip from one recording, swap just one line or put a skipped line back, while keeping paid voice work safe.
+- Mac and Windows can compare transcript lines across recordings and identify alternate versions, restarts and lines unique to one take.
+- Mac and Windows project files can store spoken companions and story parts from different recordings, plan the parts in play order with a new caption page at each recording seam, and keep paid voice work safe when a version changes.
+- When a project can’t load, the CLI reports the invalid field path and reason in text and JSON on Mac and Windows.
 - When a project can’t load, the CLI reports the invalid field path and reason in text and JSON on Mac and Windows, including nested fields and invalid settings values.
 - Social loudness can boost quiet recordings by up to 20 dB on Mac and Windows, with the same peak protection.
 - The CLI exports clips in their saved frame and accepts `--aspect 4:5` for export and check on Mac and Windows.

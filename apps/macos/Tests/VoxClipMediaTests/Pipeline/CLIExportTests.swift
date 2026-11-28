@@ -3,8 +3,8 @@ import Foundation
 import Darwin
 import Synchronization
 import Testing
-import VoxClipCore
-import VoxClipMedia
+@testable import VoxClipCore
+@testable import VoxClipMedia
 
 struct CLIResult: Sendable {
     enum ReportError: Error, Equatable { case watchdogTimeout(status: Int32), emptyOutput(status: Int32) }
@@ -340,6 +340,166 @@ private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdit
 }
 
 extension HeavyMediaTests {
+@Test func recordingCheckSkipsCoveredFramesAndStillChecksVisibleFrames() async throws {
+    let project = try await Self.recordingStoryProject()
+    let input = URL(fileURLWithPath: project.media.source.absolutePath)
+    let plan = try RenderCallerInputs.editPlan(project: project, clipID: "story")
+    let request = RenderRequest(sourceURL: input, plan: plan,
+        output: OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 1_000_000))
+    var render = try RenderCallerInputs.prepare(request, project: project, clipID: "story", dataRoot: input.deletingLastPathComponent())
+    var edit = try ExportCheckExpectation.edit(render: render, state: nil)
+    let seam = try #require(edit.recordingBoundaries.first { $0.fromKey == project.media.source.contentKey })
+    edit.recordingBoundaries = [seam]
+    let spans = try CompositionVideoSpan.build(render)
+    let span = try #require(spans.first { $0.recordingKey == seam.toKey && $0.output.start.seconds == seam.seam.at })
+    let start = span.source.start.seconds
+    var cover = ClipFootage(id: "cutaway", clipID: "story", kind: .bRoll, start: start, end: span.source.end.seconds,
+                            footage: .init(sourceKey: project.media.source.contentKey, start: 0))
+    render.footage = [.init(entry: cover, url: input)]
+    let hidden = try await RecordingExportCheck.measure(export: input, render: render, edit: edit)
+    #expect(hidden.count == 1 && hidden.first?.wrongPictureLabel == nil)
+
+    cover.end = start + 0.4
+    render.footage = [.init(entry: cover, url: input)]
+    let visible = try await RecordingExportCheck.measure(export: input, render: render, edit: edit)
+    #expect(visible.first?.wrongPictureLabel == seam.seam.from)
+}
+
+/// Pan and zoom (Make it postable adds zooms) is part of the exported picture, so the check zooms the candidate
+/// frames the same way: a take shot like a closer view of the right one is not a wrong picture, and a wrong
+/// recording under a zoom is still found.
+@Test func recordingCheckZoomsCandidatesLikeTheExport() async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let project = try await Self.recordingStoryProject()
+    let primary = URL(fileURLWithPath: project.media.source.absolutePath), primaryKey = project.media.source.contentKey
+    let output = OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 1_000_000)
+    let plan = try RenderCallerInputs.editPlan(project: project, clipID: "story")
+    let render = try RenderCallerInputs.prepare(RenderRequest(sourceURL: primary, plan: plan, output: output),
+        project: project, clipID: "story", dataRoot: directory)
+    let edit = try ExportCheckExpectation.edit(render: render, state: nil)
+    let spans = try CompositionVideoSpan.build(render)
+    let zoom = [MotionKeyframe(progress: 0, scale: MotionCue.maximumScale), MotionKeyframe(progress: 1, scale: MotionCue.maximumScale)]
+    func zoomed(into seam: ExportCheckExpectation.RecordingBoundary) throws -> (RenderRequest, ExportCheckExpectation.Edit) {
+        let span = try #require(spans.first { $0.recordingKey == seam.toKey && $0.output.start.seconds == seam.seam.at })
+        var request = render, single = edit
+        request.motionClipID = "story"
+        request.motionCues = [MotionCue(id: "zoom", clipID: "story", sourceStart: span.source.start.seconds,
+                                        sourceEnd: span.source.end.seconds, keyframes: zoom)]
+        single.recordingBoundaries = [seam]
+        return (request, single)
+    }
+    let exporter = AVExporter(cleanupRegistry: directory.appendingPathComponent("Scratch"))
+    // The closer take: the primary recording zoomed the same way throughout.
+    let closer = directory.appendingPathComponent("closer.mp4")
+    var take = RenderRequest(sourceURL: primary, plan: EditPlan(sampleRate: 48_000, totalSamples: 288_000,
+        kept: [MediaInterval(startSample: 0, endSample: 288_000)]), output: output)
+    take.motionClipID = "take"
+    take.motionCues = [MotionCue(id: "closer", clipID: "take", sourceStart: 0, sourceEnd: 6, keyframes: zoom)]
+    _ = try await exporter.export(.init(render: take, outputURL: closer, loudness: .off)) { _ in }
+
+    let intoPrimary = try #require(edit.recordingBoundaries.first { $0.toKey == primaryKey })
+    let (zoomedStory, single) = try zoomed(into: intoPrimary)
+    var story = zoomedStory
+    let export = directory.appendingPathComponent("zoomed-story.mp4")
+    _ = try await exporter.export(.init(render: story, outputURL: export, loudness: .off)) { _ in }
+    let other = try #require(story.recordings.firstIndex { $0.key != primaryKey })
+    story.recordings[other] = .init(region: story.recordings[other].region, url: closer)
+    let similar = try await RecordingExportCheck.measure(export: export, render: story, edit: single)
+    #expect(similar.count == 1 && similar.first?.wrongPictureLabel == nil)
+
+    let intoOther = try #require(edit.recordingBoundaries.first { $0.toKey != primaryKey })
+    let (wrong, wrongEdit) = try zoomed(into: intoOther)
+    let found = try await RecordingExportCheck.measure(export: closer, render: wrong, edit: wrongEdit)
+    #expect(found.first?.wrongPictureLabel == intoOther.seam.from)
+}
+
+@Test func cliProtectsAnUnusedSpokenRecordingFromExport() async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    var project = try await Self.recordingStoryProject()
+    let original = URL(fileURLWithPath: project.media.additionalSources[0].absolutePath)
+    let companion = directory.appendingPathComponent("companion.mp4")
+    try FileManager.default.copyItem(at: original, to: companion)
+    project.media.additionalSources[0].absolutePath = companion.path
+    project.edits.clips.append(.init(id: "primary-only", startWordId: "w1", endWordId: "w1"))
+    let input = directory.appendingPathComponent("story.voxclip")
+    try await JSONProjectStore().save(project, to: input)
+    let result = try runCLI(["export", "--open", input.path, "--clip", "primary-only", "--style", "off", "--export", companion.path, "--json"], directory: directory)
+    #expect(result.status != 0)
+    #expect((try result.json["error"] as? [String: Any])?["message"] as? String == "Output paths must not overwrite inputs or each other")
+    #expect(try JSONProjectStore.contentKey(for: companion) == project.media.additionalSources[0].contentKey)
+}
+
+@Test func cliExportsFivePartsAcrossRecordings() async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let project = try await Self.recordingStoryProject()
+    let input = directory.appendingPathComponent("story.voxclip")
+    let output = directory.appendingPathComponent("story.mp4")
+    try await JSONProjectStore().save(project, to: input)
+    let result = try runCLI(["export", "--open", input.path, "--clip", "story", "--style", "off", "--export", output.path, "--json"], directory: directory, timeout: 100)
+    try #require(result.status == 0, "CLI error: \(result.stderr.prefix(400)); watchdog: \(result.watchdogFired)")
+    #expect(FileManager.default.fileExists(atPath: output.path))
+}
+
+@Test func cliCanExportWithoutTheUnusedPrimary() async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    var project = try await Self.recordingStoryProject()
+    project.media.source.absolutePath = directory.appendingPathComponent("missing.mp4").path
+    project.edits.clips.append(.init(id: "companion-only", startWordId: "r2.w1", endWordId: "r2.w2"))
+    let input = directory.appendingPathComponent("story.voxclip")
+    let output = directory.appendingPathComponent("companion.mp4")
+    try await JSONProjectStore().save(project, to: input)
+    let options = ["--style", "off", "--aspect", "source", "--loudness", "off", "--json", "--clip"]
+    let companion = try runCLI(["export", "--open", input.path, "--export", output.path] + options + ["companion-only"],
+                               directory: directory)
+    try #require(companion.status == 0)
+    let check = ["check", output.path, "--project", input.path] + options
+    let checked = try runCLI(check + ["companion-only"], directory: directory)
+    #expect(checked.status == 0 || checked.status == 8)
+    #expect(try checked.json["check"] != nil)
+    let mixed = try runCLI(check + ["story"], directory: directory)
+    #expect(mixed.status == 3)
+}
+
+@Test func cliWordRangeUsesTheProjectClock() async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let project = try await Self.recordingStoryProject()
+    let input = directory.appendingPathComponent("story.voxclip")
+    try await JSONProjectStore().save(project, to: input)
+    let options = ["export", "--open", input.path, "--style", "off", "--format", "fcpxml", "--export",
+                   directory.appendingPathComponent("story.fcpxml").path, "--json", "--range"]
+    let companion = try runCLI(options + ["3:4"], directory: directory)
+    #expect(companion.status == 0)
+    let mixed = try runCLI(options + ["2:3"], directory: directory)
+    #expect(mixed.status == 2)
+    #expect((try mixed.json["error"] as? [String: Any])?["message"] as? String == "A word range must come from one recording.")
+}
+
+static func recordingStoryProject() async throws -> Project {
+    let media = try FixtureLoader.sharedRoot().appendingPathComponent("fixtures/media")
+    let primary = media.appendingPathComponent("recording-0007.mp4")
+    let other = media.appendingPathComponent("recording-0010.mp4")
+    let base = try JSONProjectStore.decode(FixtureLoader.data("fixtures/recordings/two-recordings.voxclip"))
+    var transcript = try #require(base.transcript)
+    transcript.durationSeconds = 6
+    transcript.words = (0..<3).map { index in
+        TimedWord(id: "w\(index + 1)", text: "Beat", start: Double(index * 2) + 0.3, end: Double(index * 2) + 1.7)
+    }
+    var project = try await cliProject(source: primary, transcript: transcript)
+    let second = try await cliProject(source: other, transcript: transcript)
+    project.media.additionalSources = [second.media.source]
+    project = try await RecordingLoudness.add(project: project, key: second.media.source.contentKey, label: "0010",
+        transcript: transcript, primary: primary)
+    let words = ["r2.w1", "w1", "w2", "r2.w2", "w3"]
+    project.edits.clips = [.init(id: "story", startWordId: "w1", endWordId: "r2.w2",
+        parts: words.enumerated().map { .init(id: "part-\($0.offset)", startWordId: $0.element, endWordId: $0.element) })]
+    return project
+}
+
 @Test(.timeLimit(.minutes(2)), arguments: [false, true]) func cliExportsFourFiveAndChecksIt(_ explicit: Bool) async throws {
     let directory = try cliDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

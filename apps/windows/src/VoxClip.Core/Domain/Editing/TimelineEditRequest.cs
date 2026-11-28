@@ -51,7 +51,7 @@ public sealed class TimelineEditRequest
     {
         var plan = RenderCallerInputs.PlacementPlan(project, scope);
         var items = TimelineItems.Layout(project, plan, scope, TimelineAxis.Edited).Items;
-        var words = project.Transcript?.Words ?? [];
+        var words = ProjectClock.Build(project).Words;
         var command = Command(name =>
         {
             var exact = items.FirstOrDefault(item => TimelineDecisions.Id(item.Id, project, scope) == name);

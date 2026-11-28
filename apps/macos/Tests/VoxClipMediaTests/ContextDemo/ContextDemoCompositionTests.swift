@@ -315,7 +315,8 @@ struct ContextDemoCompositionNativeTests {
         #expect(afterRemoval[0].timeRange.duration == CMTime(value: 96_000, timescale: 48_000))
     }
 
-    @Test @MainActor func motionIsPreviewReducedButAuthoredForExportAndFullTakeIsIdentity() async throws {
+    /// Pan and zoom is part of the video: the preview under Reduce Motion matches the export (decision 2026-11-28).
+    @Test @MainActor func motionPreviewsUnderReduceMotionLikeExportAndFullTakeIsIdentity() async throws {
         let source = try await NativeMediaFixtures.shared.file()
         let root = try compositionTestDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -329,11 +330,11 @@ struct ContextDemoCompositionNativeTests {
         let preview = try await CompositionBuilder().build(authored)
         authored.forPreview = false; authored.motionClipID = nil
         let fullTake = try await CompositionBuilder().build(authored)
-        let reduced = try await frame(asset: preview.composition, composition: preview.videoComposition, at: 0.5)
+        let previewFrame = try await frame(asset: preview.composition, composition: preview.videoComposition, at: 0.5)
         let fullTakeFrame = try await frame(asset: fullTake.composition, composition: fullTake.videoComposition, at: 0.5)
         let authoredFrame = try await frame(asset: exportGraph.composition, composition: exportGraph.videoComposition, at: 0.5)
-        #expect(reduced == fullTakeFrame)
-        #expect(reduced != authoredFrame)
+        #expect(previewFrame == authoredFrame)
+        #expect(previewFrame != fullTakeFrame)
     }
 
     @Test @MainActor func missingDemoFramesCannotFallBackAndRemovalNeedsNoCaptureFiles() async throws {

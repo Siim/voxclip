@@ -244,7 +244,7 @@ private actor MotionCueTestSettings: SettingsStore {
         #expect(model.app.shell.panelJob(for: model) == .motion && model.activeClip?.id == run.clipID)
         let editing = try #require(model.motionCueEditing)
         #expect(editing.draft.original == second)
-        editing.setFrameValue(.scale, to: 1.15)
+        editing.setFrameValue(.scale, to: 1.25)
         #expect(editing.apply(model: model))
         let manualRevision = editing.draft.cue
         model.makeItUndo("zoom-1", in: run)
@@ -323,6 +323,203 @@ private actor MotionCueTestSettings: SettingsStore {
         #expect(model.project.motionCues == before.motionCues && !undo.canUndo)
         undo.redo()
         #expect(model.project.motionCues == [changed])
+    }
+
+    @Test func openDraftFollowsUndoAndTimelineChangesToItsCue() throws {
+        let model = try editor(); defer { model.close() }
+        let shell = WorkspaceShell(app: model.app)
+        let undo = UndoManager(); undo.groupsByEvent = false
+        model.undoManager = undo
+        let added = try draft(model)
+        grouped(undo) { #expect(model.applyMotionCue(added)) }
+        let stored = try #require(model.project.motionCues.first)
+        #expect(model.openMotionCueJob(id: stored.id, in: shell))
+        let editing = try #require(model.motionCueEditing)
+        editing.setFrameValue(.scale, to: 1.25)
+        grouped(undo) { #expect(editing.apply(model: model)) }
+        undo.undo()
+        // Undo restored the earlier cue: the open draft follows it instead of going stale.
+        #expect(model.project.motionCues == [stored])
+        #expect(model.motionCueValidation(editing.draft) == nil)
+        #expect(editing.draft.original == stored && editing.draft.cue == stored)
+
+        // An unapplied edit survives a timeline trim of the same cue, and the trim is kept too.
+        let frame = editing.selectedFrame
+        editing.setFrameValue(.scale, to: 1.3)
+        grouped(undo) { #expect(model.commitTimelineItemEdit(.trim(item: .motion(stored.id), edge: .end, toSource: 13.5))) }
+        let trimmed = try #require(model.project.motionCues.first)
+        #expect(trimmed.sourceEnd != stored.sourceEnd && trimmed.keyframes == stored.keyframes)
+        #expect(model.motionCueValidation(editing.draft) == nil)
+        #expect(editing.draft.original == trimmed && editing.draft.sourceEnd == trimmed.sourceEnd)
+        #expect(editing.selectedFrame == frame && editing.frameValue(.scale) == 1.3)
+        #expect(editing.status == "The saved cue changed. Your unapplied edits are kept.")
+        grouped(undo) { #expect(editing.apply(model: model)) }
+        let saved = try #require(model.project.motionCues.first)
+        #expect(saved.sourceEnd == trimmed.sourceEnd && saved.keyframes[frame].scale == 1.3)
+
+        // Undoing back past the Add removes the cue: the draft resets and says how to bring it back.
+        undo.undo(); undo.undo()
+        #expect(editing.draft.original == stored)
+        undo.undo()
+        #expect(model.project.motionCues.isEmpty && model.motionCueEditing === editing)
+        #expect(editing.draft.original == nil && editing.draft.id != stored.id)
+        #expect(editing.status == "This cue was removed. Redo restores it.")
+        undo.redo()
+        #expect(model.project.motionCues == [stored])
+        // Redo brings the cue back into the panel, not a new cue that overlaps it.
+        #expect(editing.draft.original == stored && model.motionCueValidation(editing.draft) == nil)
+        #expect(editing.footerMessage(model: model) == "No unapplied changes.")
+
+        // A timeline Delete is undone with Undo, and the panel reopens the cue.
+        grouped(undo) { #expect(model.commitTimelineItemEdit(.delete(items: [.motion(stored.id)]))) }
+        #expect(model.project.motionCues.isEmpty && editing.draft.original == nil)
+        #expect(editing.status == "This cue was removed. Undo restores it.")
+        undo.undo()
+        #expect(model.project.motionCues == [stored] && model.motionCueEditing === editing)
+        #expect(editing.draft.original == stored && model.motionCueValidation(editing.draft) == nil)
+
+        // So does Delete cue in the panel.
+        grouped(undo) { editing.deleteCue(model: model) }
+        #expect(model.project.motionCues.isEmpty && editing.status == "Motion cue deleted. Undo restores it.")
+        undo.undo()
+        #expect(editing.draft.original == stored && model.motionCueValidation(editing.draft) == nil)
+
+        // A new cue the user has started editing is not replaced when the removed cue comes back.
+        grouped(undo) { editing.deleteCue(model: model) }
+        editing.draft.sourceStart = 20; editing.draft.sourceEnd = 21
+        let started = editing.draft
+        undo.undo()
+        #expect(model.project.motionCues == [stored] && editing.draft == started)
+    }
+
+    @Test func openDraftMergesKeyframeEditsPerValueAndTakesSplitKeyframes() throws {
+        let model = try editor(); defer { model.close() }
+        let shell = WorkspaceShell(app: model.app)
+        let undo = UndoManager(); undo.groupsByEvent = false
+        model.undoManager = undo
+        let added = try draft(model)
+        grouped(undo) { #expect(model.applyMotionCue(added)) }
+        let stored = try #require(model.project.motionCues.first)
+        #expect(model.openMotionCueJob(id: stored.id, in: shell))
+        let editing = try #require(model.motionCueEditing)
+        editing.setFrameValue(.scale, to: 1.25)
+        grouped(undo) { #expect(editing.apply(model: model)) }
+        // An unapplied Horizontal nudge survives Undo of the applied zoom; the zoom goes back with the project.
+        editing.setFrameValue(.anchorX, to: 0.7)
+        undo.undo()
+        #expect(model.project.motionCues == [stored])
+        #expect(editing.frameValue(.scale) == stored.keyframes[editing.selectedFrame].scale && editing.frameValue(.anchorX) == 0.7)
+        #expect(editing.status == "The saved cue changed. Your unapplied edits are kept.")
+        grouped(undo) { #expect(editing.apply(model: model)) }
+        let nudged = try #require(model.project.motionCues.first)
+        #expect(nudged.keyframes[1].scale == stored.keyframes[1].scale && nudged.keyframes[1].anchorX == 0.7)
+
+        // A Split resamples the left half's keyframes: they replace the draft's, so Apply cannot stretch the whole pulse into it.
+        editing.setFrameValue(.scale, to: 1.3)
+        grouped(undo) { #expect(model.commitTimelineItemEdit(.split(items: [.motion(nudged.id)], atSource: 12.5))) }
+        let left = try #require(model.project.motionCues.first { $0.id == nudged.id })
+        #expect(left.sourceEnd == 12.5 && left.keyframes != nudged.keyframes)
+        #expect(editing.draft.original == left && editing.draft.cue == left)
+        #expect(editing.draft.keyframes.indices.contains(editing.selectedFrame))
+        #expect(editing.status == "The saved cue's keyframes changed. Your keyframe edits were replaced.")
+    }
+
+    @Test func applyIsNeverDisabledWithoutSayingWhy() async throws {
+        let model = try editor(); defer { model.close() }
+        let shell = WorkspaceShell(app: model.app)
+        #expect(model.openMotionCueJob(in: shell))
+        let fresh = try #require(model.motionCueEditing)
+        fresh.draft.sourceStart = 11; fresh.draft.sourceEnd = 13
+        #expect(fresh.footerMessage(model: model) == nil)
+        #expect(fresh.apply(model: model))
+        let editing = try #require(model.motionCueEditing)
+        // The saved message replaces the reason until the next edit; then the reason shows.
+        editing.status = nil
+        #expect(editing.footerMessage(model: model) == "No unapplied changes.")
+        let host = NSHostingView(rootView: PanelHost(model: model, shell: shell, width: 404, height: 522).environment(model.app))
+        host.frame = CGRect(x: 0, y: 0, width: 404, height: 522)
+        #expect(await settle(host) { DebugRightColumn.texts(in: host)["motion.status"] == "No unapplied changes." })
+        editing.setFrameValue(.scale, to: 1.3)
+        #expect(editing.footerMessage(model: model) == nil)
+        #expect(await settle(host) { DebugRightColumn.texts(in: host)["motion.status"] == nil })
+        editing.setFrameValue(.scale, to: try #require(editing.draft.original?.keyframes[editing.selectedFrame].scale))
+        #expect(!editing.apply(model: model) && editing.status == "No unapplied changes.")
+    }
+
+    private func reaches(_ done: () -> Bool) async -> Bool {
+        for _ in 0..<200 where !done() { await Task.yield() }
+        return done()
+    }
+
+    @Test func keyframesNameTheirMomentAndChoosingOneShowsItInThePausedViewer() async throws {
+        let model = try editor(); defer { model.close() }
+        // A new cue's middle keyframe zooms as far as Make it postable's zooms do.
+        #expect(try #require(model.motionCueDraft()).keyframes.map(\.scale) == [1, 1.15, 1])
+        let value = try draft(model, start: 11, end: 13)
+        #expect(model.applyMotionCue(value))
+        let shell = WorkspaceShell(app: model.app)
+        #expect(model.openMotionCueJob(id: value.id, in: shell))
+        let editing = try #require(model.motionCueEditing)
+        #expect(editing.draft.keyframes.indices.map(editing.keyframeLabel) == ["1 · start", "2 · 50%", "3 · end"])
+        #expect(MotionCueEditing.FrameField.progress.title == "Time in cue")
+        // Opening shows the selected keyframe; each choice moves the paused viewer inside the cue.
+        #expect(await reaches { model.sourceTime == 12 })
+        editing.selectFrame(2, model: model)
+        #expect(await reaches { model.sourceTime > 12.9 } && model.sourceTime < 13)
+        editing.selectFrame(0, model: model)
+        #expect(await reaches { model.sourceTime < 11.1 } && model.sourceTime > 11)
+        model.isPlaying = true
+        editing.selectFrame(1, model: model)
+        for _ in 0..<50 { await Task.yield() }
+        #expect(editing.selectedFrame == 1 && model.sourceTime < 11.1)
+        model.isPlaying = false
+
+        // An applied zoom on the end keyframe is in the paused frame without playing.
+        editing.selectFrame(2, model: model)
+        editing.setFrameValue(.scale, to: 1.2)
+        #expect(editing.apply(model: model) && editing.selectedFrame == 2)
+        #expect(await reaches { model.sourceTime > 12.9 })
+        let saved = try #require(model.project.motionCues.first)
+        #expect(saved.transform(atSourceTime: model.sourceTime).scale > 1.18)
+
+        let host = NSHostingView(rootView: PanelHost(model: model, shell: shell, width: 404, height: 522).environment(model.app))
+        host.frame = CGRect(x: 0, y: 0, width: 404, height: 522)
+        // The how-to is the only note; the preview shows pan and zoom under Reduce Motion too.
+        #expect(MotionCuePanel.guidance
+            == "Raise Zoom, then Horizontal and Vertical choose what stays in view. Apply, then play the cue to see it.")
+        #expect(await settle(host) {
+            let texts = DebugRightColumn.texts(in: host)
+            return texts["motion.note"] == MotionCuePanel.guidance && texts["motion.reduceMotion"] == nil
+        })
+    }
+
+    @Test func aKeyframeInACutShowsTheNearestKeptFrameInsideItsCue() async throws {
+        let model = try editor(); defer { model.close() }
+        // Words 14 and 15 are cut, so the end keyframe's moment (just before 14.5) has no frame of its own.
+        var value = try draft(model, start: 12, end: 14.5)
+        value.keyframes = [MotionKeyframe(progress: 0), MotionKeyframe(progress: 0.5, scale: 1.15), MotionKeyframe(progress: 1, scale: 1.3)]
+        #expect(model.applyMotionCue(value))
+        let shell = WorkspaceShell(app: model.app)
+        #expect(model.openMotionCueJob(id: value.id, in: shell))
+        let editing = try #require(model.motionCueEditing)
+        let timeline = try #require(model.renderTimeline)
+        let cue = try #require(model.project.motionCues.first)
+        #expect(await reaches { model.sourceTime == 13.25 })
+        // The paused viewer stays on kept video inside the cue, zoomed toward the end keyframe.
+        editing.selectFrame(2, model: model)
+        #expect(await reaches {
+            let shown = timeline.sourceTime(model.playhead)
+            return shown > 13.5 && shown < 14 && cue.transform(atSourceTime: shown).scale > 1.15
+        })
+        // A draft range with no kept video leaves the viewer where it is.
+        editing.selectFrame(0, model: model)
+        #expect(await reaches { model.sourceTime < 12.1 })
+        let before = model.playhead
+        editing.draft.sourceStart = 14.1
+        editing.draft.sourceEnd = 15.5
+        editing.selectFrame(1, model: model)
+        for _ in 0..<50 { await Task.yield() }
+        #expect(model.playhead == before)
     }
 
     @Test(arguments: [false, true])

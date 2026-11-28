@@ -10,6 +10,50 @@ namespace VoxClip.Ui.Tests;
 public sealed class AccessibilityMonitorTests
 {
     [Fact]
+    public void NarratorHearsTheVersionCountAndTheResultsOfLineEdits()
+    {
+        var model = ClipSemanticsTests.RecordingReference();
+        var announcements = new List<string>();
+        model.Announcement += (_, message) => announcements.Add(message);
+        Assert.True(model.StartFromRecording(model.RecordingRegions[0].Key));
+        var opening = Assert.Single(model.RecordingClipLines, line => line.FirstId == "w1");
+        Assert.True(model.OpenRecordingVersions(opening));
+        Assert.True(model.UseRecordingLineVersion(opening, Assert.Single(opening.Alternatives).Key));
+        var solo = Assert.Single(model.OtherRecordingLines, run => run.StartWordId == "r2.w18");
+        Assert.True(model.InsertRecordingLine(solo));
+        Assert.Equal(["Clip 1 made from 0007, 2 parts, 1 restart left out", "Line 1, 1 other version, in 0010",
+            "Line 1 now uses 0010's version · part 1 split", "Part 4 added from 0010, after “…my personal time tracker”"], announcements);
+    }
+
+    [Fact]
+    public void NarratorHearsTheRecordingOnSwitchAndOutlineSelection()
+    {
+        var model = ClipSemanticsTests.RecordingStory();
+        var announcements = new List<string>();
+        model.Announcement += (_, message) => announcements.Add(message);
+        Assert.Equal(RecordingViewKind.PlayOrder, model.TranscriptRecordingView.Kind);
+        Assert.StartsWith("1 · 0010 · ", model.Paragraphs[0].RecordingHeading);
+        Assert.True(model.ChooseRecordingShortcut(1));
+        Assert.True(model.SelectPart("first"));
+        Assert.Equal(["Showing recording 0007, 1 of 2", "Showing recording 0010, 2 of 2"], announcements);
+        Assert.Equal(model.Index("r2.w1"), model.Paragraphs[0].StartIndex);
+    }
+
+    [Fact]
+    public void NarratorHearsTheRecordingAndPositionForAddedAndMovedParts()
+    {
+        var model = ClipSemanticsTests.RecordingOpening();
+        var announcements = new List<string>();
+        model.Announcement += (_, message) => announcements.Add(message);
+        Assert.True(model.SelectPart("clip-opening"));
+        Assert.True(model.PickPartFrom(model.RecordingRegions[1].Key));
+        model.Select(model.Index("r2.w18"));
+        Assert.True(model.AddSelectionAsPart());
+        Assert.True(model.MovePart(model.ClipParts[1].Id, 0));
+        Assert.Equal(["Showing recording 0010, 2 of 2", "Part 2 added from 0010, after part 1", "Part 2 moved to 1 of 2"], announcements);
+    }
+
+    [Fact]
     public void TimelineNarratorNamesItemAndUsesWordOrdinalsAtBothEdges()
     {
         TimedWord[] words = [Word(0, "the"), Word(1, "next"), Word(2, "word")];

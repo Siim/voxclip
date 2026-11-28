@@ -3,7 +3,7 @@
   "id": "finalize-clips",
   "origin": "voxclip",
   "sources": {
-    "shared/prompts/clip-finder.json": "01bbde496bb349d937781b36f1bb2a530591a497e31a9e75be8a59d542471669",
+    "shared/prompts/clip-finder.json": "92dd9f79bbd72aeda8221cdb275b846ba3642892faeb5a09527014c17be432b3",
     "shared/prompts/ai-tighten.json": "1cb479c404416b426bedfbbc937c8fa9614a7ae6511d3aeae0335375e88e0f79",
     "shared/catalog/llm-providers.json": "b19c861b1bd5d9b7b5ff5f24eece6f1caf178a470d66d83e785e6b6f22e4446c"
   },
@@ -1039,6 +1039,287 @@
           "notInTake": "The exact phrase “set me free” and the timing “a couple of days away” are not spoken."
         }
       ]
+    },
+    {
+      "id": "issue-31-five-part-picks",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "issue #31; doc/spec/ai.md §11",
+      "input": {
+        "project": "reference-recordings.voxclip",
+        "preset": "bestTakes",
+        "reply": {
+          "clips": [
+            {
+              "title": "Superscribe",
+              "reason": "The origin and payoff.",
+              "score": 9,
+              "parts": [
+                {
+                  "start_line": 6,
+                  "end_line": 6,
+                  "take_reason": "0010 says “a dictation tool that supports time tracking”"
+                },
+                {
+                  "start_line": 2,
+                  "end_line": 2
+                },
+                {
+                  "start_line": 4,
+                  "end_line": 4
+                },
+                {
+                  "start_line": 8,
+                  "end_line": 8,
+                  "take_reason": "Only 0010 says “It’s a reporting tool”"
+                },
+                {
+                  "start_line": 5,
+                  "end_line": 5
+                }
+              ],
+              "not_in_take": ""
+            }
+          ]
+        },
+        "snap": true
+      },
+      "expected": [
+        {
+          "title": "Superscribe",
+          "reason": "The origin and payoff.",
+          "score": 9,
+          "startWord": 7,
+          "endWord": 47,
+          "parts": [
+            [
+              27,
+              37
+            ],
+            [
+              7,
+              12
+            ],
+            [
+              17,
+              22
+            ],
+            [
+              44,
+              47
+            ],
+            [
+              23,
+              26
+            ]
+          ],
+          "takeReasons": [
+            "0010 says “a dictation tool that supports time tracking”",
+            null,
+            null,
+            "Only 0010 says “It’s a reporting tool”",
+            null
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-31-keep-first-version",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "issue #31; doc/spec/ai.md §11",
+      "input": {
+        "project": "reference-recordings.voxclip",
+        "preset": "bestTakes",
+        "reply": {
+          "clips": [
+            {
+              "title": "Superscribe",
+              "reason": "The origin and payoff.",
+              "score": 9,
+              "parts": [
+                {
+                  "start_line": 6,
+                  "end_line": 6,
+                  "take_reason": "0010 says “a dictation tool that supports time tracking”"
+                },
+                {
+                  "start_line": 1,
+                  "end_line": 1
+                },
+                {
+                  "start_line": 2,
+                  "end_line": 2
+                },
+                {
+                  "start_line": 4,
+                  "end_line": 4
+                },
+                {
+                  "start_line": 8,
+                  "end_line": 8,
+                  "take_reason": "Only 0010 says “It’s a reporting tool”"
+                },
+                {
+                  "start_line": 5,
+                  "end_line": 5
+                }
+              ],
+              "not_in_take": ""
+            }
+          ]
+        },
+        "snap": true
+      },
+      "expected": [
+        {
+          "title": "Superscribe",
+          "reason": "The origin and payoff.",
+          "score": 9,
+          "startWord": 7,
+          "endWord": 47,
+          "parts": [
+            [
+              27,
+              37
+            ],
+            [
+              7,
+              12
+            ],
+            [
+              17,
+              22
+            ],
+            [
+              44,
+              47
+            ],
+            [
+              23,
+              26
+            ]
+          ],
+          "takeReasons": [
+            "0010 says “a dictation tool that supports time tracking”",
+            null,
+            null,
+            "Only 0010 says “It’s a reporting tool”",
+            null
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-31-drop-invented-quote",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "issue #31; doc/spec/ai.md §11",
+      "input": {
+        "project": "reference-recordings.voxclip",
+        "preset": "bestTakes",
+        "reply": {
+          "clips": [
+            {
+              "title": "Superscribe",
+              "reason": "The origin and payoff.",
+              "score": 9,
+              "parts": [
+                {
+                  "start_line": 6,
+                  "end_line": 6,
+                  "take_reason": "“a made-up line”"
+                },
+                {
+                  "start_line": 2,
+                  "end_line": 2
+                },
+                {
+                  "start_line": 4,
+                  "end_line": 4
+                },
+                {
+                  "start_line": 8,
+                  "end_line": 8,
+                  "take_reason": "Only 0010 says “It’s a reporting tool”"
+                },
+                {
+                  "start_line": 5,
+                  "end_line": 5
+                }
+              ],
+              "not_in_take": ""
+            }
+          ]
+        },
+        "snap": true
+      },
+      "expected": [
+        {
+          "title": "Superscribe",
+          "reason": "The origin and payoff.",
+          "score": 9,
+          "startWord": 7,
+          "endWord": 47,
+          "parts": [
+            [
+              27,
+              37
+            ],
+            [
+              7,
+              12
+            ],
+            [
+              17,
+              22
+            ],
+            [
+              44,
+              47
+            ],
+            [
+              23,
+              26
+            ]
+          ],
+          "takeReasons": [
+            null,
+            null,
+            null,
+            "Only 0010 says “It’s a reporting tool”",
+            null
+          ]
+        }
+      ]
+    },
+    {
+      "id": "issue-31-reject-cross-recording-part",
+      "kind": "finalize-clips",
+      "origin": "voxclip",
+      "source": "issue #31; doc/spec/ai.md §11",
+      "input": {
+        "project": "reference-recordings.voxclip",
+        "preset": "bestTakes",
+        "reply": {
+          "clips": [
+            {
+              "title": "Superscribe",
+              "reason": "The origin and payoff.",
+              "score": 9,
+              "parts": [
+                {
+                  "start_line": 5,
+                  "end_line": 6
+                }
+              ],
+              "not_in_take": ""
+            }
+          ]
+        },
+        "snap": true
+      },
+      "expected": []
     },
     {
       "id": "best-minimum",

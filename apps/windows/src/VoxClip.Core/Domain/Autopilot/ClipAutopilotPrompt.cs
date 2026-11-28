@@ -94,6 +94,8 @@ public sealed partial class ClipAutopilotPrompt
     public string System { get; }
     /// <summary>The series' first stage: picking the moments.</summary>
     public string MomentsSystem { get; }
+    internal string TakesSystem { get; }
+    internal JsonNode? TakesReason { get; }
     /// <summary>The limits.</summary>
     public ClipAutopilotLimits Limits { get; }
     /// <summary>The fallbacks.</summary>
@@ -207,6 +209,8 @@ public sealed partial class ClipAutopilotPrompt
         Sha256 = sha256;
         System = SystemPrompt(document, "plan", templateValues, zoomSection);
         MomentsSystem = SystemPrompt(document, "moments", templateValues);
+        TakesSystem = AiJson.String(document["sections"]?["takes"]) ?? "";
+        TakesReason = document["takeReason"]?.DeepClone();
         Limits = limits;
         Defaults = new(style, new(family, weight), textCase, words, under, scale, score);
         Looks = looks;

@@ -4,7 +4,10 @@ public struct ClipProposal: Codable, Sendable, Equatable {
     public struct Part: Codable, Sendable, Equatable {
         public var startWord: Int
         public var endWord: Int
-        public init(startWord: Int, endWord: Int) { self.startWord = startWord; self.endWord = endWord }
+        public var takeReason: String?
+        public init(startWord: Int, endWord: Int, takeReason: String? = nil) {
+            self.startWord = startWord; self.endWord = endWord; self.takeReason = takeReason
+        }
     }
 
     public struct NewClip: Codable, Sendable, Equatable {

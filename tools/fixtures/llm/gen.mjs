@@ -144,9 +144,29 @@ add('finalize-clips', 'issue-27-ordered-story', 'finalize-clips', { words: issue
   candidates: [{ title: issue27Title, reason: issue27Reply.clips[0].reason, score: 9, parts: issue27Parts.map(([start_word, end_word]) => ({ start_word, end_word })), not_in_take: issue27Missing }], snap: false },
   [{ title: issue27Title, reason: issue27Reason, score: 9, startWord: 0, endWord: 38, parts: issue27Parts, notInTake: issue27Missing }], 'issue #27; doc/spec/ai.md §11.7',
   'Three beats excerpted verbatim from the lead’s hand-cut take, in source order with approximate word timing; the replayed reply orders the chain, automation and first client as requested.')
+const recordingsProject = 'reference-recordings.voxclip'
+const pick = (line, take_reason, end = line) => ({ start_line: line, end_line: end, take_reason })
+const opening = '0010 says “a dictation tool that supports time tracking”'
+const punchline = 'Only 0010 says “It’s a reporting tool”'
+const storyPicks = [pick(6, opening), pick(2), pick(4), pick(8, punchline), pick(5)]
+const expectedStory = { title: 'Superscribe', reason: 'The origin and payoff.', score: 9,
+  startWord: 7, endWord: 47, parts: [[27, 37], [7, 12], [17, 22], [44, 47], [23, 26]], takeReasons: [opening, null, null, punchline, null] }
+for (const [id, parts, expected] of [
+  ['five-part-picks', storyPicks, [expectedStory]],
+  ['keep-first-version', [...storyPicks.slice(0, 1), pick(1), ...storyPicks.slice(1)], [expectedStory]],
+  ['drop-invented-quote', [pick(6, '“a made-up line”'), ...storyPicks.slice(1)], [{ ...expectedStory, takeReasons: [null, null, null, punchline, null] }]],
+  ['reject-cross-recording-part', [pick(5, undefined, 6)], []]
+]) {
+  const reply = { clips: [{ title: expectedStory.title, reason: expectedStory.reason, score: 9, parts, not_in_take: '' }] }
+  add('finalize-clips', `issue-31-${id}`, 'finalize-clips', { project: recordingsProject, preset: 'bestTakes', reply, snap: true }, expected, 'issue #31; doc/spec/ai.md §11')
+}
+add('clip-finder-requests', 'issue-31-best-versions', 'recording-request', { project: recordingsProject }, {
+  contains: ['Recording 0007: lines 1–5', 'Recording 0010: lines 6–8', '0007 lines 1–1; flags:', '0010 lines 6–6; flags:', 'Solo: lines 8–8'],
+  instruction: presets.bestTakes.instruction, system: clipFinder.takesSystem, reasonSchema: clipFinder.output.takeReason, maxParts: clipFinder.output.customMaxParts
+}, 'issue #31; doc/spec/ai.md §11')
 equal(datasets.get('finalize-clips').find(test => test.id === 'invalid-numbers').expected.map(clip => clip.title), ['valid'], 'non-finite values rejected individually')
 equal(datasets.get('finalize-clips').find(test => test.id === 'trim-utf16-surrogate').expected[0].title, 'T'.repeat(119), 'surrogate-safe title truncation')
-for (const preset of clipFinder.presets) {
+for (const preset of clipFinder.presets.filter(preset => preset.id !== 'bestTakes')) {
   const minimum = Math.max(clipFinder.limits.minLengthFloorSeconds, preset.minSeconds * clipFinder.limits.minLengthFactor)
   const maximum = preset.maxSeconds * clipFinder.limits.maxLengthFactor
   for (const [edge, duration] of [['minimum', minimum], ['maximum', maximum], ['below-minimum', minimum - 0.000001], ['above-maximum', maximum + 0.000001]]) {
@@ -277,7 +297,7 @@ const renderCase = (file, id, feature, words, lines, choice, instructions, windo
   input.connectorOptions = Object.fromEntries(catalog.connectors.map(connector => [connector.id, baselineOptions(connector, clipBudget)]))
   add(file, id, 'render-request', input, { request, connectors: wireSet(request, clipBudget) }, `doc/spec/ai.md §${feature === 'clipFinder' ? '11.4' : '12.4'}; §6`)
 }
-for (const preset of clipFinder.presets) {
+for (const preset of clipFinder.presets.filter(preset => preset.id !== 'bestTakes')) {
   const overlapSeconds = Math.min(preset.maxSeconds, clipFinder.limits.windowOverlapMaxSeconds)
   const windows = reference.packWindows(formattedF1.lines, { budget: 1000000, maxWords: 66, overlapSeconds })
   equal(windows.length, 2, `F1 multi-window rendering ${preset.id}`)

@@ -65,6 +65,7 @@ enum CLIWorkflow {
     }
 
     static func state(_ project: Project, derivePauses: Bool = true) throws -> EditState {
+        if project.media.spokenSources != nil, let state = try EditState(project: project) { return state }
         guard let transcript = project.transcript else { throw VoxClipError.noSpeech }
         let edits = project.edits
         let pauses = transcript.words.isEmpty || (!derivePauses && edits.cutPauseIds.isEmpty) ? [] :
@@ -87,7 +88,7 @@ enum CLIWorkflow {
         let source = project.media.source
         let rate = Double(source.audio?.sampleRate ?? 48000)
         let edits = project.edits
-        if supplied == nil && edits.cutWordIds.isEmpty && edits.cutPauseIds.isEmpty && edits.activeClipId == nil {
+        if project.media.spokenSources == nil && supplied == nil && edits.cutWordIds.isEmpty && edits.cutPauseIds.isEmpty && edits.activeClipId == nil {
             let total = Int64((source.durationSeconds * rate).rounded())
             return EditPlan(sampleRate: rate, totalSamples: total, kept: total > 0 ? [MediaInterval(startSample: 0, endSample: total)] : [])
         }
@@ -97,12 +98,12 @@ enum CLIWorkflow {
     }
 
     static func renderRequest(project: Project, source: URL, plan: EditPlan, style: CaptionStyle?, output: OutputSpec,
-                              voiceLab: VoiceLabRenderInput?, dataRoot: URL, aspectName: String? = nil) throws -> RenderRequest {
+                              voiceLab: VoiceLabRenderInput?, dataRoot: URL, aspectName: String? = nil, projectURL: URL? = nil) throws -> RenderRequest {
         try RenderCallerInputs.prepare(RenderRequest(sourceURL: source, plan: plan, style: style,
             placement: project.captions.positionByAspect[aspectName ?? project.export.aspect.rawValue] ?? project.captions.position,
             output: output, voiceLab: voiceLab), project: project, clipID: project.edits.activeClipId,
             dataRoot: dataRoot.resolvingSymlinksInPath(), shared: try? SharedResources.locate(),
-            resolveFootageURL: { JSONProjectStore.footageURL($0, beside: source) }, isCancelled: { Task.isCancelled })
+            resolveFootageURL: { JSONProjectStore.footageURL($0, beside: source) }, projectURL: projectURL, isCancelled: { Task.isCancelled })
     }
 
     static func style(_ id: String) throws -> CaptionStyle? {
@@ -176,9 +177,12 @@ enum CLIWorkflow {
         }
         if let range = options.wordRange {
             let indices = range.split(separator: ":").compactMap { Int($0) }
-            let wordCount = project.transcript?.words.count ?? 0
-            guard indices.count == 2, indices.allSatisfy({ $0 >= 0 && $0 < wordCount }) else {
+            let clock = ProjectClock.build(project)
+            guard indices.count == 2, indices.allSatisfy({ clock.words.indices.contains($0) }) else {
                 throw ValidationError("Word range is outside the transcript.")
+            }
+            guard clock.containsRange(startWordId: clock.words[indices[0]].id, endWordId: clock.words[indices[1]].id) else {
+                throw ValidationError("A word range must come from one recording.")
             }
         }
     }
@@ -216,15 +220,32 @@ enum CLIWorkflow {
         var project: Project
         let source: URL
         let probe: MediaProbeResult
+        var verifiedPrimary: URL?
+        var protectedRecordings: [URL] = []
         if inputURL.pathExtension.lowercased() == "voxclip" {
             let store = JSONProjectStore()
             project = try await store.load(from: inputURL)
             if let track = options.music { musicOverride = try CLIMusic.saved(track, in: project, dataRoot: dataRoot) }
             try Task.checkCancellation()
-            source = try await store.resolveSource(for: project, projectURL: inputURL)
-            if checkingOutputs { try validateOutputs(outputs, inputs: inputs + [source]) }
+            do { verifiedPrimary = try await store.resolveSource(for: project, projectURL: inputURL) }
+            catch VoxClipError.mediaMissing where project.media.spokenSources?.isEmpty == false { }
+            let reference = project.media.source
+            source = verifiedPrimary ?? URL(fileURLWithPath: reference.absolutePath)
+            if checkingOutputs {
+                protectedRecordings = RenderCallerInputs.recordingFiles(project: project, primary: source, projectURL: inputURL).map(\.url)
+                try validateOutputs(outputs, inputs: inputs + protectedRecordings)
+            }
             try Task.checkCancellation()
-            probe = try await AVMediaProbe().probe(source)
+            if verifiedPrimary != nil {
+                probe = try await AVMediaProbe().probe(source)
+            } else {
+                let orientedSize = reference.video.map { video in
+                    let swapped = video.rotationDegrees % 180 != 0
+                    return PixelSize(width: swapped ? video.height : video.width, height: swapped ? video.width : video.height)
+                }
+                probe = MediaProbeResult(durationSeconds: reference.durationSeconds, video: reference.video, audio: reference.audio,
+                    orientedSize: orientedSize, isPlayable: false)
+            }
             try Task.checkCancellation()
             try validateExportArguments(options, probe: probe, styleID: options.style ?? project.captionSettings(forClip: options.clip).styleId)
             try validateRequestedScope(options, project: project)
@@ -300,10 +321,27 @@ enum CLIWorkflow {
         let output = try OutputSpec.resolved(source: probe, aspect: aspect, quality: quality, fps: options.fps.flatMap(Double.init), controls: controls)
         let activeClip = effectiveState.flatMap { state in state.clips.first { $0.id == state.activeClipId } }
         var request = try renderRequest(project: project, source: source, plan: plan, style: style,
-            output: output, voiceLab: voiceLab, dataRoot: dataRoot, aspectName: aspectName)
+            output: output, voiceLab: voiceLab, dataRoot: dataRoot, aspectName: aspectName, projectURL: inputURL)
+        if verifiedPrimary == nil, let first = request.recordings.first {
+            if request.spanSources.contains(project.media.source.contentKey) {
+                throw VoxClipError.recordingMissing(ProjectClock.label(project.media.source))
+            }
+            request.sourceURL = first.url
+        }
         request.clipControls = controls
         if let musicOverride { request.music = musicOverride }
         if checkingOutputs, let music = request.music { try validateOutputs(outputs, inputs: inputs + [source, music.assetURL]) }
+        if checkingOutputs, !protectedRecordings.isEmpty, options.format != "fcpxml", let path = options.output {
+            let destination = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+            var sidecars: [URL] = []
+            if options.cover != "off", ExportCover.forClip(activeClip?.id, in: project, render: request) != nil {
+                sidecars.append(ExportCover.url(for: destination))
+            }
+            if request.voiceLab?.prepared.disclosure.required == true {
+                sidecars.append(URL(fileURLWithPath: destination.path + ".provenance.json"))
+            }
+            try validateOutputs(sidecars, inputs: protectedRecordings)
+        }
         let render: RenderRequest
         switch try await captions(.export(request,
             state: effectiveState, activeClip: activeClip, overrides: project.captions.overrides, language: project.transcript?.language, project: project)) {

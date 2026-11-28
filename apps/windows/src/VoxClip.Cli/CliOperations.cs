@@ -79,7 +79,12 @@ internal static class CliOperations
         if (!Path.GetExtension(path).Equals(".voxclip", StringComparison.OrdinalIgnoreCase))
             return (null, await ProbeInputAsync(path, ct).ConfigureAwait(false));
         var opened = await ServicesMergeAdapter.Projects().LoadAsync(path, ct).ConfigureAwait(false);
-        if (opened.ResolvedMediaPath is null) throw new VoxClipException(VoxClipErrorCode.MediaMissing, $"Can't find {Path.GetFileName(opened.Project.Media.Source.AbsolutePath)}. Edits are saved.");
+        if (opened.ResolvedMediaPath is null)
+        {
+            if (opened.Project.Media.SpokenSources is { Count: > 0 })
+                return (opened.Project, MediaInfo.FromReference(opened.Project.Media.Source));
+            throw new VoxClipException(VoxClipErrorCode.MediaMissing, $"Can't find {Path.GetFileName(opened.Project.Media.Source.AbsolutePath)}. Edits are saved.");
+        }
         return (opened.Project, await ProbeInputAsync(opened.ResolvedMediaPath, ct).ConfigureAwait(false));
     }
 
@@ -133,7 +138,7 @@ internal static class CliOperations
             }
             else project = media.Audio is null ? NewProject(media, null, string.Empty) : await TranscribeMediaAsync(media, arguments, ct).ConfigureAwait(false);
         }
-        ValidateRequestedScope(project.Edits.Clips, project.Transcript?.Words.Count ?? 0,
+        ValidateRequestedScope(project.Edits.Clips, ProjectClock.Build(project).Words.Count,
             arguments.GetValue<string?>("--clip"), arguments.GetValue<string?>("--range"));
         if (arguments.GetValue<bool>("--cut-fillers") || arguments.GetValue<bool>("--tighten-pauses") ||
             arguments.GetValue<string?>("--clip") is not null || arguments.GetValue<string?>("--range") is not null)
@@ -196,6 +201,7 @@ internal static class CliOperations
         }
         var snapshot = new ComposeSnapshot(media, plan, style == "off" ? null : captions, output) { VoiceLab = voice, Clip = clip };
         snapshot = snapshot.VoiceLab?.CaptureSnapshot(snapshot) ?? snapshot;
+        snapshot = await RecordingRendering.BindAsync(project, snapshot, new ProjectStore(), path, ct).ConfigureAwait(false);
         // Screen recordings placed over this scope replace the picture there, upright (doc/spec/context-demo.md).
         snapshot = snapshot with
         {
@@ -217,7 +223,10 @@ internal static class CliOperations
         var destinations = ExportDestinations(snapshot, destination, srtPath, audioPath);
         // The exporter prepares the sidecar partial; the CLI owns publication of the complete set.
         Exporter.Validate(new(snapshot, target, aspect, quality, destination, null));
-        ValidateExportDestinations(snapshot, destinations);
+        var projectPath = Required(arguments, "--open");
+        var recordings = prepared.Project.Media.SpokenSources is { Count: > 0 }
+            ? await RecordingRendering.AvailableAsync(prepared.Project, new ProjectStore(), projectPath, ct).ConfigureAwait(false) : null;
+        ValidateExportDestinations(snapshot, destinations, recordings?.Values.Select(source => source.AbsolutePath));
         if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
         {
             var peak = Exporter.VoiceLabOutputAllocations(new(snapshot, target, aspect, quality,
@@ -277,9 +286,11 @@ internal static class CliOperations
         return paths.ToArray();
     }
 
-    internal static void ValidateExportDestinations(ComposeSnapshot snapshot, IReadOnlyList<string> destinations)
+    internal static void ValidateExportDestinations(ComposeSnapshot snapshot, IReadOnlyList<string> destinations, IEnumerable<string>? recordings = null)
     {
         var protectedPaths = new List<string> { snapshot.Media.Path };
+        protectedPaths.AddRange(snapshot.SpanSources.Select(source => source.Path));
+        if (recordings is not null) protectedPaths.AddRange(recordings);
         if (snapshot.Clip?.Music is { } music) protectedPaths.Add(music.AssetPath);
         if (snapshot.VoiceLab is { } input)
         {
@@ -338,9 +349,13 @@ internal static class CliOperations
         if (range is not null)
         {
             var bounds = ParseRange(range, state.Transcript.Words.Count);
+            var start = state.Transcript.Words[bounds.Start].Id;
+            var end = state.Transcript.Words[bounds.End].Id;
+            if (state.ProjectClock?.ContainsRange(start, end) == false)
+                throw new CliUsageException("A word range must come from one recording.");
             var id = "cli-range";
             for (var suffix = 2; state.Clips.Any(item => item.Id == id); suffix++) id = "cli-range-" + suffix.ToString(CultureInfo.InvariantCulture);
-            var selected = new ClipRange(id, state.Transcript.Words[bounds.Start].Id, state.Transcript.Words[bounds.End].Id, null, ClipOrigin.Manual, null, null, true);
+            var selected = new ClipRange(id, start, end, null, ClipOrigin.Manual, null, null, true);
             state = reduce(state, new EditOperation.AddClip(selected));
             state = reduce(state, new EditOperation.SetActiveClip(selected.Id));
         }
@@ -448,11 +463,12 @@ internal static class CliOperations
         var connector = Connector(Required(arguments, "--connector"));
         var model = arguments.GetValue<string?>("--model") ?? await DefaultModelAsync(connector, ct).ConfigureAwait(false);
         var preset = Enum.Parse<ClipPreset>(Required(arguments, "--preset"), true);
+        var clock = preset == ClipPreset.BestTakes ? ProjectClock.Build(project) : null;
         var finder = await AiMergeAdapter.CreateClipFinderAsync(ct).ConfigureAwait(false);
         var dryRun = arguments.GetValue<bool>("--dry-run");
-        var result = await finder.FindClipsAsync(new(project.Transcript.Words, project.Edits.Corrections,
+        var result = await finder.FindClipsAsync(new(clock?.Words ?? project.Transcript.Words, project.Edits.Corrections,
             project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal), preset, arguments.GetValue<string?>("--instruction"), project.Transcript.Language,
-            connector, model, !arguments.GetValue<bool>("--no-snap"), dryRun),
+            connector, model, !arguments.GetValue<bool>("--no-snap"), dryRun, clock is null ? null : RecordingProposalContext.Create(clock)),
             Progress<ClipFinderProgress>(arguments, value => (value.Stage, value.Fraction)), ct).ConfigureAwait(false);
         if (dryRun)
         {
@@ -528,7 +544,7 @@ internal static class CliOperations
     {
         var reference = project.Media.Source;
         var rate = reference.Audio?.SampleRate ?? 48_000;
-        if (project.Edits.CutWordIds.Count == 0 && project.Edits.CutPauseIds.Count == 0 && (!activeClip || project.Edits.ActiveClipId is null))
+        if (project.Media.SpokenSources is not { Count: > 0 } && project.Edits.CutWordIds.Count == 0 && project.Edits.CutPauseIds.Count == 0 && (!activeClip || project.Edits.ActiveClipId is null))
         {
             var total = checked((long)Math.Floor(reference.DurationSeconds * rate + 0.5));
             return new(rate, total, [], total > 0 ? [new(0, total)] : [], total, []);

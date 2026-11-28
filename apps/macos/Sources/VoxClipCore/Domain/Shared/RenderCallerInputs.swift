@@ -1,9 +1,17 @@
 import Foundation
 
 public enum RenderCallerInputs {
+    public static func recordingFiles(project: Project, primary: URL, projectURL: URL? = nil) -> [RenderRecording] {
+        ProjectClock.build(project).regions.compactMap { region in
+            if region.prefix.isEmpty { return RenderRecording(region: region, url: primary) }
+            guard let reference = project.media.additionalSources.first(where: { $0.contentKey == region.key }),
+                  let url = JSONProjectStore.recordingURL(reference, beside: primary, projectURL: projectURL) else { return nil }
+            return RenderRecording(region: region, url: url)
+        }
+    }
     static func scopedAnchors(project: Project, clipID: String?) -> ((Double) -> Bool)? {
         guard let clipID, let clip = project.edits.clips.first(where: { $0.id == clipID }),
-              let words = project.transcript?.words else { return nil }
+              let words = ProjectClock.build(project).transcript?.words else { return nil }
         let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
         let parts = StoryClips.times(clip, words: words).map {
             TimeRange(start: EditingPrimitives.jsRound($0.start * rate), end: EditingPrimitives.jsRound($0.end * rate))
@@ -37,7 +45,7 @@ public enum RenderCallerInputs {
               totalSamples.isFinite, totalSamples >= 0, totalSamples <= 9_007_199_254_740_991 else {
             throw ContextDemoError.invalidNarration
         }
-        guard let transcript = project.transcript else {
+        guard var state = try EditState(project: project) else {
             guard clip == nil, project.edits.cutWordIds.isEmpty, project.edits.cutPauseIds.isEmpty else {
                 throw VoiceLabProjectError.invalidScope
             }
@@ -45,18 +53,14 @@ public enum RenderCallerInputs {
             return EditPlan(sampleRate: rate, totalSamples: total,
                 kept: total > 0 ? [MediaInterval(startSample: 0, endSample: total)] : [])
         }
-        let edits = project.edits
-        let state = EditState(transcript: transcript,
-            pauses: try detectPauses(transcript.words, thresholdSeconds: edits.pauseThresholdSeconds),
-            pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds,
-            cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds),
-            corrections: edits.corrections, clips: edits.clips, activeClipId: clipID)
-        return try EditPlan.build(transcript: transcript, editState: state, activeClip: clip,
+        state.activeClipId = clipID
+        return try EditPlan.build(transcript: state.transcript, editState: state, activeClip: clip,
             duration: source.durationSeconds, sampleRate: rate)
     }
 
     public static func prepare(_ request: RenderRequest, project: Project, clipID: String?, dataRoot: URL,
                                shared: SharedResources? = nil, resolveFootageURL: (URL) -> URL = { $0 },
+                               projectURL: URL? = nil,
                                reduceMotion: Bool = false,
                                isCancelled: @Sendable () -> Bool = { false }) throws -> RenderRequest {
         guard !isCancelled() else { throw CancellationError() }
@@ -66,6 +70,34 @@ public enum RenderCallerInputs {
         }
         var result = request
         result.sourceContentKey = project.media.source.contentKey
+        let clock = ProjectClock.build(project)
+        if clock.regions.count > 1 {
+            let intervals: [MediaInterval]
+            switch request.timeline {
+            case .legacy(let plan): intervals = plan.kept
+            case .voiceLab(let plan): intervals = plan.pieces.map { .init(startSample: $0.sourceStartSample, endSample: $0.sourceEndSample) }
+            }
+            guard request.timeline.sampleRate == Double(clock.sampleRate) else {
+                throw VoxClipError.exportFailed("Invalid recording sample grid")
+            }
+            result.spanSources = try intervals.map { span in
+                guard let start = Int(exactly: span.startSample), let resolved = clock.resolve(start),
+                      let region = clock.regions.first(where: { $0.key == resolved.key }),
+                      span.endSample <= region.endSample, span.endSample > span.startSample else {
+                    throw VoxClipError.exportFailed("Invalid recording span")
+                }
+                return resolved.key
+            }
+            let used = Set(result.spanSources)
+            result.recordings = try clock.regions.filter { used.contains($0.key) }.map { region in
+                if region.prefix.isEmpty { return RenderRecording(region: region, url: request.sourceURL) }
+                guard let reference = project.media.additionalSources.first(where: { $0.contentKey == region.key }),
+                      let url = JSONProjectStore.recordingURL(reference, beside: request.sourceURL, projectURL: projectURL) else {
+                    throw VoxClipError.recordingMissing(region.label)
+                }
+                return RenderRecording(region: region, url: url)
+            }
+        }
         result.motionClipID = clipID
         result.motionCues = clipID.map { selected in project.motionCues.filter { $0.clipID == selected } } ?? []
         result.music = MusicRenderInput.resolve(project: project, clipId: clipID, dataRoot: dataRoot)
@@ -78,7 +110,7 @@ public enum RenderCallerInputs {
         }
         result.clipControls = ClipControlsProject.controls(for: clipID, in: project).flatMap { $0.isDefault ? nil : $0 }
         result.partReframes = []
-        if let clipID, let words = project.transcript?.words,
+        if let clipID, let words = clock.transcript?.words,
            let clip = project.edits.clips.first(where: { $0.id == clipID }), let parts = clip.parts {
             result.partReframes = zip(StoryClips.times(clip, words: words), parts).compactMap { source, part in
                 part.reframe.map { StoryPartReframe(source: source, reframe: $0) }

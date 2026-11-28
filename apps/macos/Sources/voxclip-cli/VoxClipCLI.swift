@@ -93,7 +93,7 @@ final class CLIInterruptTiming: Sendable {
         discussion: "Primary export: voxclip-cli --open <project-or-media> --export <out.mp4> [options]. Choose a bed with --music or --music-file. Use 'voxclip-cli export --help' for export options.",
         version: AppVersion.current,
         subcommands: [Export.self, Probe.self, Transcribe.self, Models.self, Plan.self, RenderCaption.self, FindClips.self, Autopilot.self, Check.self, AnalyzeFrames.self, LLMTest.self, Encoders.self, Version.self,
-                      HarnessMCP.self, HarnessTranscript.self, HarnessClips.self, HarnessDecisions.self, HarnessFrames.self, HarnessPropose.self] + speakerDiagnostics,
+                      HarnessMCP.self, HarnessTranscript.self, HarnessClips.self, HarnessTakes.self, HarnessDecisions.self, HarnessFrames.self, HarnessPropose.self] + speakerDiagnostics,
         defaultSubcommand: Export.self
     )
 }
@@ -400,7 +400,7 @@ struct RenderCaption: AsyncParsableCommand {
 struct FindClips: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Suggest clips without modifying the project.")
     @Option(name: .customLong("open"), help: "Project file.") var input: String
-    @Option(help: "best, hooks, topics, quotes or custom.") var preset: String
+    @Option(help: "best, hooks, topics, quotes, bestTakes or custom.") var preset: String
     @Option(help: "Extra instructions, required for custom.") var instruction: String?
     @Option(help: "Connector ID.") var connector: String
     @Option(help: "LLM model ID.") var model: String?
@@ -416,21 +416,28 @@ struct FindClips: AsyncParsableCommand {
         try await CLIExecution.run(command: "find-clips", json: json) {
             let store: any ProjectStore = JSONProjectStore()
             let project = try await store.load(from: URL(fileURLWithPath: input))
-            guard let transcript = project.transcript else { throw VoxClipError.noSpeech }
             let shared = try SharedResources.locate()
             let catalog = try LLMCatalog(shared: shared)
             let prompt = try ClipPromptDocument(data: Data(contentsOf: shared.root.appendingPathComponent("prompts/clip-finder.json")))
             guard let selected = ClipPresetID(rawValue: preset), let chosen = prompt.presets.first(where: { $0.id == selected }) else { throw ValidationError("Unknown clip preset") }
+            let clock = selected == .bestTakes ? ProjectClock.build(project) : nil
+            guard let transcript = clock?.transcript ?? project.transcript else { throw VoxClipError.noSpeech }
+            let clipRequest = ClipFinderRequest(transcript: transcript, corrections: project.edits.corrections,
+                cutWordIds: Set(project.edits.cutWordIds), preset: chosen, instruction: instruction, snap: !noSnap,
+                recordings: clock.flatMap(RecordingProposalContext.init(clock:)))
             let id = try CLIExecution.connector(connector)
             let selectedModel = model ?? catalog.curatedModels(for: id).first?.id ?? ""
             if dryRun {
                 let builder = ClipRequestBuilder(prompt: prompt)
-                let words = builder.clipWords(transcript, corrections: project.edits.corrections)
+                try ClipFinder.checkGates(clipRequest, builder: builder)
+                let words = builder.clipWords(clipRequest.transcript, corrections: clipRequest.corrections)
                 let context = try catalog.resolvedContextTokens(for: id, model: selectedModel)
-                let windows = try builder.windows(words: words, preset: chosen, instruction: instruction, contextTokens: context, localServer: id == .ollama || id == .lmstudio)
+                let windows = try builder.windows(words: words, preset: clipRequest.preset, instruction: clipRequest.instruction, contextTokens: context,
+                    localServer: id == .ollama || id == .lmstudio, recordings: clipRequest.recordings)
                 let requests: [JSONValue] = windows.enumerated().map { index, window in
-                    let request = builder.request(words: words, window: window, preset: chosen, instruction: instruction,
-                        windowIndex: index, windowCount: windows.count, timeout: catalog.timeout(for: id, feature: .clipFinder), language: transcript.language)
+                    let request = builder.request(words: words, window: window, preset: clipRequest.preset, instruction: clipRequest.instruction,
+                        windowIndex: index, windowCount: windows.count, timeout: catalog.timeout(for: id, feature: .clipFinder),
+                        language: clipRequest.transcript.language, recordings: clipRequest.recordings)
                     return .object(["system": .string(request.system), "cachedBlock": .string(request.cachedBlock ?? ""), "instruction": .string(request.instruction)])
                 }
                 return CLIWorkflow.success("find-clips", fields: ["prompts": .array(requests)])
@@ -439,9 +446,7 @@ struct FindClips: AsyncParsableCommand {
             let keys = LLMEnvironmentKeyProvider(catalog: catalog)
             let service: any LLMConnector = id == .appleFoundation ? FoundationModelsConnector(log: logger) : StubLLMConnector(id: id, keys: keys, catalog: catalog, log: logger)
             let finder = ClipFinder(runner: LLMRunner(keys: keys, catalog: catalog, log: logger), shared: shared)
-            let result = try await finder.find(ClipFinderRequest(transcript: transcript, corrections: project.edits.corrections,
-                cutWordIds: Set(project.edits.cutWordIds), preset: chosen, instruction: instruction, snap: !noSnap),
-                connector: service, model: selectedModel)
+            let result = try await finder.find(clipRequest, connector: service, model: selectedModel)
             return try CLIWorkflow.success("find-clips", value: result)
         }
     }

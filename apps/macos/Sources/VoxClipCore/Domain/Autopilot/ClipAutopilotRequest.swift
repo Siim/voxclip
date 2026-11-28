@@ -65,6 +65,7 @@ public struct ClipAutopilotRequest: Sendable, Equatable {
     public var footageDescriptions: [String: String] = [:]
     public var musicTracks: [String: String] = [:]
     public var selectedParts: [ClipProposal.Part]?
+    public var recordings: RecordingProposalContext?
     public var selectedKind: ClipProposal.NewClip.Kind?
     public var creativeShapes = false
     public var revision: Revision?
@@ -130,6 +131,7 @@ public struct ClipAutopilotContext: Sendable {
     public let frames: ClipAutopilotFrames?
     public let footageSources: [String: Double]
     public var offeredParts: [ClipProposal.Part]?
+    public var recordings: RecordingProposalContext?
     public var kind: ClipProposal.NewClip.Kind?
     public var musicTrackIDs: Set<String> = []
     public var missingFromTake: String?
@@ -165,6 +167,7 @@ public struct ClipAutopilotContext: Sendable {
                                     pauseKeepSeconds: pauseKeepSeconds, scope: scope, styleIDs: styleIDs, fonts: fonts,
                                     preference: preference, prompt: prompt, tone: tone, frames: frames, footageSources: footageSources)
         copy.offeredParts = offeredParts; copy.kind = kind; copy.musicTrackIDs = musicTrackIDs; copy.missingFromTake = missingFromTake
+        copy.recordings = recordings
         return copy
     }
 
@@ -174,6 +177,7 @@ public struct ClipAutopilotContext: Sendable {
                              pauseKeepSeconds: pauseKeepSeconds, scope: scope, styleIDs: styleIDs, fonts: fonts, preference: preference,
                              prompt: prompt, tone: tone, frames: frames, footageSources: footageSources)
         copy.offeredParts = offeredParts; copy.kind = kind; copy.musicTrackIDs = musicTrackIDs; copy.missingFromTake = missingFromTake
+        copy.recordings = recordings
         return copy
     }
 }

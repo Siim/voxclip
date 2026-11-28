@@ -15,13 +15,22 @@ public struct ClipPromptDocument: Sendable, Equatable {
     func schema(for preset: ClipPresetID) -> JSONValue {
         let output = document[ai: "output"]
         let schema = output[ai: "schema"]
-        guard preset == .custom, let maximum = output[ai: "customMaxParts"].aiInt else { return schema }
-        func withMaximum(_ value: JSONValue, path: ArraySlice<String>) -> JSONValue {
-            guard let key = path.first, var object = value.aiObject else { return .number(Double(maximum)) }
-            object[key] = withMaximum(object[key] ?? .null, path: path.dropFirst())
+        guard preset == .custom || preset == .bestTakes, let maximum = output[ai: "customMaxParts"].aiInt else { return schema }
+        func withParts(_ value: JSONValue, path: ArraySlice<String>) -> JSONValue {
+            guard var object = value.aiObject else { return value }
+            if let key = path.first {
+                object[key] = withParts(object[key] ?? .null, path: path.dropFirst())
+            } else {
+                object["maxItems"] = .number(Double(maximum))
+                if preset == .bestTakes, var item = object["items"]?.aiObject, var properties = item["properties"]?.aiObject {
+                    properties["take_reason"] = output[ai: "takeReason"]
+                    item["properties"] = .object(properties)
+                    object["items"] = .object(item)
+                }
+            }
             return .object(object)
         }
-        return withMaximum(schema, path: ["properties", "clips", "items", "properties", "parts", "maxItems"][...])
+        return withParts(schema, path: ["properties", "clips", "items", "properties", "parts"][...])
     }
 }
 
@@ -56,7 +65,7 @@ public struct ClipRequestBuilder: Sendable {
         AIText.prefix(AIText.trim(text ?? ""), utf16: prompt.document[ai: "request"][ai: "maxInstructionsLength"].aiInt ?? 500)
     }
 
-    public func windows(words: [ClipWord], preset: ClipPreset, instruction: String? = nil, contextTokens: Int, maxOutputTokensCap: Int? = nil, localServer: Bool = false) throws -> [ClipWindow] {
+    public func windows(words: [ClipWord], preset: ClipPreset, instruction: String? = nil, contextTokens: Int, maxOutputTokensCap: Int? = nil, localServer: Bool = false, recordings: RecordingProposalContext? = nil) throws -> [ClipWindow] {
         guard !words.isEmpty else { return [] }
         let formatted = try formatTranscript(words)
         let document = prompt.document
@@ -66,6 +75,12 @@ public struct ClipRequestBuilder: Sendable {
         let budget = Int(floor(Double(contextTokens - overhead - outputReserve) * tokenPolicy.safetyFactor))
         guard budget >= 600 else { throw LLMError.contextTooLong }
         let maxWords = document[ai: "limits"][ai: "maxWordsPerRequest"].aiInt ?? 8000
+        if preset.id == .bestTakes {
+            let metadata = recordingBlock(recordings, lines: formatted.lines)
+            let cost = tokenPolicy.estimate(sentenceBlock(words: words, lines: formatted.lines) + "\n" + metadata)
+            guard words.count <= maxWords, cost + tokenPolicy.estimate(document[ai: "takesSystem"].aiString ?? "") <= budget else { throw LLMError.contextTooLong }
+            return [ClipWindow(lines: formatted.lines, estimatedTokens: cost, tokenBudget: budget, maxClips: preset.maxClips, maxOutputTokens: outputReserve)]
+        }
         let overlap = min(preset.maxSeconds, document[ai: "limits"][ai: "windowOverlapMaxSeconds"].aiDouble ?? 90)
         let packed = try AIWindowPacking.pack(lines: formatted.lines, budget: budget, maxWords: maxWords, overlap: overlap, tokenPolicy: tokenPolicy)
         let factor = document[ai: "limits"][ai: "windowClipFactor"].aiDouble ?? 1.5
@@ -74,15 +89,23 @@ public struct ClipRequestBuilder: Sendable {
         return packed.map { ClipWindow(lines: Array(formatted.lines[$0.range]), estimatedTokens: $0.estimatedCost, tokenBudget: budget, maxClips: clipBudget, maxOutputTokens: outputReserve) }
     }
 
-    public func request(words: [ClipWord], window: ClipWindow, preset: ClipPreset, instruction: String? = nil, windowIndex: Int = 0, windowCount: Int = 1, lastTopicEnd: Int? = nil, timeout: Duration, language: String? = nil) -> LLMRequest {
+    public func request(words: [ClipWord], window: ClipWindow, preset: ClipPreset, instruction: String? = nil, windowIndex: Int = 0, windowCount: Int = 1, lastTopicEnd: Int? = nil, timeout: Duration, language: String? = nil, recordings: RecordingProposalContext? = nil) -> LLMRequest {
         let document = prompt.document
-        let block = sentenceBlock(words: words, lines: window.lines)
-        return LLMRequest(feature: .clipFinder, system: document[ai: "system"].aiString ?? "", cachedBlock: block,
+        let takes = preset.id == .bestTakes
+        let block = sentenceBlock(words: words, lines: window.lines) + (takes ? "\n" + recordingBlock(recordings, lines: window.lines) : "")
+        let system = (document[ai: "system"].aiString ?? "") + (takes ? "\n\n" + (document[ai: "takesSystem"].aiString ?? "") : "")
+        return LLMRequest(feature: .clipFinder, system: system, cachedBlock: block,
                           instruction: renderInstruction(words: words, lines: window.lines, preset: preset, instruction: instruction, windowCount: windowCount, maxClips: window.maxClips, lastTopicEnd: windowIndex > 0 ? lastTopicEnd : nil),
                           schemaName: document[ai: "output"][ai: "name"].aiString ?? "clips", schema: prompt.schema(for: preset.id),
                           maxOutputTokens: window.maxOutputTokens ?? document[ai: "generation"][ai: "maxOutputTokens"].aiInt ?? 16000,
                           effort: Effort(rawValue: document[ai: "generation"][ai: "effort"].aiString ?? Effort.decision.rawValue), timeout: timeout, language: language,
                           tag: "clips/\(preset.id.rawValue)\(windowCount > 1 ? " part \(windowIndex + 1) of \(windowCount)" : "")")
+    }
+
+    private func recordingBlock(_ recordings: RecordingProposalContext?, lines: [TranscriptLine]) -> String {
+        recordings?.block(unit: "lines") { range in
+            Self.lineNumber(of: range.lowerBound, in: lines)...Self.lineNumber(of: range.upperBound, in: lines)
+        } ?? ""
     }
 
     /// The clip finder's transcript block (ai.md §11.3, `voxclip-sentence-lines-v1`): `lines`, a window of `formatTranscript`'s

@@ -1,0 +1,733 @@
+{
+  "format": "voxclip-project",
+  "schemaVersion": 7,
+  "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+  "title": "Synthetic clip controls wire fixture",
+  "createdAt": "2026-10-25T09:12:03Z",
+  "modifiedAt": "2026-10-25T09:31:47Z",
+  "savedBy": {
+    "app": "VoxClip",
+    "version": "0.1.0",
+    "platform": "macos"
+  },
+  "media": {
+    "source": {
+      "absolutePath": "/synthetic/DJI_0007.MOV",
+      "relativePath": "DJI_0007.MOV",
+      "sizeBytes": 9437184,
+      "durationSeconds": 5,
+      "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+      "video": {
+        "width": 1920,
+        "height": 1080,
+        "frameRate": 30,
+        "rotationDegrees": 0
+      },
+      "audio": {
+        "sampleRate": 48000,
+        "channels": 1
+      }
+    },
+    "additionalSources": [
+      {
+        "absolutePath": "/synthetic/DJI_0010.MOV",
+        "relativePath": "DJI_0010.MOV",
+        "sizeBytes": 9437184,
+        "durationSeconds": 3,
+        "contentKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "video": {
+          "width": 1920,
+          "height": 1080,
+          "frameRate": 30,
+          "rotationDegrees": 0
+        },
+        "audio": {
+          "sampleRate": 48000,
+          "channels": 1
+        }
+      },
+      {
+        "absolutePath": "/synthetic/DJI_0006.MOV",
+        "relativePath": "DJI_0006.MOV",
+        "sizeBytes": 9437184,
+        "durationSeconds": 1.0000226757369615,
+        "contentKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "video": {
+          "width": 1920,
+          "height": 1080,
+          "frameRate": 30,
+          "rotationDegrees": 0
+        },
+        "audio": {
+          "sampleRate": 44100,
+          "channels": 1
+        }
+      }
+    ],
+    "spokenSources": [
+      {
+        "sourceKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "offsetSeconds": 6,
+        "wordIdPrefix": "r2.",
+        "gainDb": -1.8,
+        "transcript": {
+          "schemaVersion": 1,
+          "words": [
+            {
+              "id": "w1",
+              "text": "I",
+              "kind": "word",
+              "start": 0.0,
+              "end": 0.08727272727272728,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w2",
+              "text": "started",
+              "kind": "word",
+              "start": 0.10909090909090909,
+              "end": 0.19636363636363635,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w3",
+              "text": "Superscribe",
+              "kind": "word",
+              "start": 0.21818181818181817,
+              "end": 0.3054545454545454,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w4",
+              "text": "as",
+              "kind": "word",
+              "start": 0.32727272727272727,
+              "end": 0.4145454545454545,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w5",
+              "text": "a",
+              "kind": "word",
+              "start": 0.43636363636363634,
+              "end": 0.5236363636363636,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w6",
+              "text": "dictation",
+              "kind": "word",
+              "start": 0.5454545454545454,
+              "end": 0.6327272727272727,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w7",
+              "text": "tool",
+              "kind": "word",
+              "start": 0.6545454545454545,
+              "end": 0.7418181818181817,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w8",
+              "text": "that",
+              "kind": "word",
+              "start": 0.7636363636363636,
+              "end": 0.8509090909090908,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w9",
+              "text": "supports",
+              "kind": "word",
+              "start": 0.8727272727272727,
+              "end": 0.9600000000000001,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w10",
+              "text": "time",
+              "kind": "word",
+              "start": 0.9818181818181818,
+              "end": 1.069090909090909,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w11",
+              "text": "tracking.",
+              "kind": "word",
+              "start": 1.0909090909090908,
+              "end": 1.2,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w12",
+              "text": "It",
+              "kind": "word",
+              "start": 1.35,
+              "end": 1.3900000000000001,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w13",
+              "text": "became",
+              "kind": "word",
+              "start": 1.4000000000000001,
+              "end": 1.44,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w14",
+              "text": "my",
+              "kind": "word",
+              "start": 1.45,
+              "end": 1.49,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w15",
+              "text": "personal",
+              "kind": "word",
+              "start": 1.5,
+              "end": 1.54,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w16",
+              "text": "time",
+              "kind": "word",
+              "start": 1.55,
+              "end": 1.5899999999999999,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w17",
+              "text": "tracker.",
+              "kind": "word",
+              "start": 1.5999999999999999,
+              "end": 1.65,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w18",
+              "text": "It's",
+              "kind": "word",
+              "start": 2.5,
+              "end": 2.6,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w19",
+              "text": "a",
+              "kind": "word",
+              "start": 2.625,
+              "end": 2.725,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w20",
+              "text": "reporting",
+              "kind": "word",
+              "start": 2.75,
+              "end": 2.85,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            },
+            {
+              "id": "w21",
+              "text": "tool.",
+              "kind": "word",
+              "start": 2.875,
+              "end": 3,
+              "rawStart": null,
+              "rawEnd": null,
+              "conf": null,
+              "speaker": null,
+              "timing": "native"
+            }
+          ],
+          "language": "en",
+          "languageProbability": 0.99,
+          "durationSeconds": 3,
+          "engine": {
+            "id": "elevenlabs",
+            "modelId": "scribe_v2",
+            "modelSha256": null,
+            "engineVersion": "scribe_v2",
+            "locale": null
+          },
+          "verbatim": true,
+          "refined": true,
+          "pipelineVersion": 1,
+          "rawKey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "createdAt": "2026-10-25T09:12:41Z"
+        }
+      }
+    ]
+  },
+  "transcript": {
+    "schemaVersion": 1,
+    "words": [
+      {
+        "id": "w1",
+        "text": "I",
+        "kind": "word",
+        "start": 0.0,
+        "end": 0.10285714285714287,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w2",
+        "text": "started",
+        "kind": "word",
+        "start": 0.1285714285714286,
+        "end": 0.23142857142857146,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w3",
+        "text": "Superscribe",
+        "kind": "word",
+        "start": 0.2571428571428572,
+        "end": 0.36000000000000004,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w4",
+        "text": "as",
+        "kind": "word",
+        "start": 0.3857142857142858,
+        "end": 0.4885714285714286,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w5",
+        "text": "a",
+        "kind": "word",
+        "start": 0.5142857142857143,
+        "end": 0.6171428571428572,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w6",
+        "text": "dictation",
+        "kind": "word",
+        "start": 0.6428571428571429,
+        "end": 0.7457142857142858,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w7",
+        "text": "tool.",
+        "kind": "word",
+        "start": 0.7714285714285716,
+        "end": 0.9,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w8",
+        "text": "It",
+        "kind": "word",
+        "start": 1.1,
+        "end": 1.1733333333333333,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w9",
+        "text": "grew",
+        "kind": "word",
+        "start": 1.1916666666666667,
+        "end": 1.2650000000000001,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w10",
+        "text": "from",
+        "kind": "word",
+        "start": 1.2833333333333334,
+        "end": 1.3566666666666667,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w11",
+        "text": "my",
+        "kind": "word",
+        "start": 1.375,
+        "end": 1.4483333333333333,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w12",
+        "text": "own",
+        "kind": "word",
+        "start": 1.4666666666666666,
+        "end": 1.54,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w13",
+        "text": "notes.",
+        "kind": "word",
+        "start": 1.5583333333333331,
+        "end": 1.65,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w14",
+        "text": "Sorry,",
+        "kind": "word",
+        "start": 1.85,
+        "end": 1.9100000000000001,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w15",
+        "text": "where",
+        "kind": "word",
+        "start": 1.925,
+        "end": 1.985,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w16",
+        "text": "was",
+        "kind": "word",
+        "start": 2.0,
+        "end": 2.06,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w17",
+        "text": "I?",
+        "kind": "word",
+        "start": 2.075,
+        "end": 2.15,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w18",
+        "text": "It",
+        "kind": "word",
+        "start": 2.35,
+        "end": 2.4833333333333334,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w19",
+        "text": "became",
+        "kind": "word",
+        "start": 2.5166666666666666,
+        "end": 2.65,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w20",
+        "text": "my",
+        "kind": "word",
+        "start": 2.6833333333333336,
+        "end": 2.816666666666667,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w21",
+        "text": "personal",
+        "kind": "word",
+        "start": 2.85,
+        "end": 2.9833333333333334,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w22",
+        "text": "time",
+        "kind": "word",
+        "start": 3.0166666666666666,
+        "end": 3.15,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w23",
+        "text": "tracker.",
+        "kind": "word",
+        "start": 3.1833333333333336,
+        "end": 3.35,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w24",
+        "text": "Now",
+        "kind": "word",
+        "start": 4.5,
+        "end": 4.6,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w25",
+        "text": "it",
+        "kind": "word",
+        "start": 4.625,
+        "end": 4.725,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w26",
+        "text": "does",
+        "kind": "word",
+        "start": 4.75,
+        "end": 4.85,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      },
+      {
+        "id": "w27",
+        "text": "both.",
+        "kind": "word",
+        "start": 4.875,
+        "end": 5,
+        "rawStart": null,
+        "rawEnd": null,
+        "conf": null,
+        "speaker": null,
+        "timing": "native"
+      }
+    ],
+    "language": "en",
+    "languageProbability": 0.99,
+    "durationSeconds": 5,
+    "engine": {
+      "id": "elevenlabs",
+      "modelId": "scribe_v2",
+      "modelSha256": null,
+      "engineVersion": "scribe_v2",
+      "locale": null
+    },
+    "verbatim": true,
+    "refined": true,
+    "pipelineVersion": 1,
+    "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+    "createdAt": "2026-10-25T09:12:41Z"
+  },
+  "edits": {
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "cutWordIds": [],
+    "cutPauseIds": [],
+    "corrections": {},
+    "clips": [],
+    "activeClipId": null
+  },
+  "captions": {
+    "styleId": "vox-bold",
+    "overrides": {},
+    "position": null,
+    "positionByAspect": {}
+  },
+  "export": {
+    "aspect": "9:16",
+    "quality": "standard",
+    "srt": false,
+    "folder": null
+  },
+  "share": {
+    "captions": {
+      "full": "Today we shipped the clipper. Thanks"
+    }
+  },
+  "ai": {
+    "results": []
+  },
+  "voiceLab": {
+    "segments": [],
+    "assets": [],
+    "cleanAudio": {
+      "mode": "off",
+      "assetId": null,
+      "mix": null
+    },
+    "voices": [],
+    "videoAssets": []
+  },
+  "extensions": {}
+}

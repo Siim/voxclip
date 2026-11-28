@@ -1,9 +1,14 @@
 #if WIN_UI_TESTS
+using System.Text.Json.Nodes;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.Project;
 using VoxClip.Core.Services.VoiceLab;
+using VoxClip.Media.Pipeline;
+using VoxClip.Tests.Support;
 using Xunit;
 
 namespace VoxClip.Ui.Tests;
@@ -23,6 +28,313 @@ public sealed class ClipSemanticsTests
     }
 
     internal static EditorViewModel Story() => new(Fixture("story-project.voxclip", "story-clips"));
+    internal static EditorViewModel RecordingStory() => new(Fixture("two-recordings.voxclip", "recordings"));
+    internal static EditorViewModel RecordingReference() => new(Fixture("reference-recordings.voxclip", "recordings"));
+
+    [Fact]
+    public async Task TurnOffLevelMatchUpdatesTheSharedRenderInputAndUndoRestoresIt()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var directory = Directory.CreateTempSubdirectory("voxclip-level-match-");
+        try
+        {
+            var fixture = await RecordingStoryFixture.CreateAsync(directory.FullName, ct);
+            var spoken = Assert.Single(fixture.Project.Media.SpokenSources!);
+            var model = new EditorViewModel(fixture.Project with
+            {
+                Media = fixture.Project.Media with { SpokenSources = [spoken with { GainDb = -3.2 }] },
+            });
+            async Task<double> CompanionGain()
+            {
+                var snapshot = new ComposeSnapshot(fixture.Primary, TimelineLayout.Plan(model), null, new(new(320, 180), 30, 500_000));
+                var bound = await RecordingRendering.BindAsync(model.Project, snapshot, new ProjectStore(), fixture.Path, ct);
+                return Assert.Single(bound.SpanSources.Where(source => source.ContentKey == spoken.SourceKey).Select(source => source.GainDb).Distinct());
+            }
+
+            Assert.Equal(-3.2, await CompanionGain());
+            Assert.True(model.StopMatchingRecordingLevel(spoken.SourceKey));
+            Assert.Equal("Don't match level", model.UndoActionName);
+            Assert.Equal(0, Assert.Single(model.Project.Media.SpokenSources!).GainDb);
+            Assert.Equal(0, await CompanionGain());
+            Assert.False(model.StopMatchingRecordingLevel(spoken.SourceKey));
+            model.Undo();
+            Assert.Equal(-3.2, await CompanionGain());
+        }
+        finally { directory.Delete(recursive: true); }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task LevelMatchingDoesNotCommitAfterCancellationOrAProjectEdit(bool cancel)
+    {
+        var project = RecordingReference().Project;
+        var spoken = Assert.Single(project.Media.SpokenSources!);
+        var source = project.Media.AdditionalSources!.Single(reference => reference.ContentKey == spoken.SourceKey);
+        var model = new EditorViewModel(project with { Media = project.Media with { SpokenSources = null } });
+        using var job = new CancellationTokenSource();
+        var measured = new TaskCompletionSource<RecordingEdit.AddSpokenSource>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var adding = model.AddSpokenRecordingAsync(source, spoken.Transcript, (_, _, token) =>
+        {
+            Assert.Equal(job.Token, token);
+            return measured.Task;
+        }, job.Token);
+        if (cancel) job.Cancel();
+        else model.Apply(new EditOperation.SetWordCuts(["w1"], true));
+        var before = model.Project;
+        measured.SetResult(new(source.ContentKey, spoken.Transcript, GainDb: -3));
+        if (cancel) await Assert.ThrowsAnyAsync<OperationCanceledException>(() => adding);
+        else Assert.False(await adding);
+        Assert.Same(before, model.Project);
+        Assert.Null(model.Project.Media.SpokenSources);
+    }
+
+    [Fact]
+    public void StartFromAndPutBackUseSeparateUndoSteps()
+    {
+        var model = RecordingReference();
+        var original = model.ActiveClip;
+        var primary = model.RecordingRegions[0];
+        Assert.True(model.StartFromRecording(primary.Key));
+        Assert.Equal("Start from recording", model.UndoActionName);
+        Assert.Equal(RecordingViewKind.PlayOrder, model.TranscriptRecordingView.Kind);
+        var starter = model.ActiveClip;
+        var omitted = Assert.Single(model.OmittedRecordingLines);
+        Assert.Equal("restart", omitted.Label);
+        Assert.True(model.PutBackRecordingLine(omitted));
+        Assert.Equal("Add part", model.UndoActionName);
+        Assert.Empty(model.OmittedRecordingLines);
+        model.Undo();
+        Assert.Equal(starter, model.ActiveClip);
+        model.Undo();
+        Assert.Equal(original, model.ActiveClip);
+    }
+
+    [Fact]
+    public void PutBackRestoresConsecutiveLeadingRestartsInRecordingOrder()
+    {
+        var project = RecordingReference().Project;
+        var transcript = project.Transcript!;
+        var template = transcript.Words[0];
+        string[] text = ["One", "more", "time.", "Let", "me", "start", "again.", "We", "can", "ship", "it."];
+        var words = text.Select((word, index) => template with
+        {
+            Id = $"lead{index}", Text = word, Start = index * .2, End = index * .2 + .15, RawStart = null, RawEnd = null,
+        }).ToArray();
+        var model = new EditorViewModel(project with { Transcript = transcript with { Words = words } });
+        Assert.True(model.StartFromRecording(model.RecordingRegions[0].Key));
+        Assert.Equal("lead7", Assert.Single(model.ClipParts).Part.StartWordId);
+        var original = model.Project;
+        Assert.Equal(["lead0", "lead3"], model.OmittedRecordingLines.Select(line => line.Take.StartWordId));
+        var shell = new ShellViewModel();
+        shell.Update(model, showingHome: false, [], null);
+        Assert.Equal([SidebarKind.OmittedRecordingLine, SidebarKind.OmittedRecordingLine, SidebarKind.Outline],
+            shell.Rows.Where(row => row.Kind is SidebarKind.OmittedRecordingLine or SidebarKind.Outline).Take(3).Select(row => row.Kind));
+        Assert.True(model.PutBackRecordingLine(model.OmittedRecordingLines[0]));
+        Assert.Equal(["lead0", "lead7"], model.ClipParts.Select(part => part.Part.StartWordId));
+        var firstRestored = model.Project;
+        Assert.True(model.PutBackRecordingLine(Assert.Single(model.OmittedRecordingLines)));
+        Assert.Equal(("lead0", "lead10"), (Assert.Single(model.ClipParts).Part.StartWordId, model.ClipParts[0].Part.EndWordId));
+        Assert.Empty(model.OmittedRecordingLines);
+        Assert.Equal("Add part", model.UndoActionName);
+        model.Undo();
+        Assert.Equal(ProjectSerialization.Serialize(firstRestored), ProjectSerialization.Serialize(model.Project with { ModifiedAt = firstRestored.ModifiedAt }));
+        model.Undo();
+        Assert.Equal(ProjectSerialization.Serialize(original), ProjectSerialization.Serialize(model.Project with { ModifiedAt = original.ModifiedAt }));
+    }
+
+    [Fact]
+    public void SevenRecordingActionsMakeTheSharedFivePartClip()
+    {
+        var vectors = JsonNode.Parse(FixtureLoader.ReadText("fixtures/recordings/command-cases.json"))!;
+        var model = RecordingReference();
+        var primary = model.RecordingRegions[0];
+        var alternate = model.RecordingRegions[1];
+        Assert.True(model.StartFromRecording(primary.Key));
+        Assert.Equal("Start from recording", model.UndoActionName);
+        var starter = model.ActiveClip;
+        var started = ProjectSerialization.Serialize(model.Project);
+        var line = Assert.Single(model.RecordingClipLines, line => line.FirstId == "w1");
+        Assert.True(model.OpenRecordingVersions(line));
+        Assert.NotNull(model.RecordingLineAudition(line, alternate.Key));
+        Assert.Same(starter, model.ActiveClip);
+        Assert.True(model.UseRecordingLineVersion(line, alternate.Key));
+        Assert.Equal("Use version", model.UndoActionName);
+        var swapped = model.ActiveClip;
+        var swappedProject = ProjectSerialization.Serialize(model.Project);
+        model.SetOtherRecordingLinesExpanded(true);
+        var solo = Assert.Single(model.OtherRecordingLines, run => run.StartWordId == "r2.w18");
+        Assert.Equal(vectors["placement"]!.GetValue<string>(), model.RecordingPlacement(solo));
+        Assert.NotNull(model.RecordingSoloAudition(solo));
+        Assert.Same(swapped, model.ActiveClip);
+        Assert.True(model.InsertRecordingLine(solo));
+        Assert.Equal("Add part", model.UndoActionName);
+        Assert.Equal(vectors["final"]!["ranges"]!.AsArray().Select(pair => (pair![0]!.GetValue<string>(), pair[1]!.GetValue<string>())),
+            model.ClipParts.Select(part => (part.Part.StartWordId, part.Part.EndWordId)));
+        var final = ProjectSerialization.Serialize(model.Project);
+        model.Undo();
+        Assert.Equal(swappedProject, ProjectSerialization.Serialize(model.Project));
+        Assert.Equal("Use version", model.UndoActionName);
+        model.Undo();
+        Assert.Equal(started, ProjectSerialization.Serialize(model.Project));
+        Assert.Equal("Use version", model.RedoActionName);
+        model.Redo();
+        Assert.Equal(swappedProject, ProjectSerialization.Serialize(model.Project));
+        Assert.Equal("Add part", model.RedoActionName);
+        model.Redo();
+        Assert.Equal(final, ProjectSerialization.Serialize(model.Project));
+    }
+
+    [Fact]
+    public void UniqueLineCanGoAtTheEndWhenItsNeighbourIsOutsideTheClip()
+    {
+        var model = RecordingOpening();
+        var solo = Assert.Single(model.OtherRecordingLines, run => run.StartWordId == "r2.w18");
+        var before = ProjectSerialization.Serialize(model.Project);
+        Assert.EndsWith("isn't in Clip 1. Insert it at the end, then move it.", model.RecordingSoloDisabledReason(solo));
+        Assert.Null(model.RecordingSoloAudition(solo));
+        Assert.False(model.InsertRecordingLine(solo));
+        Assert.Null(model.RecordingSoloDisabledReason(solo, atEnd: true));
+        Assert.True(model.InsertRecordingLine(solo, atEnd: true));
+        Assert.Equal("Add part", model.UndoActionName);
+        Assert.Equal(("r2.w18", "r2.w21"), (model.ClipParts[^1].Part.StartWordId, model.ClipParts[^1].Part.EndWordId));
+        model.Undo();
+        Assert.Equal(before, ProjectSerialization.Serialize(model.Project));
+    }
+
+    [Fact]
+    public void LineVersionKeepsPaidLipSyncInTheOriginalAndSelectsOnlyOneCopy()
+    {
+        var starter = RecordingReference();
+        Assert.True(starter.StartFromRecording(starter.RecordingRegions[0].Key));
+        var opening = Assert.Single(starter.RecordingClipLines, line => line.FirstId == "w1");
+        var voice = Fixture("lipsync-render-v3.voxclip", "voice-lab").VoiceLab;
+        var segment = voice.Segments.First(segment => segment.Candidates.Any(candidate => candidate.Recipe?.Video.Mode == VoiceLabVideoMode.Lipsync));
+        var candidate = segment.Candidates.First(candidate => candidate.Recipe?.Video.Mode == VoiceLabVideoMode.Lipsync);
+        var recipe = candidate.Recipe!;
+        var window = recipe.Video with { WindowStartSample = (long)(starter.Words[starter.Index(opening.FirstId)].Start * 48_000) + 480,
+            WindowEndSample = (long)(starter.Words[starter.Index(opening.LastId)].End * 48_000) - 480 };
+        var paid = voice with { Segments = [segment with { Candidates = [candidate with { Recipe = recipe with { Video = window } }], SelectedCandidateIndex = 0 }] };
+        var model = new EditorViewModel(starter.Project with { VoiceLab = paid });
+        var line = Assert.Single(model.RecordingClipLines, line => line.FirstId == "w1");
+        var alternate = Assert.Single(line.Alternatives);
+        var announcements = new List<string>();
+        model.Announcement += (_, message) => announcements.Add(message);
+        model.IsRecordingMissing = media => media.ContentKey == alternate.Key;
+        Assert.Equal("0010 is missing. Locate it to use its words.", model.RecordingLineDisabledReason(line, alternate.Key));
+        Assert.Null(model.RecordingLineAudition(line, alternate.Key));
+        Assert.False(model.UseRecordingLineVersion(line, alternate.Key));
+        model.IsRecordingMissing = null;
+        Assert.Contains("keeps the paid lip sync in Clip 1", model.RecordingLineCopyReason(line, alternate.Key));
+        Assert.True(model.UseRecordingLineVersion(line, alternate.Key));
+        var copyTitle = $"{starter.ActiveClip?.Title ?? "Clip 1"} copy";
+        Assert.Equal($"Made {copyTitle} to keep the lip sync", Assert.Single(announcements));
+        Assert.Equal(announcements[0], model.Notice);
+        Assert.Equal(copyTitle, model.ActiveClip?.Title);
+        Assert.Equal(starter.ActiveClip, model.Project.Edits.Clips[0]);
+        Assert.Equal("Use version", model.UndoActionName);
+
+        var copiedOpening = Assert.Single(model.RecordingClipLines, line => line.FirstId == "r2.w1");
+        Assert.True(model.UseRecordingLineVersion(copiedOpening, starter.RecordingRegions[0].Key));
+        Assert.Equal(2, model.Project.Edits.Clips.Count);
+        model.Undo();
+        model.Undo();
+        Assert.Equal(starter.ActiveClip, Assert.Single(model.Project.Edits.Clips));
+        Assert.Equal(paid.Segments, model.Project.VoiceLab.Segments);
+    }
+
+    internal static EditorViewModel RecordingOpening()
+    {
+        var project = Fixture("reference-recordings.voxclip", "recordings");
+        var clip = new ClipRange("clip-opening", "w1", "w7", null, ClipOrigin.Manual, null, null, true);
+        return new(project with { Edits = project.Edits with { ActiveClipId = clip.Id, Clips = [clip] } });
+    }
+
+    [Fact]
+    public void RecordingPartPickAddsAfterTheSelectedPartAndUndoRestoresTheClip()
+    {
+        var model = RecordingOpening();
+        model.Select(model.Index("w18"));
+        model.Select(model.Index("w23"), extend: true);
+        Assert.True(model.AddSelectionAsPart());
+        var opening = model.ClipParts[0].Id;
+        Assert.True(model.SelectPart(opening));
+        Assert.True(model.PickPartFrom(model.RecordingRegions[1].Key));
+        Assert.Equal("Select words in 0010 to add them to Clip 1 · after part 1", model.PartPickPrompt);
+        Assert.Equal(2, model.RecordingPartNumber);
+        Assert.False(model.CanAddPart);
+        model.Select(model.Index("r2.w18"));
+        model.Select(model.Index("r2.w21"), extend: true);
+        Assert.True(model.AddSelectionAsPart());
+        Assert.Equal("Add part", model.UndoActionName);
+        Assert.Equal(["w1", "r2.w18", "w18"], model.ClipParts.Select(part => part.Part.StartWordId));
+        Assert.Equal("Clip 1 · 3 parts · from 0007 and 0010", model.StoryRecordingHeading);
+        Assert.NotNull(model.PartPickRecording);
+        model.Undo();
+        Assert.Equal(["w1", "w18"], model.ClipParts.Select(part => part.Part.StartWordId));
+        Assert.Equal("Add part", model.RedoActionName);
+    }
+
+    [Fact]
+    public void RecordingSelectionCannotCrossAGuardGapAndShowsTheInlineReason()
+    {
+        var model = RecordingOpening();
+        Assert.True(model.ChooseRecordingShortcut(0));
+        model.Select(model.Index("w27"));
+        model.Select(model.Index("r2.w1"), extend: true);
+        Assert.False(model.CanAddPart);
+        Assert.False(model.AddSelectionAsPart());
+        Assert.Equal("A part comes from one recording. Select words in 0007 only.", model.AddPartHelp);
+        Assert.Null(model.UndoActionName);
+    }
+
+    [Fact]
+    public void WholePartVersionUsesTheMatchedRecordingAndUndoesInOneStep()
+    {
+        var model = RecordingOpening();
+        var opening = Assert.Single(model.ClipParts);
+        var version = Assert.Single(model.RecordingVersions(opening));
+        Assert.Equal("0010", version.Recording.Label);
+        Assert.Null(model.RecordingVersionCopyReason(opening, version));
+        Assert.True(model.UseRecordingVersion(opening.Id, version));
+        var updated = Assert.Single(model.ClipParts);
+        Assert.Equal(opening.Id, updated.Id);
+        Assert.Equal(("r2.w1", "r2.w11"), (updated.Part.StartWordId, updated.Part.EndWordId));
+        Assert.Equal("Use version", model.UndoActionName);
+        model.Undo();
+        Assert.Equal("w1", Assert.Single(model.ClipParts).Part.StartWordId);
+        Assert.Equal("Use version", model.RedoActionName);
+    }
+
+    [Fact]
+    public void ProposalReasonIncludesThePartNumberAndItsRecording()
+    {
+        var model = RecordingStory();
+        Assert.Equal(["Part 1 · 0010 · A clearer opening"], model.ProposalRecordingReasons(model.ActiveClip!));
+    }
+
+    [Fact]
+    public void MissingVersionStaysVisibleButCannotBeUsedOrAuditioned()
+    {
+        var model = RecordingOpening();
+        var part = Assert.Single(model.ClipParts);
+        var version = Assert.Single(model.RecordingVersions(part));
+        model.IsRecordingMissing = source => source.ContentKey == version.Recording.Key;
+        Assert.Equal("0010 is missing. Locate it to use its words.", model.RecordingVersionDisabledReason(part.Id, version));
+        Assert.False(model.UseRecordingVersion(part.Id, version));
+        Assert.Null(model.RecordingVersionPreview(part.Id, version));
+        Assert.Null(model.UndoActionName);
+    }
+
+    [Fact]
+    public void RemoveRecordingExplainsThePartThatUsesIt()
+    {
+        var model = RecordingStory();
+        var key = model.RecordingRegions[1].Key;
+        Assert.Equal("Clip 1 uses 1 part from 0010. Remove that part first.", model.RemoveRecordingReason(key));
+        Assert.False(model.RemoveRecording(key));
+        Assert.Null(model.UndoActionName);
+    }
 
     [Fact]
     public void StoryOutlineFollowsPlayOrderAndMovesOnePartInAnUndoStep()

@@ -96,7 +96,25 @@ public sealed record ProjectMedia(MediaReference Source)
     /// <summary>Companion placements scoped to individual clips.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<ProjectFootage>? Footage { get; init; }
+    /// <summary>Additional spoken recordings in clock order; present only in v7.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<SpokenSource>? SpokenSources { get; init; }
+
+    internal double ClockDurationSeconds => SpokenSources?.LastOrDefault() is { } last &&
+        AdditionalSources?.FirstOrDefault(reference => reference.ContentKey == last.SourceKey) is { } companion
+        ? last.OffsetSeconds + companion.DurationSeconds : Source.DurationSeconds;
 }
+
+/// <summary>A companion transcript and its fixed position on the project clock.</summary>
+/// <param name="SourceKey">Content key of the companion.</param>
+/// <param name="OffsetSeconds">Whole seconds from the start of the project clock.</param>
+/// <param name="WordIdPrefix">Stable namespace for local word IDs.</param>
+/// <param name="Transcript">Unshifted recording transcript.</param>
+/// <param name="Label">Optional display label.</param>
+/// <param name="GainDb">Optional level adjustment relative to the primary.</param>
+public sealed record SpokenSource(string SourceKey, int OffsetSeconds, string WordIdPrefix, TranscriptModel Transcript,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Label = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? GainDb = null);
 
 /// <summary>A frame or moving segment in a companion recording.</summary>
 /// <param name="SourceKey">The companion's stable footage key.</param>

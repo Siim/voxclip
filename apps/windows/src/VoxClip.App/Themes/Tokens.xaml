@@ -2,6 +2,12 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Default">
+            <SolidColorBrush x:Key="VcRecording1Brush" Color="#3FC1C9" />
+            <SolidColorBrush x:Key="VcRecording2Brush" Color="#F2A541" />
+            <SolidColorBrush x:Key="VcRecording3Brush" Color="#A68CFF" />
+            <SolidColorBrush x:Key="VcRecording4Brush" Color="#EC89A4" />
+            <SolidColorBrush x:Key="VcRecording5Brush" Color="#B5CE72" />
+            <SolidColorBrush x:Key="VcRecording6Brush" Color="#79BDF5" />
             <SolidColorBrush x:Key="VcBgWindowBrush" Color="#17181A" />
             <SolidColorBrush x:Key="VcBgSurfaceBrush" Color="#1C1D20" />
             <SolidColorBrush x:Key="VcBgSunkenBrush" Color="#17181A" />
@@ -103,6 +109,12 @@
             <SolidColorBrush x:Key="VcFocusRingBrush" Color="#ECEAE4" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="VcRecording1Brush" Color="#16848C" />
+            <SolidColorBrush x:Key="VcRecording2Brush" Color="#A86008" />
+            <SolidColorBrush x:Key="VcRecording3Brush" Color="#7353C2" />
+            <SolidColorBrush x:Key="VcRecording4Brush" Color="#B64E70" />
+            <SolidColorBrush x:Key="VcRecording5Brush" Color="#647D21" />
+            <SolidColorBrush x:Key="VcRecording6Brush" Color="#2F77AE" />
             <SolidColorBrush x:Key="VcBgWindowBrush" Color="#F0EFEA" />
             <SolidColorBrush x:Key="VcBgSurfaceBrush" Color="#FAF9F6" />
             <SolidColorBrush x:Key="VcBgSunkenBrush" Color="#F0EFEA" />
@@ -204,6 +216,12 @@
             <SolidColorBrush x:Key="VcFocusRingBrush" Color="#1A1B1F" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="VcRecording1Brush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcRecording2Brush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcRecording3Brush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcRecording4Brush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcRecording5Brush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcRecording6Brush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="VcBgWindowBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VcBgSurfaceBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VcBgSunkenBrush" Color="{ThemeResource SystemColorWindowColor}" />

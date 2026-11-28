@@ -254,6 +254,8 @@ public struct RenderRequest: Sendable, Equatable {
     /// exactly as before.
     public var clipControls: ProjectClipControls?
     public var partReframes: [StoryPartReframe] = []
+    public var recordings: [RenderRecording] = []
+    public var spanSources: [String] = []
     public init(sourceURL: URL, plan: EditPlan, captions: CaptionTrack = CaptionTrack(), style: CaptionStyle? = nil, placement: CaptionPosition? = nil, output: OutputSpec, forPreview: Bool = false, captionLayout: CaptionLayoutResult? = nil, voiceLab: VoiceLabRenderInput? = nil, contextDemo: ContextDemoRenderInput? = nil, contextDemoRoot: URL? = nil, motionCues: [MotionCue] = [], motionClipID: String? = nil, reduceMotion: Bool = false, sourceContentKey: String? = nil) {
         self.sourceURL = sourceURL; self.plan = plan; self.captions = captions; self.style = style; self.placement = placement; self.output = output; self.forPreview = forPreview
         self.captionLayout = captionLayout
@@ -265,6 +267,11 @@ public struct RenderRequest: Sendable, Equatable {
         self.reduceMotion = reduceMotion
         self.sourceContentKey = sourceContentKey
     }
+}
+public struct RenderRecording: Sendable, Equatable {
+    public let region: ProjectClock.Region
+    public let url: URL
+    public var key: String { region.key }
 }
 public struct StoryPartReframe: Sendable, Equatable {
     public let source: TimeRange

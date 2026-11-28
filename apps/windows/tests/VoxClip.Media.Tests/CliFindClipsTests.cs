@@ -25,10 +25,12 @@ public sealed class CliFindClipsTests
         Assert.True(JsonNode.DeepEquals(expected, actual), actual.ToJsonString());
     }
 
-    [Fact]
-    public async Task DryRunMatchesSharedExpectedShapeWithoutChangingProject()
+    [Theory]
+    [InlineData("dryRun")]
+    [InlineData("bestTakesDryRun")]
+    public async Task DryRunMatchesSharedExpectedShapeWithoutChangingProject(string name)
     {
-        var fixture = Fixture()["dryRun"]!;
+        var fixture = Fixture()[name]!;
         var project = Path.Combine(FixtureLoader.SharedRoot, "fixtures", fixture["project"]!.GetValue<string>());
         var original = await File.ReadAllBytesAsync(project, TestContext.Current.CancellationToken);
         var arguments = new List<string> { "find-clips", "--open", project, "--dry-run", "--json" };
@@ -52,6 +54,8 @@ public sealed class CliFindClipsTests
             {
                 Assert.Equal(promptKeys, prompt!.AsObject().Select(pair => pair.Key).Order(StringComparer.Ordinal));
                 foreach (var key in promptKeys) Assert.False(string.IsNullOrEmpty(prompt[key]!.GetValue<string>()));
+                foreach (var text in fixture["cachedBlockContains"]?.AsArray() ?? [])
+                    Assert.Contains(text!.GetValue<string>(), prompt["cachedBlock"]!.GetValue<string>());
             }
             Assert.Equal(original, await File.ReadAllBytesAsync(project, TestContext.Current.CancellationToken));
         }

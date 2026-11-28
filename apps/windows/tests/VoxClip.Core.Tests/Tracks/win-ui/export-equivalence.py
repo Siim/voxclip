@@ -173,19 +173,44 @@ def verify_timeline(tools, evidence):
     print("PASS: slipped music, two fades and sample-equivalent split export")
 
 
+def verify_recordings(tools, evidence):
+    env = dict(os.environ, VOXCLIP_SHARED_DIR=str(ROOT / "shared"), VOXCLIP_LIVE_TESTS="0", VOXCLIP_TEST_DOWNLOAD="0",
+               VOXCLIP_DATA_DIR=str(evidence / "data"), VOXCLIP_EXPORT_EQ_ROOT="", VOXCLIP_EXPORT_EQ_TIMELINE="",
+               VOXCLIP_EXPORT_EQ_RECORDINGS=str(evidence))
+    run_exports(ROOT, tools, evidence, env)
+    manifest = json.loads((evidence / "recordings.json").read_text(encoding="utf-8"))
+    differences = []
+    for sample in manifest["samples"]:
+        expected = (evidence / sample["file"]).read_bytes()
+        frame = sample["frame"]
+        actual = subprocess.run([str(tools / "ffmpeg.exe"), "-v", "error", "-i", manifest["Output"],
+                                 "-vf", f"select=eq(n\\,{frame})", "-frames:v", "1", "-pix_fmt", "bgra", "-f", "rawvideo", "-"],
+                                check=True, stdout=subprocess.PIPE).stdout
+        assert len(actual) == len(expected) == sample["Width"] * sample["Height"] * 4, f"Invalid frame {frame}"
+        mean_error = sum(abs(before - after) for before, after in zip(expected, actual, strict=True)) / len(expected)
+        assert mean_error < 8, f"Preview/export mismatch at frame {frame}: {mean_error:.3f}"
+        differences.append({"frame": frame, "meanByteError": mean_error})
+    assert len(differences) == 5
+    (evidence / "comparison.json").write_text(json.dumps(differences, indent=2) + '\n', encoding="utf-8")
+    print("PASS: preview equals export picture at five story parts across recordings")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--timeline-only", action="store_true")
+    parser.add_argument("--recordings-only", action="store_true")
     parser.add_argument("--tools", type=Path)
     parser.add_argument("--evidence", type=Path)
     args = parser.parse_args()
-    if args.timeline_only:
+    if args.timeline_only or args.recordings_only:
         if os.name != "nt" or args.tools is None or args.evidence is None or args.prepare_only:
-            parser.error("--timeline-only requires Windows, --tools and --evidence (without --prepare-only)")
+            parser.error("--timeline-only and --recordings-only require Windows, --tools and --evidence (without --prepare-only)")
+        if args.timeline_only and args.recordings_only:
+            parser.error("Choose either --timeline-only or --recordings-only")
         evidence = args.evidence.resolve()
         evidence.mkdir(parents=True, exist_ok=True)
-        verify_timeline(args.tools.resolve(), evidence)
+        (verify_timeline if args.timeline_only else verify_recordings)(args.tools.resolve(), evidence)
         return
     if run(["git", "cat-file", "-t", BASELINE]).strip() != "commit":
         raise RuntimeError("The exact baseline commit is required")

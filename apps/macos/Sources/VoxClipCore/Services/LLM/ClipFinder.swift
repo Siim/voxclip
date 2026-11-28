@@ -4,9 +4,10 @@ struct ClipLineCandidate: Decodable {
     struct Part: Decodable {
         let startLine: Double
         let endLine: Double
+        let takeReason: String?
 
         private enum CodingKeys: String, CodingKey {
-            case startLine = "start_line", endLine = "end_line"
+            case startLine = "start_line", endLine = "end_line", takeReason = "take_reason"
         }
     }
 
@@ -24,7 +25,7 @@ struct ClipLineCandidate: Decodable {
     func candidate(lines: [TranscriptLine]) -> ClipCandidate {
         ClipCandidate(title: title, reason: reason, score: score, parts: parts.map { part in
             let range = ClipRequestBuilder.wordRange(startLine: part.startLine, endLine: part.endLine, lines: lines)
-            return .init(startWord: range.start, endWord: range.end)
+            return .init(startWord: range.start, endWord: range.end, takeReason: part.takeReason)
         }, notInTake: notInTake.isEmpty ? nil : notInTake)
     }
 }
@@ -52,16 +53,16 @@ extension ClipFinder {
         let prompt = try loadPrompt()
         let catalog = try LLMCatalog(shared: shared)
         let builder = ClipRequestBuilder(prompt: prompt, policy: catalog.document[ai: "policy"])
-        try checkGates(request, builder: builder)
+        try Self.checkGates(request, builder: builder)
         try await runner.preflight(connector, feature: .clipFinder, model: model)
         let words = builder.clipWords(request.transcript, corrections: request.corrections)
         let context = try await catalog.resolvedContextTokens(connector: connector, model: model)
         let cap = catalog.connector(connector.id)[ai: "maxOutputTokensCap"].aiInt
         try Task.checkCancellation()
-        let estimated = try builder.windows(words: words, preset: request.preset, instruction: request.instruction, contextTokens: context, maxOutputTokensCap: cap, localServer: connector.id == .ollama || connector.id == .lmstudio)
+        let estimated = try builder.windows(words: words, preset: request.preset, instruction: request.instruction, contextTokens: context, maxOutputTokensCap: cap, localServer: connector.id == .ollama || connector.id == .lmstudio, recordings: request.recordings)
         let windows = try await confirmWindows(estimated, words: words, builder: builder, request: request, connector: connector, context: context, cap: cap)
         return windows.enumerated().map { index, window in
-            builder.request(words: words, window: window, preset: request.preset, instruction: request.instruction, windowIndex: index, windowCount: windows.count, timeout: catalog.timeout(for: connector.id, feature: .clipFinder), language: request.transcript.language)
+            builder.request(words: words, window: window, preset: request.preset, instruction: request.instruction, windowIndex: index, windowCount: windows.count, timeout: catalog.timeout(for: connector.id, feature: .clipFinder), language: request.transcript.language, recordings: request.recordings)
         }
     }
 
@@ -73,14 +74,14 @@ extension ClipFinder {
         let prompt = try loadPrompt()
         let catalog = try LLMCatalog(shared: shared)
         let builder = ClipRequestBuilder(prompt: prompt, policy: catalog.document[ai: "policy"])
-        try checkGates(request, builder: builder)
+        try Self.checkGates(request, builder: builder)
         try await runner.preflight(connector, feature: .clipFinder, model: model)
         let words = builder.clipWords(request.transcript, corrections: request.corrections)
         let lines = try formatTranscript(words)
         let context = try await catalog.resolvedContextTokens(connector: connector, model: model)
         let cap = catalog.connector(connector.id)[ai: "maxOutputTokensCap"].aiInt
         try Task.checkCancellation()
-        let estimated = try builder.windows(words: words, preset: request.preset, instruction: request.instruction, contextTokens: context, maxOutputTokensCap: cap, localServer: connector.id == .ollama || connector.id == .lmstudio)
+        let estimated = try builder.windows(words: words, preset: request.preset, instruction: request.instruction, contextTokens: context, maxOutputTokensCap: cap, localServer: connector.id == .ollama || connector.id == .lmstudio, recordings: request.recordings)
         var windows = try await confirmWindows(estimated, words: words, builder: builder, request: request, connector: connector, context: context, cap: cap)
         var candidates: [ClipCandidate] = []
         var lastTopicEnd: Int?
@@ -93,10 +94,10 @@ extension ClipFinder {
         while index < windows.count {
             try Task.checkCancellation()
             let window = windows[index]
-            let canonical = builder.request(words: words, window: window, preset: request.preset, instruction: request.instruction, windowIndex: index, windowCount: windows.count, lastTopicEnd: lastTopicEnd, timeout: catalog.timeout(for: connector.id, feature: .clipFinder), language: request.transcript.language)
+            let canonical = builder.request(words: words, window: window, preset: request.preset, instruction: request.instruction, windowIndex: index, windowCount: windows.count, lastTopicEnd: lastTopicEnd, timeout: catalog.timeout(for: connector.id, feature: .clipFinder), language: request.transcript.language, recordings: request.recordings)
             let result: LLMResult
             do { result = try await runner.run(canonical, on: connector, model: model) }
-            catch LLMError.contextTooLong where connector.id == .appleFoundation && !shrunk.contains(window.lines.first?.firstIndex ?? -1) {
+            catch LLMError.contextTooLong where request.preset.id != .bestTakes && connector.id == .appleFoundation && !shrunk.contains(window.lines.first?.firstIndex ?? -1) {
                 let start = window.lines.first!.firstIndex
                 let end = window.lines.last!.lastIndex
                 shrunk.insert(start)
@@ -118,7 +119,7 @@ extension ClipFinder {
             index += 1
         }
         try Task.checkCancellation()
-        var suggestions = try finalizeClips(candidates, words: request.transcript.words, preset: request.preset, lines: lines.lines, options: FinalizeClipsOptions(snap: request.snap, cutWordIds: request.cutWordIds, windowCount: windows.count, limits: prompt.document[ai: "limits"]), corrections: request.corrections)
+        var suggestions = try finalizeClips(candidates, words: request.transcript.words, preset: request.preset, lines: lines.lines, options: FinalizeClipsOptions(snap: request.snap, cutWordIds: request.cutWordIds, windowCount: windows.count, limits: prompt.document[ai: "limits"]), corrections: request.corrections, recordings: request.recordings)
         for position in suggestions.indices where suggestions[position].title.isEmpty {
             let clip = suggestions[position]
             let ownText = clip.playParts.flatMap { words[$0].map(\.text) }.joined(separator: " ")
@@ -137,16 +138,21 @@ extension ClipFinder {
             ProjectAIClip(title: clip.title, reason: clip.reason, score: clip.score,
                           startWordId: request.transcript.words[clip.startWord].id,
                           endWordId: request.transcript.words[clip.endWord].id,
-                          parts: clip.parts?.map { ClipWordRange(startWordId: request.transcript.words[$0.lowerBound].id, endWordId: request.transcript.words[$0.upperBound].id) },
+                          parts: clip.parts?.enumerated().map { index, range in
+                              ClipWordRange(startWordId: request.transcript.words[range.lowerBound].id, endWordId: request.transcript.words[range.upperBound].id, takeReason: clip.takeReasons?[index])
+                          },
                           notInTake: clip.notInTake)
         })
         lastRun = ClipFinderRunSummary(model: result.model, usedFallback: fallback, droppedItems: dropped, inputSHA256: result.inputSha256, windowCount: windows.count)
         return result
     }
 
-    private func checkGates(_ request: ClipFinderRequest, builder: ClipRequestBuilder) throws {
+    package static func checkGates(_ request: ClipFinderRequest, builder: ClipRequestBuilder) throws {
         let messages = builder.prompt.document[ai: "messages"]
         guard !request.transcript.words.isEmpty else { throw ClipFinderGateError.noWords(message: messages[ai: "noWords"].aiString ?? "") }
+        guard request.preset.id != .bestTakes || request.recordings?.canCompare == true else {
+            throw LLMError.unavailable(reason: builder.prompt.document[ai: "messages"][ai: "needRecordings"].aiString ?? "")
+        }
         guard !request.preset.requiresInstructions || !builder.instructions(request.instruction).isEmpty else {
             throw ClipFinderGateError.needInstructions(message: messages[ai: "needInstructions"].aiString ?? "")
         }
@@ -154,6 +160,13 @@ extension ClipFinder {
 
     private func confirmWindows(_ estimated: [ClipWindow], words: [ClipWord], builder: ClipRequestBuilder, request: ClipFinderRequest, connector: any LLMConnector, context: Int, cap: Int?) async throws -> [ClipWindow] {
         guard connector.id == .appleFoundation, let counter = connector as? any LLMTokenCounting, let first = estimated.first else { return estimated }
+        if request.preset.id == .bestTakes {
+            let canonical = builder.request(words: words, window: first, preset: request.preset, instruction: request.instruction, timeout: .seconds(120), language: request.transcript.language, recordings: request.recordings)
+            let system = try await counter.tokenCount(for: canonical.system)
+            let input = try await counter.tokenCount(for: aiUserContent(canonical))
+            guard system + input + builder.tokenPolicy.estimate(try canonical.schema.aiCompact()) + canonical.maxOutputTokens <= context else { throw LLMError.contextTooLong }
+            return estimated
+        }
         let lines = try formatTranscript(words).lines
         let output = min(builder.prompt.document[ai: "generation"][ai: "maxOutputTokens"].aiInt ?? 16000, cap ?? 1500)
         let schemaCost = builder.tokenPolicy.estimate(try builder.prompt.document[ai: "output"][ai: "schema"].aiCompact())

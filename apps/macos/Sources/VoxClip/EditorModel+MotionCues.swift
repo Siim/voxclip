@@ -50,15 +50,134 @@ struct TimelineMotionCue: Equatable {
         selectedFrame = min(1, next.keyframes.count - 1)
     }
 
+    /// Undo, Redo, timeline edits and Ask Claude or Make it undo change the saved cue while the panel
+    /// stays open. The draft takes the new saved values and keeps the fields the user changed but did not apply.
+    func follow(_ model: EditorModel) {
+        guard let original = draft.original else { reopenRestoredCue(model); return }
+        let stored = model.project.motionCues.first { $0.id == original.id }
+        guard stored != original else { return }
+        guard let stored, stored.clipID == draft.clipID else {
+            resetAfterRemoving(original.id, model: model)
+            status = model.undoManager?.isUndoing == true
+                ? "This cue was removed. Redo restores it." : "This cue was removed. Undo restores it."
+            return
+        }
+        var next = MotionCueDraft(cue: stored, original: stored)
+        if draft.sourceStart != original.sourceStart { next.sourceStart = draft.sourceStart }
+        if draft.sourceEnd != original.sourceEnd { next.sourceEnd = draft.sourceEnd }
+        let merged = Self.mergedKeyframes(draft: draft.keyframes, original: original.keyframes, stored: stored.keyframes)
+        next.keyframes = merged.keyframes
+        let kept = next.cue != stored
+        draft = next
+        selectedFrame = min(selectedFrame, next.keyframes.count - 1)
+        if merged.replaced { status = "The saved cue's keyframes changed. Your keyframe edits were replaced." }
+        else if kept { status = "The saved cue changed. Your unapplied edits are kept." }
+    }
+
+    /// The cue the panel was on before a delete reset it to a new cue, and that untouched reset draft.
+    @ObservationIgnored private var removed: (id: String, reset: MotionCueDraft)?
+
+    private func resetAfterRemoving(_ id: String, model: EditorModel) {
+        selectCue("", model: model)
+        removed = (id, draft)
+    }
+
+    /// The Undo or Redo the removal message suggests brings the cue back into the panel, unless the user
+    /// has since started editing the new cue or chosen another.
+    private func reopenRestoredCue(_ model: EditorModel) {
+        guard let removed, draft == removed.reset else { self.removed = nil; return }
+        guard model.clipMotionCues.contains(where: { $0.id == removed.id }) else { return }
+        self.removed = nil
+        selectCue(removed.id, model: model)
+    }
+
+    /// Keeps each keyframe value the user changed and takes the saved value for the rest. That needs the
+    /// saved cue to keep the original's keyframe times: a Split, or an Undo that adds, removes or retimes
+    /// keyframes, changes them, and then the saved keyframes replace the draft's (`replaced`).
+    static func mergedKeyframes(draft: [MotionKeyframe], original: [MotionKeyframe],
+                                stored: [MotionKeyframe]) -> (keyframes: [MotionKeyframe], replaced: Bool) {
+        if draft == original || draft == stored { return (stored, false) }
+        if stored == original { return (draft, false) }
+        guard draft.count == original.count, stored.count == original.count,
+              stored.map(\.progress) == original.map(\.progress) else { return (stored, true) }
+        let keyframes = draft.indices.map { index in
+            let edit = draft[index], base = original[index], saved = stored[index]
+            func value(_ field: KeyPath<MotionKeyframe, Double>) -> Double {
+                edit[keyPath: field] != base[keyPath: field] ? edit[keyPath: field] : saved[keyPath: field]
+            }
+            return MotionKeyframe(progress: value(\.progress), scale: value(\.scale),
+                                  anchorX: value(\.anchorX), anchorY: value(\.anchorY))
+        }
+        return (keyframes, false)
+    }
+
+    /// The footer line. Apply is never disabled without one.
+    func footerMessage(model: EditorModel) -> String? {
+        model.motionCueValidation(draft) ?? status ?? (hasUnappliedChanges ? nil : Self.nothingToApply)
+    }
+
+    static let nothingToApply = "No unapplied changes."
+    /// Apply is enabled only for a new cue or a saved cue the draft differs from.
+    var hasUnappliedChanges: Bool { draft.original != draft.cue }
+
     @discardableResult func apply(model: EditorModel) -> Bool {
         guard model.motionCueEditing === self else { return false }
         guard model.applyMotionCue(draft) else {
-            status = model.motionCueValidation(draft) ?? "No changes to apply."
+            status = model.motionCueValidation(draft) ?? Self.nothingToApply
             return false
         }
+        let frame = selectedFrame
         selectCue(draft.id, model: model)
+        // Stay on the keyframe just edited, and show it where its timing may have moved.
+        selectedFrame = min(frame, draft.keyframes.count - 1)
+        showSelectedFrame(model: model)
         status = "Motion cue saved. Undo restores the previous state."
         return true
+    }
+
+    /// The Cue menu: load that cue's draft and show its selected keyframe in the paused viewer.
+    func chooseCue(_ id: String, model: EditorModel) {
+        selectCue(id, model: model)
+        if draft.original != nil { showSelectedFrame(model: model) }
+    }
+
+    /// The Keyframe menu: the paused viewer moves to that keyframe's moment, so its zoom is in view.
+    func selectFrame(_ index: Int, model: EditorModel) {
+        guard draft.keyframes.indices.contains(index) else { return }
+        selectedFrame = index
+        showSelectedFrame(model: model)
+    }
+
+    /// A moment in a cut has no frame (seeking there shows the next kept one, maybe after the cue), so the viewer
+    /// goes to the nearest kept moment inside the cue, and stays put when the cue has no kept video.
+    func showSelectedFrame(model: EditorModel) {
+        guard !model.isPlaying, let moment = keyframeMoment(selectedFrame) else { return }
+        let kept = model.timelinePieces.pieces.compactMap { piece -> Double? in
+            let lower = max(draft.sourceStart, piece.source.lowerBound), upper = min(draft.sourceEnd, piece.source.upperBound)
+            guard upper > lower else { return nil }
+            let inset = min(0.04, (upper - lower) / 4)
+            return min(upper - inset, max(lower + inset, moment))
+        }
+        guard let nearest = kept.min(by: { abs($0 - moment) < abs($1 - moment) }) else { return }
+        model.seek(source: nearest)
+    }
+
+    /// The source second a keyframe happens at, kept a frame inside the cue: its range excludes
+    /// `sourceEnd`, and the frame shown for the start time may begin just before it.
+    func keyframeMoment(_ index: Int) -> Double? {
+        guard draft.keyframes.indices.contains(index), draft.sourceStart.isFinite, draft.sourceEnd.isFinite,
+              draft.sourceEnd > draft.sourceStart else { return nil }
+        let length = draft.sourceEnd - draft.sourceStart
+        let inset = min(0.04, length / 4)
+        let moment = draft.sourceStart + draft.keyframes[index].progress * length
+        return min(draft.sourceEnd - inset, max(draft.sourceStart + inset, moment))
+    }
+
+    func keyframeLabel(_ index: Int) -> String {
+        guard draft.keyframes.indices.contains(index) else { return "" }
+        if index == 0 { return "1 · start" }
+        if index == draft.keyframes.count - 1 { return "\(index + 1) · end" }
+        return "\(index + 1) · \(String(format: "%.0f", draft.keyframes[index].progress * 100))%"
     }
 
     func deleteCue(model: EditorModel) {
@@ -67,11 +186,32 @@ struct TimelineMotionCue: Equatable {
             status = "This cue changed or is no longer editable. Choose it again before deleting."
             return
         }
-        selectCue("", model: model)
+        resetAfterRemoving(original.id, model: model)
         status = "Motion cue deleted. Undo restores it."
     }
 
-    enum FrameField { case progress, scale, anchorX, anchorY }
+    enum FrameField {
+        case progress, scale, anchorX, anchorY
+
+        var title: String {
+            switch self {
+            case .progress: "Time in cue"
+            case .scale: "Zoom"
+            case .anchorX: "Horizontal"
+            case .anchorY: "Vertical"
+            }
+        }
+
+        /// VoiceOver hints; the row titles are the labels.
+        var hint: String {
+            switch self {
+            case .progress: "When this keyframe happens, from the cue's start to its end."
+            case .scale: "One hundred percent shows the whole picture. Raise it to zoom in."
+            case .anchorX: "Zero keeps the left edge; one hundred percent keeps the right edge. Visible when zoomed in."
+            case .anchorY: "Zero keeps the top edge; one hundred percent keeps the bottom edge. Visible when zoomed in."
+            }
+        }
+    }
 
     func frameValue(_ field: FrameField) -> Double {
         guard draft.keyframes.indices.contains(selectedFrame) else { return 0 }
@@ -127,7 +267,10 @@ extension EditorModel {
         // An existing approval question keeps its ownership and focus until answered.
         guard panelTask?.confirm == nil, let draft = motionCueDraft(id: id) else { return false }
         let previous = motionCueEditing?.returnJob ?? shell.panelJob(for: self)
-        motionCueEditing = MotionCueEditing(draft: draft, returnJob: previous)
+        let editing = MotionCueEditing(draft: draft, returnJob: previous)
+        motionCueEditing = editing
+        // A saved cue opens on its moment, so the viewer shows its zoom. A new cue keeps the playhead it starts at.
+        if draft.original != nil { editing.showSelectedFrame(model: self) }
         shell.choosePanelJob(.motion, for: self)
         if !shell.viewerShown { shell.toggleViewer() }
         focusedPane = .panel
@@ -177,7 +320,7 @@ extension EditorModel {
         let lower = end - start >= MotionCue.minimumDuration ? start : bounds.lowerBound
         let upper = end - start >= MotionCue.minimumDuration ? end : min(bounds.upperBound, lower + 3)
         return MotionCueDraft(cue: MotionCue(id: UUID().uuidString, clipID: clip.id, sourceStart: lower, sourceEnd: upper,
-            keyframes: [MotionKeyframe(progress: 0), MotionKeyframe(progress: 0.5, scale: 1.08), MotionKeyframe(progress: 1)]))
+            keyframes: [MotionKeyframe(progress: 0), MotionKeyframe(progress: 0.5, scale: 1.15), MotionKeyframe(progress: 1)]))
     }
 
     func motionCueValidation(_ draft: MotionCueDraft) -> String? {

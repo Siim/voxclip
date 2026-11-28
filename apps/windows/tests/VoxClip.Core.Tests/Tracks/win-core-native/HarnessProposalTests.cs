@@ -3,6 +3,7 @@ using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Project;
 using VoxClip.Tests.Support;
 using Xunit;
@@ -11,6 +12,74 @@ namespace VoxClip.Core.Tests.Tracks.WinCoreNative;
 
 public sealed class HarnessProposalTests
 {
+    [Fact]
+    public void ConfirmedLocalAndCloudTranscriptsStaySeparate()
+    {
+        var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/recordings/two-recordings.voxclip"));
+        var key = project.Media.Source.ContentKey;
+        var cloud = project.Transcript!;
+        var local = cloud with { Engine = cloud.Engine with { Id = TranscriptEngine.Whispercpp } };
+        var cache = Directory.CreateTempSubdirectory("voxclip-recording-cache-");
+        try
+        {
+            RecordingTranscriptCache.Write(key, cache.FullName, cloud);
+            Assert.Equal(TranscriptEngine.Elevenlabs, RecordingTranscriptCache.Read(key, cache.FullName)?.Engine.Id);
+            Assert.Null(HarnessRecording.CachedTranscript(key, cache.FullName));
+            var directory = Path.Combine(cache.FullName, key, "transcripts");
+            var legacy = Path.Combine(directory, "confirmed-win-v1.json");
+            var legacyBytes = JsonSerializer.Serialize(cloud);
+            File.WriteAllText(legacy, legacyBytes);
+            File.Delete(Path.Combine(directory, "confirmed-cloud-v1.json"));
+            Assert.Equal(TranscriptEngine.Elevenlabs, RecordingTranscriptCache.Read(key, cache.FullName)?.Engine.Id);
+            HarnessRecording.CacheTranscript(key, cache.FullName, local);
+            RecordingTranscriptCache.Write(key, cache.FullName, cloud);
+            Assert.Equal(TranscriptEngine.Whispercpp, HarnessRecording.CachedTranscript(key, cache.FullName)?.Engine.Id);
+            Assert.Equal(TranscriptEngine.Whispercpp, RecordingTranscriptCache.Read(key, cache.FullName)?.Engine.Id);
+            Assert.Equal(legacyBytes, File.ReadAllText(legacy));
+            File.WriteAllText(Path.Combine(directory, "confirmed-local-v1.json"), "{}");
+            Assert.Null(HarnessRecording.CachedTranscript(key, cache.FullName));
+            Assert.Equal(TranscriptEngine.Elevenlabs, RecordingTranscriptCache.Read(key, cache.FullName)?.Engine.Id);
+        }
+        finally { cache.Delete(recursive: true); }
+    }
+
+    [Fact]
+    public void ALocalCompanionAndStoryMapToTheSharedOperations()
+    {
+        using var input = FixtureLoader.ReadJson("fixtures/recordings/harness-cases.json");
+        var vector = input.RootElement;
+        var expected = vector.GetProperty("expected");
+        var original = ProjectSerialization.Deserialize(FixtureLoader.ReadText($"fixtures/recordings/{vector.GetProperty("project").GetString()}"));
+        var transcript = Assert.Single(original.Media.SpokenSources!).Transcript;
+        original = original with
+        {
+            Media = original.Media with { SpokenSources = null }, SchemaVersion = 6,
+            Edits = original.Edits with { Clips = [], ActiveClipId = null }
+        };
+        var timeline = HarnessTimeline.Read(vector.GetProperty("timeline"));
+        var cloud = new HarnessProposal(timeline, original);
+        Assert.Equal(expected.GetProperty("cloudRefusal").GetString(), Assert.Throws<HarnessException>(() =>
+            cloud.Review(original, FixtureLoader.SharedRoot, recordingTranscript: transcript)).Message);
+
+        original = original with { Transcript = original.Transcript! with { Engine = original.Transcript.Engine with { Id = TranscriptEngine.Whispercpp } } };
+        transcript = transcript with { Engine = transcript.Engine with { Id = TranscriptEngine.Whispercpp } };
+        var proposal = new HarnessProposal(timeline.PinRecordingTranscript(transcript), original);
+        var result = proposal.Review(original, FixtureLoader.SharedRoot, recordingTranscript: transcript);
+        var clip = Assert.Single(result.Project.Edits.Clips);
+        Assert.Equal(Values("operationIds"), result.Operations.Select(operation => operation.Id));
+        Assert.Equal(Values("partIds"), clip.PlayParts.Select(part => part.Id));
+        Assert.Equal(Values("startWordIds"), clip.PlayParts.Select(part => part.StartWordId));
+        Assert.Equal(Values("endWordIds"), clip.PlayParts.Select(part => part.EndWordId));
+        Assert.Equal(transcript, Assert.Single(result.Project.Media.SpokenSources!).Transcript);
+        Assert.Empty(result.Pending);
+        Assert.Null(original.Media.SpokenSources);
+        Assert.Empty(original.Edits.Clips);
+        Assert.Equal("The recording transcript changed. Ask for a new timeline proposal.", Assert.Throws<HarnessException>(() =>
+            proposal.Review(original, FixtureLoader.SharedRoot, recordingTranscript: transcript with { Language = "et" })).Message);
+
+        IEnumerable<string?> Values(string field) => expected.GetProperty(field).EnumerateArray().Select(item => item.GetString());
+    }
+
     [Fact]
     public void AStoryKeepsPartsInPlayOrderWithoutRenderingARewrite()
     {

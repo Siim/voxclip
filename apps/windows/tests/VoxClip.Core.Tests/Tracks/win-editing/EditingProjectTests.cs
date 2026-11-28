@@ -12,6 +12,30 @@ public sealed class EditingProjectTests
     public static IEnumerable<TheoryDataRow<string>> Projects() => ProjectStoreTests.Projects();
 
     [Fact]
+    public void SpokenSourcesRequireV7AndV6ReaderRefusesThem()
+    {
+        var original = ContextDemoProject.UpgradeToV4(TestStorage.ProjectFixture());
+        var document = JsonNode.Parse(ProjectSerialization.Serialize(original))!;
+        document["schemaVersion"] = 6;
+        var legacy = ProjectSerialization.Deserialize(document.ToJsonString());
+        Assert.Equal(6, ProjectSerialization.Deserialize(ProjectSerialization.Serialize(legacy)).SchemaVersion);
+        var media = document["media"]!;
+        var companion = (JsonObject)media["source"]!.DeepClone();
+        var key = new string('b', 64);
+        companion["contentKey"] = key;
+        companion.Remove("recordingHash");
+        media["additionalSources"] = new JsonArray(companion);
+        media["spokenSources"] = new JsonArray(new JsonObject { ["sourceKey"] = key, ["offsetSeconds"] = 10_000,
+            ["wordIdPrefix"] = "r2.", ["transcript"] = document["transcript"]!.DeepClone() });
+        Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString()));
+        document["schemaVersion"] = 7;
+        Assert.Equal(VoxClipErrorCode.ProjectTooNew,
+            Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString(), 6)).Code);
+        var spoken = ProjectSerialization.Deserialize(document.ToJsonString());
+        Assert.True(JsonNode.DeepEquals(media, JsonNode.Parse(ProjectSerialization.Serialize(spoken))!["media"]));
+    }
+
+    [Fact]
     public void StoryPartsRoundTripInPlayOrder()
     {
         var baseProject = ProjectSerialization.Deserialize(File.ReadAllText(TestStorage.ProjectPath("interview-take.voxclip")));

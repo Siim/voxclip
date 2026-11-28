@@ -563,6 +563,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored private var mediaCheck = 0
     /// The video's check answered without finding it: Locate… shows and the editor only reads.
     var mediaMissing: Bool { mediaChecked && !mediaResolved }
+    func markRecordingMediaReady() { mediaResolved = true; mediaChecked = true }
     /// The project has a transcript. Unlike `project`, views observe it, so a transcript
     /// that arrives or is undone redraws the transcript column.
     private(set) var transcribed = false
@@ -620,13 +621,23 @@ struct EditorRenderSnapshot {
     private(set) var storyTimeline: StoryTimelineLayout?
     var editingAvailable = false
     var waveform: WaveformData?
-    var waveformKey: WaveformCache.Key? {
-        guard !document.demo, mediaResolved, !mediaUnreadable, project.media.source.audio != nil else { return nil }
-        return WaveformCache.Key(contentKey: project.media.source.contentKey, source: sourceURL, cache: app.locations.cache)
+    var waveformKey: WaveformCache.ProjectKey? {
+        guard !document.demo, mediaResolved, !mediaUnreadable else { return nil }
+        let cache = app.locations.cache
+        if project.media.spokenSources?.isEmpty == false {
+            let clock = ProjectClock.build(project)
+            let recordings = RenderCallerInputs.recordingFiles(project: project, primary: sourceURL, projectURL: document.fileURL)
+            return .clock(sampleRate: clock.sampleRate, totalSamples: clock.totalSamples, regions: recordings.map { recording in
+                .init(start: recording.region.offsetSamples, end: recording.region.endSample,
+                      key: .init(contentKey: recording.key, source: recording.url, cache: cache))
+            })
+        }
+        guard project.media.source.audio != nil else { return nil }
+        return .single(.init(contentKey: project.media.source.contentKey, source: sourceURL, cache: cache))
     }
     /// The load `followWaveformKey` started for `requestedWaveformKey`, until it ends.
     @ObservationIgnored private(set) var waveformTask: Task<Void, Never>?
-    @ObservationIgnored private var requestedWaveformKey: WaveformCache.Key?
+    @ObservationIgnored private var requestedWaveformKey: WaveformCache.ProjectKey?
     #if DEBUG
     @ObservationIgnored var beforeWaveformLoad: @MainActor () async -> Void = {}
     #endif
@@ -740,7 +751,21 @@ struct EditorRenderSnapshot {
     }
 
     var project: Project { document.project }
-    var words: [TimedWord] { project.transcript?.words ?? [] }
+    private(set) var recordingClock: ProjectClock?
+    var recordingTranscriptChoice: RecordingTranscriptChoice?
+    var recordingOpenLineID: String?
+    var recordingSelectedVersionKey: String?
+    var partPickKey: String?
+    var pendingRecording: PendingSpokenRecording?
+    var recordingImportTask: Task<Void, Never>?
+    var recordingImportError: String?
+    @ObservationIgnored var recordingTranscriptRecipient: ((Transcript) -> Void)?
+    @ObservationIgnored var recordingMatchesClock: ProjectClock?
+    @ObservationIgnored var recordingMatches: TakeMatch.Result?
+    var recordingFeedback: RecordingFeedback?
+    @ObservationIgnored var recordingAuditionTask: Task<Void, Never>?
+    @ObservationIgnored var recordingAuditionEnd: Double?
+    var words: [TimedWord] { recordingClock?.words ?? project.transcript?.words ?? [] }
     var activeClip: ClipRange? { project.edits.clips.first { $0.id == project.edits.activeClipId } }
     var sortedClips: [ClipRange] {
         project.edits.clips.enumerated().sorted {
@@ -838,6 +863,7 @@ struct EditorRenderSnapshot {
                 switch event {
                 case .time(let edited, let source):
                     playhead = edited; sourceTime = source
+                    if let stop = recordingAuditionEnd, edited >= stop { stopRecordingAudition() }
                     if let stop = previewStop, source >= stop { preview.pause(); previewStop = nil }
                     if let stop = storyPartPlaybackEnd, edited >= stop { preview.pause(); storyPartPlaybackEnd = nil }
                 case .playing(let playing): isPlaying = playing
@@ -871,6 +897,8 @@ struct EditorRenderSnapshot {
         if mediaUsable { await updatePreview(load: true); await transcription.openOnImport() }
     }
     func close() {
+        stopRecordingAudition(restore: false)
+        cancelRecordingImport()
         resetTimelineEditor()
         motionCueEditing = nil
         musicPanel.reset()
@@ -927,6 +955,7 @@ struct EditorRenderSnapshot {
     }
     func editState() -> EditState? {
         let project = project
+        if hasSeveralRecordings { return try? EditState(project: project) }
         guard let transcript = project.transcript else { return nil }
         let edits = project.edits
         return EditState(transcript: transcript, pauses: pauses, pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds, cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections, clips: edits.clips, activeClipId: edits.activeClipId)
@@ -945,13 +974,19 @@ struct EditorRenderSnapshot {
             renderedClipEffects = project.clipEffects
             timelineEffectsRevision += 1
         }
-        let words = project.transcript?.words ?? []
         let edits = project.edits
-        let transcriptChanged = renderedTranscript != project.transcript
+        let clockChanged = renderedMedia?.source != project.media.source
+            || renderedMedia?.spokenSources != project.media.spokenSources
+            || (project.media.spokenSources?.isEmpty == false && renderedMedia?.additionalSources != project.media.additionalSources)
+        let transcriptChanged = renderedTranscript != project.transcript || clockChanged
         let editChanged = renderedEdits != edits
         guard transcriptChanged || editChanged || renderedMedia != project.media || renderedVoiceLab != project.voiceLab || renderedContextDemo != project.contextDemo || renderedMotionCues != project.motionCues || renderedMusic != project.music || renderedClipControls != project.clipControls || renderedEdits == nil else { return }
+        if transcriptChanged { recordingClock = ProjectClock.build(project) }
+        let words = self.words
         let clipsChanged = renderedEdits?.clips != edits.clips
         if renderedEdits?.activeClipId != edits.activeClipId {
+            recordingTranscriptChoice = nil
+            partPickKey = nil
             selectedStoryPartID = nil
             draggedStoryPartID = nil
             storyPartError = nil
@@ -976,7 +1011,10 @@ struct EditorRenderSnapshot {
             wordIndex = Dictionary(uniqueKeysWithValues: words.enumerated().map { ($0.element.id, $0.offset) })
         }
         if transcriptChanged || renderedEdits?.pauseThresholdSeconds != edits.pauseThresholdSeconds {
-            pauses = (try? detectPauses(words, thresholdSeconds: edits.pauseThresholdSeconds)) ?? []
+            let detected = (try? detectPauses(words, thresholdSeconds: edits.pauseThresholdSeconds)) ?? []
+            pauses = hasSeveralRecordings ? detected.filter {
+                recordingClock?.region(of: words[$0.afterIndex].id) == recordingClock?.region(of: words[$0.afterIndex + 1].id)
+            } : detected
             pauseByAfterIndex = Dictionary(uniqueKeysWithValues: pauses.map { ($0.afterIndex, $0) })
             pauseIndex = Dictionary(uniqueKeysWithValues: pauses.map { ($0.id, $0) })
         }
@@ -1018,7 +1056,9 @@ struct EditorRenderSnapshot {
                 }
                 planningSegments = segments
                 let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
-                if let clip = activeClip, clip.parts != nil {
+                if state.projectClock != nil {
+                    plan = try EditPlan.build(transcript: state.transcript, editState: state, activeClip: activeClip, duration: sourceDuration, sampleRate: rate)
+                } else if let clip = activeClip, clip.parts != nil {
                     plan = try buildStoryPlan(state, clip: clip, duration: sourceDuration, sampleRate: rate)
                 } else {
                     plan = try buildEditPlan(segments, duration: sourceDuration, sampleRate: rate, pauseKeepSeconds: edits.pauseKeepSeconds)
@@ -1042,6 +1082,8 @@ struct EditorRenderSnapshot {
             renderedActiveClipID = edits.activeClipId
             onActiveClipChange?(edits.activeClipId)
         }
+        // An open Motion draft follows outside changes to its saved cue (Undo, timeline edits, Ask Claude).
+        motionCueEditing?.follow(self)
         if clipsChanged { onClipsChange?() }
     }
     func word(at source: Double, nearest: Bool = false) -> TimedWord? {
@@ -1064,7 +1106,7 @@ struct EditorRenderSnapshot {
         let total = Int64(max(0, duration) * 48_000)
         return EditPlan(sampleRate: 48_000, totalSamples: total, cuts: [], kept: total > 0 ? [MediaInterval(startSample: 0, endSample: total)] : [])
     }
-    func replace(_ newProject: Project, name: String, restoringSnapshot: Bool = false) {
+    func replace(_ newProject: Project, name: String, restoringSnapshot: Bool = false, restoresRecordingScope: Bool = false) {
         // A Versions-browser version is read-only.
         guard capabilities.writable, capabilities.media || name == "Locate media" || onlyCaptionPositionChanged(newProject) else { return }
         // The title follows the document's name, not the edit history (design §2), so
@@ -1073,7 +1115,7 @@ struct EditorRenderSnapshot {
         newProject.title = project.title
         // Undo and Redo never switch tabs (impl-plan §3.3): a restored snapshot keeps the
         // current scope while it still has that clip, else Full Take.
-        if restoringSnapshot { newProject.edits.activeClipId = scopeKept(in: newProject) }
+        if restoringSnapshot, !restoresRecordingScope { newProject.edits.activeClipId = scopeKept(in: newProject) }
         guard newProject != project else { return }
         preview.pause(); isPlaying = false
         let previous = project
@@ -1086,7 +1128,9 @@ struct EditorRenderSnapshot {
             if group.base == nil { group.base = previous }
         } else {
             if !restoringSnapshot, let group = undoGroup { flush(group) }
-            undoManager?.registerUndo(withTarget: self) { model in model.replace(previous, name: name, restoringSnapshot: true) }
+            undoManager?.registerUndo(withTarget: self) { model in
+                model.replace(previous, name: name, restoringSnapshot: true, restoresRecordingScope: restoresRecordingScope)
+            }
             undoManager?.setActionName(name)
             #if DEBUG
             undoSteps += 1
@@ -1112,6 +1156,7 @@ struct EditorRenderSnapshot {
     }
     /// Updates the preview a moment after a project change, after checking a changed video first.
     func schedulePreviewUpdate(mediaChanged: Bool) {
+        stopRecordingAudition(restore: false)
         updateTask?.cancel()
         updateTask = Task { [weak self] in
             guard let self else { return }
@@ -1125,6 +1170,7 @@ struct EditorRenderSnapshot {
             } catch is CancellationError {} catch { previewError = await app.safeError(error, context: .preview) }
         }
     }
+    func cancelPendingPreviewUpdate() { updateTask?.cancel() }
     #if DEBUG
     func waitForPendingPreviewForAudit() async { await updateTask?.value }
     func markMediaCheckedForAudit() { mediaChecked = true }
@@ -1615,6 +1661,7 @@ struct EditorRenderSnapshot {
         }
     }
     func transport(_ key: String, shift: Bool = false) {
+        if recordingAuditionTask != nil { stopRecordingAudition(); return }
         storyPartPlaybackEnd = nil
         if [" ", "l", "p"].contains(key.lowercased()) { rewrite?.takePlan?.stopAudition() }
         // Saving an open correction pauses (`apply`), so Space and L toggle from the state before the save.
@@ -1725,7 +1772,8 @@ struct EditorRenderSnapshot {
     func renderSnapshot() -> EditorRenderSnapshot {
         EditorRenderSnapshot(project: project, state: editState(), plan: plan, reduceMotion: EditorAccessibilityPolicy.system.reduceMotion)
     }
-    func renderRequest(target: ExportTarget? = nil, snapshot: EditorRenderSnapshot? = nil, labelPosition: VoiceLabLabelPosition? = nil) async throws -> RenderRequest {
+    func renderRequest(target: ExportTarget? = nil, snapshot: EditorRenderSnapshot? = nil, labelPosition: VoiceLabLabelPosition? = nil,
+                       previewBaseline: Project? = nil) async throws -> RenderRequest {
         let snapshot = snapshot ?? renderSnapshot()
         let project = snapshot.project
         let state = snapshot.state
@@ -1763,11 +1811,12 @@ struct EditorRenderSnapshot {
                                             project: project.resolvingCaptions(forClip: clip?.id), voiceLab: voiceLab.map { ClipEffects.maskingBleeps($0.prepared.outputPlan, effects: effects) },
                                             translations: (project, clip?.id, effects))
         try Task.checkCancellation()
-        if target == nil, snapshot.project != self.project || isLeaving { throw CancellationError() }
+        if target == nil, (previewBaseline ?? snapshot.project) != self.project || isLeaving { throw CancellationError() }
         let request = RenderRequest(sourceURL: URL(fileURLWithPath: project.media.source.absolutePath), plan: plan, captions: layout?.track ?? CaptionTrack(),
             output: output, forPreview: target == nil, captionLayout: layout, voiceLab: voiceLab)
         return try RenderCallerInputs.prepare(request, project: project, clipID: clip?.id, dataRoot: app.locations.root.resolvingSymlinksInPath(),
             shared: app.shared, resolveFootageURL: { JSONProjectStore.footageURL($0, beside: request.sourceURL) },
+            projectURL: document.fileURL,
             reduceMotion: snapshot.reduceMotion, isCancelled: { Task.isCancelled })
     }
     func buildCaptions(segments: [EditSegment]?, plan: EditPlan, output: OutputSpec, forPreview: Bool,
@@ -1922,6 +1971,8 @@ extension EditorModel {
         let selectedSignature = rewriteConnectorSignature
         let selectedPreset = requestedPreset ?? preset
         let instructions = requestedInstruction ?? instruction
+        let comparisonClock = selectedPreset == .bestTakes ? recordingClock : nil
+        let comparison = comparisonClock.flatMap(RecordingProposalContext.init(clock:))
         lastFindRequest = (selectedPreset, instructions)
         let snapshot = project
         do {
@@ -1967,7 +2018,7 @@ extension EditorModel {
                     let finder = ClipFinder(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
                     let presets = try await finder.presets()
                     guard let preset = presets.first(where: { $0.id == selectedPreset }) else { throw ClipFinderGateError.needInstructions(message: "Choose a clip preset.") }
-                    var result = try await finder.find(ClipFinderRequest(transcript: transcript, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions), connector: connector, model: selectedModel)
+                    var result = try await finder.find(ClipFinderRequest(transcript: comparisonClock?.transcript ?? transcript, corrections: corrections, cutWordIds: cuts, preset: preset, instruction: instructions, recordings: comparison), connector: connector, model: selectedModel)
                     if let draft {
                         claudeMode.clock?.end(.find)
                         await draft.work.value
@@ -1986,18 +2037,27 @@ extension EditorModel {
                     try Task.checkCancellation()
                     let usedFallback = await finder.lastUsedFallback == true && result.model != selectedModel
                     let publishable = draft?.request.confirmedTranscript ?? transcript
-                    guard !Task.isCancelled, project.transcript == publishable else { return }
+                    guard !Task.isCancelled, project.transcript == publishable,
+                          comparisonClock == nil || recordingClock == comparisonClock else { return }
                     outcome = .finished
                     guard !result.clips.isEmpty else { clipError = Self.noClipsMatched; return }
                     var next = project
-                    next.ai.results.append(result)
                     let ranges = result.clips.enumerated().map { position, clip in
                         let parts = clip.parts?.enumerated().map { index, part in
-                            ClipPart(id: "part-\(index + 1)", startWordId: part.startWordId, endWordId: part.endWordId)
+                            ClipPart(id: "part-\(index + 1)", startWordId: part.startWordId, endWordId: part.endWordId, takeReason: part.takeReason)
                         }
                         return ClipRange(id: UUID().uuidString.lowercased(), startWordId: clip.startWordId, endWordId: clip.endWordId,
-                                         title: clip.title, origin: .ai, aiResultId: result.id, aiClipIndex: position, parts: parts)
+                                         title: clip.title, origin: .ai, aiResultId: result.id, aiClipIndex: position, parts: parts,
+                                         kind: selectedPreset == .bestTakes && (parts?.count ?? 0) > 1 ? .story : nil)
                     }
+                    if selectedPreset == .bestTakes {
+                        for index in result.clips.indices {
+                            result.clips[index].parts = result.clips[index].parts?.map {
+                                ClipWordRange(startWordId: $0.startWordId, endWordId: $0.endWordId)
+                            }
+                        }
+                    }
+                    next.ai.results.append(result)
                     // One undo step: the result arrives as suggestions, not kept clips.
                     guard capabilities.edit, let state = editState() else { return }
                     if history?.state != state { history = EditHistory(state: state) }

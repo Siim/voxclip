@@ -3,6 +3,7 @@ using System.Text.Json;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Project;
 using VoxClip.Tests.Support;
 using Xunit;
@@ -11,6 +12,36 @@ namespace VoxClip.Ui.Tests;
 
 public sealed class HarnessReviewTests
 {
+    [Fact]
+    public void KeepingACompanionStoryAndItsRecordingTakesOneUndo()
+    {
+        using var input = FixtureLoader.ReadJson("fixtures/recordings/harness-cases.json");
+        var vector = input.RootElement;
+        var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText($"fixtures/recordings/{vector.GetProperty("project").GetString()}"));
+        var transcript = Assert.Single(project.Media.SpokenSources!).Transcript;
+        transcript = transcript with { Engine = transcript.Engine with { Id = TranscriptEngine.Whispercpp } };
+        project = project with
+        {
+            Media = project.Media with { SpokenSources = null }, SchemaVersion = 6,
+            Transcript = project.Transcript! with { Engine = project.Transcript.Engine with { Id = TranscriptEngine.Whispercpp } },
+            Edits = project.Edits with { Clips = [], ActiveClipId = null }
+        };
+        using var review = new ReviewProject(ProjectSerialization.Serialize(project));
+        review.Stage(vector.GetProperty("timeline").GetRawText());
+        var pending = Assert.IsType<HarnessProposal>(review.Editor.ReadHarnessProposal(review.Path));
+        Assert.Null(review.Editor.KeepHarnessTimeline(pending, review.Path, FixtureLoader.SharedRoot, 0, out var assets, out var rewrites, transcript, -3.2));
+        Assert.Empty(assets);
+        Assert.Empty(rewrites);
+        Assert.Equal(-3.2, Assert.Single(review.Editor.Project.Media.SpokenSources!).GainDb);
+        Assert.Equal(-3.2, review.Editor.RecordingRegions[1].GainDb);
+        Assert.Equal(new[] { "w1", "r2.w1" }, Assert.Single(review.Editor.Project.Edits.Clips).PlayParts.Select(part => part.StartWordId));
+        Assert.Null(review.Editor.ReadHarnessProposal(review.Path));
+        review.Editor.Undo();
+        Assert.Null(review.Editor.Project.Media.SpokenSources);
+        Assert.Empty(review.Editor.Project.Edits.Clips);
+        Assert.False(review.Editor.CanUndo);
+    }
+
     [Fact]
     public void ARefusedTimelineEditBlocksTheRowAndKeepsTheWholeProjectUnchanged()
     {
@@ -243,14 +274,15 @@ public sealed class HarnessReviewTests
     private sealed class ReviewProject : IDisposable
     {
         private readonly DirectoryInfo folder = Directory.CreateTempSubdirectory("voxclip-harness-review-");
-        public string OriginalText { get; } = FixtureLoader.ReadText("fixtures/projects/clip-from-long-take.voxclip");
+        public string OriginalText { get; }
         public string Path => System.IO.Path.Combine(folder.FullName, "fixture.voxclip");
         public string Sidecar => Path + ".proposal.json";
         public Project Original { get; }
         public EditorViewModel Editor { get; }
 
-        public ReviewProject()
+        public ReviewProject(string? originalText = null)
         {
+            OriginalText = originalText ?? FixtureLoader.ReadText("fixtures/projects/clip-from-long-take.voxclip");
             Original = ProjectSerialization.Deserialize(OriginalText);
             Editor = new(Original);
             File.WriteAllText(Path, OriginalText);

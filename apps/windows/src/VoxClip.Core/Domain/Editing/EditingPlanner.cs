@@ -48,7 +48,82 @@ internal static class EditingPlanner
         var sorted = kept.OrderBy(span => span.StartSample).ToArray();
         if (sorted.Zip(sorted.Skip(1)).Any(pair => pair.First.EndSample > pair.Second.StartSample))
             throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Story parts overlap on the source sample grid.");
-        return new EditPlan(rate, plans[0].TotalSamples, Complement(sorted, plans[0].TotalSamples), kept, output, []) { PartSeams = seams };
+        return new EditPlan(plans[0].SampleRate, plans[0].TotalSamples, Complement(sorted, plans[0].TotalSamples), kept, output, [])
+            { PartSeams = seams, RecordingRegions = plans[0].RecordingRegions };
+    }
+
+    internal static TimeRange ScopedClipTimes(EditState state, int start, int end, double? leadIn)
+    {
+        var words = state.Transcript.Words;
+        if (state.ProjectClock is not { Regions.Count: > 1 } clock) return EditingAlgorithms.ClipTimes(words, start, end, leadIn);
+        var (region, range) = LocalClipTimes(words, start, end, leadIn, clock);
+        var offset = (double)region.OffsetSamples / clock.SampleRate;
+        return new(range.Start + offset, range.End + offset);
+    }
+
+    private static (ProjectClock.Region Region, TimeRange Range) LocalClipTimes(IReadOnlyList<TimedWord> words, int first, int last,
+        double? leadIn, ProjectClock clock)
+    {
+        if (clock.RegionOf(words[first].Id) is not { } region || region != clock.RegionOf(words[last].Id))
+            throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "A part comes from one recording.");
+        var start = first > 0 && clock.RegionOf(words[first - 1].Id) == region ? first - 1 : first;
+        var end = last + 1 < words.Count && clock.RegionOf(words[last + 1].Id) == region ? last + 1 : last;
+        var local = Enumerable.Range(start, end - start + 1).Select(index => words[index] with
+        {
+            Start = RecordingLocalTime(words[index].Start, region, clock.SampleRate),
+            End = RecordingLocalTime(words[index].End, region, clock.SampleRate),
+        }).ToArray();
+        var times = EditingAlgorithms.ClipTimes(local, first - start, last - start, leadIn);
+        return (region, new(times.Start, Math.Min(times.End, (double)region.DurationSamples / clock.SampleRate)));
+    }
+
+    private static double RecordingLocalTime(double time, ProjectClock.Region region, double rate) => region.OffsetSamples == 0
+        ? time : (EditingMath.Round(time * rate) - region.OffsetSamples) / rate;
+
+    internal static EditPlan BuildScopedPlan(IReadOnlyList<EditSegment> segments, EditState state, double duration, double rate)
+    {
+        if (state.ProjectClock is not { Regions.Count: > 1 } clock) return Build(segments, duration, rate, state.PauseKeepSeconds);
+        rate = clock.SampleRate;
+        var clip = state.Clips.FirstOrDefault(item => item.Id == state.ActiveClipId);
+        (ProjectClock.Region Region, TimeRange Range)? scope = clip?.PlayPartIndices(state.Transcript.Words) is { Count: 1 } ranges
+            ? LocalClipTimes(state.Transcript.Words, ranges[0].Start, ranges[0].End, clip.LeadInSeconds, clock) : null;
+        var kept = new List<MediaInterval>();
+        foreach (var region in clock.Regions.Where(region => scope is null || scope.Value.Region == region))
+        {
+            var offset = region.OffsetSamples / rate;
+            var end = region.EndSample / rate;
+            var length = region.DurationSamples / rate;
+            var local = segments.Where(segment => segment.Kind != EditSegmentKind.Range && offset <= segment.Start && segment.Start < end &&
+                (segment.Kind != EditSegmentKind.Pause || segment.End <= end)).Select(segment => segment with
+                {
+                    Start = RecordingLocalTime(segment.Start, region, rate), End = RecordingLocalTime(segment.End, region, rate),
+                }).ToList();
+            if (scope is { } selected)
+            {
+                local.Add(new("clip-head", EditSegmentKind.Range, null, null, 0, selected.Range.Start, true));
+                local.Add(new("clip-tail", EditSegmentKind.Range, null, null, selected.Range.End, length, true));
+            }
+            var plan = Build(local, length, rate, state.PauseKeepSeconds);
+            kept.AddRange(plan.Kept.Select(span => new MediaInterval(span.StartSample + region.OffsetSamples, span.EndSample + region.OffsetSamples)));
+        }
+        return new EditPlan(rate, clock.TotalSamples, Complement(kept, clock.TotalSamples), kept, 0, []) { RecordingRegions = clock.SampleRegions };
+    }
+
+    internal static long[] RecordingSeams<T>(IEnumerable<T> pieces, IReadOnlyList<MediaInterval> regions, Func<T, long> source, Func<T, long> output)
+    {
+        if (regions.Count < 2) return [];
+        var seams = new List<long>();
+        MediaInterval? previous = null;
+        foreach (var piece in pieces)
+        {
+            var sample = source(piece);
+            MediaInterval? current = null;
+            foreach (var region in regions)
+                if (region.StartSample <= sample && sample < region.EndSample) { current = region; break; }
+            if (previous is not null && current is not null && previous != current) seams.Add(output(piece));
+            previous = current;
+        }
+        return seams.ToArray();
     }
 
     private static MediaInterval[] Complement(IEnumerable<MediaInterval> ordered, long total)
@@ -69,7 +144,7 @@ internal static class EditingPlanner
         var result = new List<CaptionWord>();
         long offset = 0, position = 0;
         var index = 0;
-        foreach (var end in plan.PartSeams.Append(plan.OutputSamples))
+        foreach (var end in plan.CaptionSeams.Append(plan.OutputSamples))
         {
             var kept = new List<MediaInterval>();
             while (index < plan.Kept.Count && position < end)
@@ -238,7 +313,15 @@ internal static class EditingPlanner
         return new(rate, total, cuts.ToArray(), kept.ToArray(), 0, []);
     }
 
-    internal static Join[] BuildJoins(double rate, long total, IReadOnlyList<MediaInterval> kept)
+    internal static (long FadeIn, long FadeOut) Fades(double rate, long total, MediaInterval span, IReadOnlyList<MediaInterval> regions)
+    {
+        var fade = (long)Math.Min(EditingMath.Round(0.005 * rate), (span.EndSample - span.StartSample) / 2);
+        var atStart = span.StartSample <= 0 || regions.Any(region => region.StartSample == span.StartSample);
+        var atEnd = span.EndSample >= total || regions.Any(region => region.EndSample == span.EndSample);
+        return (atStart ? 0 : fade, atEnd ? 0 : fade);
+    }
+
+    internal static Join[] BuildJoins(double rate, long total, IReadOnlyList<MediaInterval> kept, IReadOnlyList<MediaInterval> regions)
     {
         var joins = new List<Join>();
         long offset = 0;
@@ -246,10 +329,9 @@ internal static class EditingPlanner
         foreach (var part in kept)
         {
             var length = part.EndSample - part.StartSample;
-            var fade = (long)Math.Min(EditingMath.Round(0.005 * rate), length / 2);
-            var fadeIn = part.StartSample > 0 ? fade : 0;
+            var (fadeIn, nextFadeOut) = Fades(rate, total, part, regions);
             if (offset > 0 || fadeIn > 0) joins.Add(new(offset, fadeOut, fadeIn));
-            fadeOut = part.EndSample < total ? fade : 0;
+            fadeOut = nextFadeOut;
             offset += length;
         }
         if (kept.Count > 0 && fadeOut > 0) joins.Add(new(offset, fadeOut, 0));

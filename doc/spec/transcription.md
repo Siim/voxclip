@@ -1269,6 +1269,8 @@ The normalised `Transcript` lives only in the project file. It is not cached.
 
 ### 14.4 Re-transcription
 
+Confirmed recording transcripts used by Add a recording and the harness use the project transcript codec, with separate `confirmed-local-v1.json` and `confirmed-cloud-v1.json` slots per media key. The harness only reuses local results. Older confirmed files remain readable and are not replaced by new writes; an unreadable entry is a cache miss.
+
 The integrated Mac inline route requires a writable document, a checked and usable media identity with no unresolved relink, and a finite positive duration. These checks hold both before approval and throughout the request-local snapshot's worker. Missing/unreadable media, a pending relink, reload, owner leave or close cancels scoped work; a late accepted upload retains its own uncertain accounting but cannot replace the current project. Version windows cannot start transcription. Daily pending/uncertain transcription spend and monthly Voice Lab spend remain separate ledgers with distinct labels inside one status slot.
 
 "Transcribe again…" lets the user choose a different engine, model or language. It builds a new `Transcript` with new ids. `editing.md` §10.5 then requires clearing the cuts, corrections, clips and AI results, after a confirmation that names what will be lost.

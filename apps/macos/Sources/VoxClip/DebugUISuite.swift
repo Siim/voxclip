@@ -452,6 +452,11 @@ import ApplicationServices
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
             let shell = app.shell
             let documents = NSDocumentController.shared
+            if CommandLine.arguments.contains("-recordingScenesOnly"), let root = app.shared?.root {
+                results = try await DebugRecordingScenes.capture(app: app, root: root, directory: destination)
+                try JSONEncoder().encode(results).write(to: destination.appendingPathComponent("scene-results.json"), options: .atomic)
+                exit(0)
+            }
             try await waitUntil { shell.windowController?.window?.isVisible == true }
             guard let window = shell.windowController?.window, let root = app.shared?.root else { throw CocoaError(.coderInvalidValue) }
             func titledWindows() -> [NSWindow] { NSApp.windows.filter { $0.isVisible && $0.styleMask.contains(.titled) && !($0 is NSPanel) } }
@@ -629,6 +634,7 @@ import ApplicationServices
             results += try await DebugTabs.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugClipBar.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugExplorer.sceneCaptures(app: app, fixture: interview, directory: destination)
+            results += try await DebugRecordingScenes.capture(app: app, root: root, directory: destination)
             results += try await DebugExport.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugStatusBar.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugTranscriptPixels.scenes(app: app, fixture: interview, directory: destination, native: true)
@@ -1031,7 +1037,7 @@ import ApplicationServices
     /// window: full-size content under a transparent titlebar with no toolbar, as the
     /// shell expects.
     static func snapshot<Content: View>(_ content: Content, name: String, size: NSSize, appearance: NSAppearance.Name, directory: URL, active: Bool = false, mainWindow: Bool = false,
-                                      native: Bool = false, orderOffscreen: Bool = true,
+                                      native: Bool = false, orderOffscreen: Bool = true, checkRightColumn: Bool = true,
                                       beforeCapture: (@MainActor (NSWindow) async throws -> NSWindow?)? = nil) async throws {
         let controller = NSHostingController(rootView: content.background(DesignValues.color("bg.window")).sceneAccent().preferredColorScheme(appearance == .darkAqua ? .dark : .light).environment(\.controlActiveState, active ? .key : .inactive))
         // A fixed size from the start: a hosting controller that sizes its window
@@ -1078,7 +1084,7 @@ import ApplicationServices
             view.subviews.forEach(prepare)
         }
         prepare(hosting)
-        if !native { try DebugColumnBounds.assertBounds(window: window, name: name, directory: directory) }
+        if !native && checkRightColumn { try DebugColumnBounds.assertBounds(window: window, name: name, directory: directory) }
         if native {
             guard !sessionLocked else { window.close(); throw CocoaError(.userCancelled) }
             window.center(); window.makeKeyAndOrderFront(nil)

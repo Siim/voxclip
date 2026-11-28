@@ -2,6 +2,7 @@ using System.Text.Json;
 using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Project;
 
 namespace VoxClip.App.ViewModels;
@@ -20,13 +21,16 @@ public sealed partial class EditorViewModel
         : IsLeaving || Busy || undoGroup is { OwnsEdits: true } || Music.Phase is MusicPanelPhase.Searching or MusicPanelPhase.Using
             ? "Finish the current action before keeping this timeline." : null;
 
-    internal HarnessReviewDetails DescribeHarnessProposal(HarnessProposal proposal, string? sharedRoot, int index = 0)
+    internal HarnessReviewDetails DescribeHarnessProposal(HarnessProposal proposal, string? sharedRoot, int index = 0, string? cache = null)
     {
         var timeline = proposal.TimelineAt(index);
         var intent = proposal.Timelines[index];
         var clipId = proposal.ClipIdAt(index);
         var clipTitle = intent.Target.New?.Title ?? project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId)?.Title ?? "Clip";
         var changes = new List<string>();
+        var recordingKey = proposal.RecordingKeyAt(index);
+        if (recordingKey is not null && project.Media.AdditionalSources?.FirstOrDefault(source => source.ContentKey == recordingKey) is { } recording)
+            changes.Add($"Add recording {Core.Domain.Editing.ProjectClock.Label(recording)} with local transcription");
         if (intent.Parts is { } parts) changes.Add("Parts: " + string.Join(" → ", parts.Select(part => $"{part.StartWord}–{part.EndWord}")));
         if (timeline.TryGetProperty("title", out var title)) changes.Add($"Title: {title.GetString()}");
         if (timeline.TryGetProperty("captionStyle", out var caption)) changes.Add($"Captions: {caption.GetString()}");
@@ -48,7 +52,8 @@ public sealed partial class EditorViewModel
         {
             try
             {
-                var review = proposal.Review(project, sharedRoot, index);
+                var transcript = recordingKey is null || cache is null ? null : HarnessRecording.CachedTranscript(recordingKey, cache);
+                var review = proposal.Review(project, sharedRoot, index, transcript, preview: true);
                 estimate = proposal.EstimatedMusicPrice(review.Project, sharedRoot, index);
                 foreach (var operation in review.Operations.Where(operation =>
                     operation.Decision is not (ClipAutopilotDecision.Clip or ClipAutopilotDecision.Title or ClipAutopilotDecision.Cut or
@@ -72,16 +77,40 @@ public sealed partial class EditorViewModel
         => KeepHarnessTimeline(proposal, projectPath, sharedRoot, 0, out assets, out _);
 
     internal HarnessMusicAction? KeepHarnessTimeline(HarnessProposal proposal, string projectPath, string sharedRoot, int index,
-        out IReadOnlyList<ClipAutopilotAction.Asset> assets, out IReadOnlyList<ClipAutopilotOperation> rewrites)
+        out IReadOnlyList<ClipAutopilotAction.Asset> assets, out IReadOnlyList<ClipAutopilotOperation> rewrites,
+        Transcript? recordingTranscript = null, double? recordingGainDb = null)
     {
         if (HarnessKeepBlocked is { } blocked) throw new HarnessException(blocked);
-        var (next, _, pending) = proposal.Review(project, sharedRoot, index);
+        var (next, _, pending) = proposal.Review(project, sharedRoot, index, recordingTranscript);
+        if (recordingGainDb is { } gain && proposal.RecordingKeyAt(index) is { } key) next = WithRecordingGain(next, key, gain);
         HarnessInbox.Resolve(proposal, proposal.Remaining(index, next), projectPath);
         if (!ReferenceEquals(next, project)) ReplaceProject(next, "Keep timeline proposal");
         assets = pending.Select(operation => operation.Action).OfType<ClipAutopilotAction.Asset>().ToArray();
         rewrites = pending.Where(operation => operation.Action is ClipAutopilotAction.Rewrite).ToArray();
         return pending.Select(operation => operation.Action).OfType<ClipAutopilotAction.Music>().FirstOrDefault() is { } music
             ? new(music.Cue.ClipId, next.Media.Source.ContentKey, music.Cue.Picked.Prompt, music.Cue.Picked.TimelineShape) : null;
+    }
+
+    /// <summary>The transcript a kept harness recording needs: cached, or transcribed on this PC by <paramref name="transcribe"/>,
+    /// which the page supplies because media and transcription services live in the app.</summary>
+    internal async Task<Transcript?> PrepareHarnessRecordingAsync(HarnessProposal proposal, int index, string cache,
+        Func<MediaReference, TranscriptionPlan, CancellationToken, Task<Transcript>> transcribe, CancellationToken ct)
+    {
+        if (proposal.RecordingKeyAt(index) is not { } key) return null;
+        var snapshot = project;
+        proposal.ValidateRevision(snapshot);
+        var source = HarnessRecording.Source(key, snapshot);
+        if (HarnessRecording.CachedTranscript(key, cache) is { } cached) return cached;
+        if (proposal.HasPinnedRecordingTranscriptAt(index))
+            throw new HarnessException("The recording transcript changed. Ask for a new timeline proposal.");
+        var local = HarnessRecording.LocalTranscription(snapshot);
+        if (local is not { Engine: { Id: TranscriptEngine.Whispercpp, ModelId: { } model } }) throw HarnessRecording.Refusal(source);
+        LanguageChoice language = local.Language is { } code ? new LanguageChoice.Forced(code) : new LanguageChoice.Auto();
+        var transcript = await transcribe(source, new TranscriptionPlan(TranscriptEngine.Whispercpp, model, language, new()), ct);
+        ct.ThrowIfCancellationRequested();
+        if (!ReferenceEquals(project, snapshot)) throw new HarnessException("The project changed. Ask for a new timeline proposal.");
+        HarnessRecording.CacheTranscript(key, cache, transcript);
+        return transcript;
     }
 
     internal async Task<bool> ApplyHarnessAssetAsync(ClipAutopilotAction.Asset asset, Project snapshot, decimal? price, CancellationToken ct)

@@ -120,6 +120,8 @@ struct IllustrativeCutawayTests {
         let (model, undo) = try await editor(media: source)
         defer { model.close() }
         let root = model.app.locations.root
+        // CI points VOXCLIP_DATA_DIR at a folder no step creates; the photos written here need it.
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let photo = root.appendingPathComponent("fake-\(UUID()).png")
         defer { try? FileManager.default.removeItem(at: photo) }
         try image(at: photo)
@@ -204,6 +206,8 @@ struct IllustrativeCutawayTests {
         let (model, _) = try await editor()
         defer { model.close() }
         let root = model.app.locations.root
+        // CI points VOXCLIP_DATA_DIR at a folder no step creates; the photos written here need it.
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let file = root.appendingPathComponent("fake-invalid-\(UUID()).png")
         defer { try? FileManager.default.removeItem(at: file) }
         try Data("not an image".utf8).write(to: file)

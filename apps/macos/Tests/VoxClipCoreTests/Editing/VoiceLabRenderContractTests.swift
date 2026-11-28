@@ -479,7 +479,7 @@ import Testing
         project.voiceLab.segments[0].audio.assetId = "missing"
         #expect(throws: VoiceLabProjectError.danglingAsset) { try VoiceLabProject.validate(project) }
         var future = try #require(JSONSerialization.jsonObject(with: ProjectJSON.encode(fixture())) as? [String: Any])
-        future["schemaVersion"] = 7
+        future["schemaVersion"] = 8
         #expect(throws: VoxClipError.projectTooNew) { try ProjectJSON.decode(JSONSerialization.data(withJSONObject: future)) }
         var extended = try fixture(); extended.extensions = ["example.keep": .object(["value": .number(7)])]
         #expect(try ProjectJSON.decode(ProjectJSON.encode(extended)).extensions == extended.extensions)

@@ -69,7 +69,7 @@ extension ProjectMedia {
 
     mutating func storeFootage(_ entry: ClipFootage, editedLength: Double? = nil, allowShortSource: Bool) -> Bool {
         guard let recording = additionalSources.first(where: { $0.footageKey == entry.footage.sourceKey && $0.video != nil }),
-              entry.end <= source.durationSeconds,
+              entry.end <= clockDurationSeconds,
               (allowShortSource ? entry.hasPlayableSource(duration: recording.durationSeconds) : entry.fits(duration: recording.durationSeconds, editedLength: editedLength)),
               !footage.contains(where: { $0.id != entry.id && $0.clipID == entry.clipID && $0.start < entry.end && entry.start < $0.end }) else { return false }
         footage.removeAll { $0.id == entry.id }

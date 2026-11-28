@@ -17,6 +17,76 @@ namespace VoxClip.Ui.Tests;
 public sealed class TimelineTests
 {
     [Fact]
+    public void CanSeekAndPreviewACutInTheSecondRecording()
+    {
+        var model = ClipSemanticsTests.RecordingOpening();
+        model.Select(model.Index("r2.w18"));
+        model.Select(model.Index("r2.w21"), extend: true);
+        Assert.True(model.AddSelectionAsPart());
+        model.Select(model.Index("r2.w18"));
+        var seek = model.ClampProjectTime(model.SourceTime);
+        var cut = Assert.IsType<TimeRange>(model.PreviewCutRange());
+        Assert.True(cut.Start <= seek && seek < cut.End);
+        Assert.Equal(model.RecordingRegions[1].Key, model.RecordingClock!.LocalTime(seek)?.Key);
+        Assert.Equal(model.ClampProjectTime(seek + 3), cut.End);
+    }
+
+    [Fact]
+    public void RecordingLineEditsUpdateTimelineSeamsAndUndoRestoresThem()
+    {
+        var model = ClipSemanticsTests.RecordingReference();
+        Assert.True(model.StartFromRecording(model.RecordingRegions[0].Key));
+        var opening = Assert.Single(model.RecordingClipLines, line => line.FirstId == "w1");
+        string[] Seams() => new TimelineStory(model, TimelineLayout.Plan(model)).Seams(true).Select(seam => seam.Label).ToArray();
+
+        var initial = Seams();
+        Assert.True(model.UseRecordingLineVersion(opening, Assert.Single(opening.Alternatives).Key));
+        Assert.Equal("Use version", model.UndoActionName);
+        var afterSwap = Seams();
+        Assert.Single(afterSwap, label => label.StartsWith("→ 0007"));
+        var solo = Assert.Single(model.OtherRecordingLines, run => run.StartWordId == "r2.w18");
+        Assert.True(model.InsertRecordingLine(solo));
+        Assert.Equal("Add part", model.UndoActionName);
+        Assert.Single(Seams(), label => label.StartsWith("→ 0010"));
+        model.Undo();
+        Assert.Equal(afterSwap, Seams());
+        model.Undo();
+        Assert.Equal(initial, Seams());
+    }
+
+    [Fact]
+    public void RecordingSeamsAndOverviewUseLocalClockAndFollowUndoablePartEdits()
+    {
+        var model = ClipSemanticsTests.RecordingOpening();
+        model.Select(model.Index("r2.w18"));
+        model.Select(model.Index("r2.w21"), extend: true);
+        Assert.Equal("Add to Clip 1 as Part", model.RecordingPartSelectionTitle);
+        Assert.True(model.AddSelectionAsPart());
+        Assert.Equal("Add part", model.UndoActionName);
+        var partId = model.ClipParts[1].Id;
+        var added = new TimelineStory(model, TimelineLayout.Plan(model));
+        Assert.Equal("Lands between recordings · move it onto a recording's words.", model.RecordingGapReason(5.5));
+        Assert.Null(model.RecordingGapReason(6.5));
+        Assert.Equal(["0007", "0010"], added.RecordingOverview.Select(row => row.Recording.Label));
+        var local = Assert.Single(added.RecordingOverview[1].Parts);
+        Assert.Equal(2.5, local.Range.Start, 2);
+        Assert.Equal("→ 0010 0:02", Assert.Single(added.Seams(false)).Label);
+        Assert.Equal(3, Assert.Single(added.Seams(true)).Width);
+        Assert.True(model.MovePart(partId, 0));
+        Assert.Equal("Move part", model.UndoActionName);
+        Assert.Equal(partId, new TimelineStory(model, TimelineLayout.Plan(model)).Bands(true)[0].Part.Id);
+        model.Undo();
+        Assert.Equal(partId, model.ClipParts[1].Id);
+        Assert.True(model.RemovePart(partId));
+        Assert.Equal("Remove part", model.UndoActionName);
+        Assert.Single(model.ClipParts);
+        model.Undo();
+        Assert.Equal(partId, model.ClipParts[1].Id);
+        model.Undo();
+        Assert.Single(model.ClipParts);
+    }
+
+    [Fact]
     public void MusicContourUsesTheStagedRenderedClockOrFallsBackToKeptWords()
     {
         double[] fallback = [-1, -2, -3];

@@ -10,6 +10,46 @@ import VoxClipCore
 extension HeavyMediaTests {
 @Suite("voice-lab-native-composition", .serialized, .offlineFixtures)
 struct VoiceLabCompositionTests {
+    @Test func paidPrimaryPatchAndMatchedCompanionPlayInTheSameStory() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("primary.wav"), companion = root.appendingPathComponent("companion.wav")
+        try wave(frames: 336_000, rate: 48_000, hz: 220, constantSample: 8192).write(to: source)
+        try wave(frames: 336_000, rate: 48_000, hz: 330, constantSample: -16384).write(to: companion)
+        var (project, _) = try fixture(source: source, root: root)
+        var reference = project.media.source
+        reference.absolutePath = companion.path
+        reference.relativePath = companion.lastPathComponent
+        reference.contentKey = try JSONProjectStore.contentKey(for: companion)
+        project.media.additionalSources = [reference]
+        let transcript = try #require(project.transcript)
+        project = try RecordingEdits.apply(.addSpokenSource(key: reference.contentKey, transcript: transcript, gainDb: -6), project: project).get().project
+        let clipID = "clip-main"
+        project.edits.clips[0].endWordId = "r2.w8"
+        project.edits.clips[0].parts = [
+            .init(id: "primary", startWordId: "w3", endWordId: "w8"),
+            .init(id: "companion", startWordId: "r2.w3", endWordId: "r2.w8")
+        ]
+        let state = try #require(try EditState(project: project))
+        let plan = try EditPlan.build(transcript: state.transcript, editState: state, activeClip: state.activeClip,
+                                      duration: project.media.source.durationSeconds, sampleRate: 48_000)
+        let voice = try #require(try VoiceLabRenderPreflight.prepare(project: project, scope: .clip(clipID), paidRoot: root))
+        let request = RenderRequest(sourceURL: source, plan: plan,
+            output: OutputSpec(size: PixelSize(width: 640, height: 360), fps: 30, videoBitrate: 2_000_000), voiceLab: voice)
+        let routed = try RenderCallerInputs.prepare(request, project: project, clipID: clipID, dataRoot: root,
+                                                     shared: nil, resolveFootageURL: { $0 })
+        let lease = try await VoiceLabAudioRenderer.stage(request: routed, scratchRoot: root)
+        let patch = try #require(voice.prepared.selectedSegmentRecipes.first?.piece)
+        let patchAudio = try samples(lease.mixedAudioURL, at: (patch.outputStartSample + patch.outputEndSample) / 2, count: 240)
+        #expect(patchAudio.contains { abs($0 - 0.25) > 0.05 })
+        let index = try #require(routed.spanSources.firstIndex(of: reference.contentKey))
+        let piece = voice.prepared.outputPlan.pieces[index]
+        let audio = try samples(lease.mixedAudioURL, at: (piece.outputStartSample + piece.outputEndSample) / 2, count: 1)
+        let played = try #require(audio.first)
+        #expect(abs(played - Float(-0.5 * pow(10, -6.0 / 20))) < 0.002)
+    }
+
     @Test(arguments: [false, true]) func sharedMicroRecipeRendersTheSame48kSamplesAsWindows(shortSource: Bool) async throws {
         struct Fixture: Decodable {
             struct Recipe: Decodable {

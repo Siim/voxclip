@@ -1,7 +1,7 @@
 {
   "schema": "voxclip-autopilot-parts/1",
   "sources": {
-    "shared/prompts/clip-autopilot.json": "100976e5dab7d7c7bd2099395e0b6d4fb5b4c51718d21aa3e4aa3dfe2f344672"
+    "shared/prompts/clip-autopilot.json": "7f84e88a226e010b8ba227d5ea28b5d81743a1982a188cfc696a8e8ed8e25262"
   },
   "transcript": {
     "words": [
@@ -375,6 +375,1041 @@
     "companion": 12
   },
   "musicTrackId": "saved-bed",
+  "withRecordings": {
+    "project": {
+      "format": "voxclip-project",
+      "schemaVersion": 7,
+      "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+      "title": "Synthetic lighthouse takes",
+      "createdAt": "2026-10-25T09:12:03Z",
+      "modifiedAt": "2026-10-25T09:31:47Z",
+      "savedBy": {
+        "app": "VoxClip",
+        "version": "0.1.0",
+        "platform": "macos"
+      },
+      "media": {
+        "source": {
+          "absolutePath": "/synthetic/take-1.mov",
+          "relativePath": "take-1.mov",
+          "sizeBytes": 9437184,
+          "durationSeconds": 8.5,
+          "contentKey": "1111111111111111111111111111111111111111111111111111111111111111",
+          "video": {
+            "width": 1920,
+            "height": 1080,
+            "frameRate": 30,
+            "rotationDegrees": 0
+          },
+          "audio": {
+            "sampleRate": 48000,
+            "channels": 1
+          }
+        },
+        "additionalSources": [
+          {
+            "absolutePath": "/synthetic/take-2.mov",
+            "relativePath": "take-2.mov",
+            "sizeBytes": 9437184,
+            "durationSeconds": 13.0,
+            "contentKey": "2222222222222222222222222222222222222222222222222222222222222222",
+            "video": {
+              "width": 1920,
+              "height": 1080,
+              "frameRate": 30,
+              "rotationDegrees": 0
+            },
+            "audio": {
+              "sampleRate": 48000,
+              "channels": 1
+            }
+          },
+          {
+            "absolutePath": "/synthetic/take-3.mov",
+            "relativePath": "take-3.mov",
+            "sizeBytes": 9437184,
+            "durationSeconds": 8.5,
+            "contentKey": "3333333333333333333333333333333333333333333333333333333333333333",
+            "video": {
+              "width": 1920,
+              "height": 1080,
+              "frameRate": 30,
+              "rotationDegrees": 0
+            },
+            "audio": {
+              "sampleRate": 44100,
+              "channels": 1
+            }
+          },
+          {
+            "absolutePath": "/synthetic/DJI_0010.MOV",
+            "relativePath": "DJI_0010.MOV",
+            "sizeBytes": 9437184,
+            "durationSeconds": 3,
+            "contentKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "video": {
+              "width": 1920,
+              "height": 1080,
+              "frameRate": 30,
+              "rotationDegrees": 0
+            },
+            "audio": {
+              "sampleRate": 48000,
+              "channels": 1
+            }
+          }
+        ],
+        "spokenSources": [
+          {
+            "sourceKey": "2222222222222222222222222222222222222222222222222222222222222222",
+            "offsetSeconds": 10,
+            "wordIdPrefix": "r2.",
+            "gainDb": -1.8,
+            "transcript": {
+              "schemaVersion": 1,
+              "words": [
+                {
+                  "id": "w0",
+                  "text": "The",
+                  "kind": "word",
+                  "start": 0.0,
+                  "end": 0.5,
+                  "rawStart": 0.0,
+                  "rawEnd": 0.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w1",
+                  "text": "lighthouse",
+                  "kind": "word",
+                  "start": 0.5,
+                  "end": 1.0,
+                  "rawStart": 0.5,
+                  "rawEnd": 1.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w2",
+                  "text": "keeps",
+                  "kind": "word",
+                  "start": 1.0,
+                  "end": 1.5,
+                  "rawStart": 1.0,
+                  "rawEnd": 1.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w3",
+                  "text": "ships",
+                  "kind": "word",
+                  "start": 1.5,
+                  "end": 2.0,
+                  "rawStart": 1.5,
+                  "rawEnd": 2.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w4",
+                  "text": "away",
+                  "kind": "word",
+                  "start": 2.0,
+                  "end": 2.5,
+                  "rawStart": 2.0,
+                  "rawEnd": 2.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w5",
+                  "text": "from",
+                  "kind": "word",
+                  "start": 2.5,
+                  "end": 3.0,
+                  "rawStart": 2.5,
+                  "rawEnd": 3.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w6",
+                  "text": "the",
+                  "kind": "word",
+                  "start": 3.0,
+                  "end": 3.5,
+                  "rawStart": 3.0,
+                  "rawEnd": 3.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w7",
+                  "text": "rocks.",
+                  "kind": "word",
+                  "start": 3.5,
+                  "end": 4.0,
+                  "rawStart": 3.5,
+                  "rawEnd": 4.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w8",
+                  "text": "We",
+                  "kind": "word",
+                  "start": 4.0,
+                  "end": 4.5,
+                  "rawStart": 4.0,
+                  "rawEnd": 4.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w9",
+                  "text": "replaced",
+                  "kind": "word",
+                  "start": 4.5,
+                  "end": 5.0,
+                  "rawStart": 4.5,
+                  "rawEnd": 5.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w10",
+                  "text": "the",
+                  "kind": "word",
+                  "start": 5.0,
+                  "end": 5.5,
+                  "rawStart": 5.0,
+                  "rawEnd": 5.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w11",
+                  "text": "old",
+                  "kind": "word",
+                  "start": 5.5,
+                  "end": 6.0,
+                  "rawStart": 5.5,
+                  "rawEnd": 6.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w12",
+                  "text": "lamp",
+                  "kind": "word",
+                  "start": 6.0,
+                  "end": 6.5,
+                  "rawStart": 6.0,
+                  "rawEnd": 6.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w13",
+                  "text": "during",
+                  "kind": "word",
+                  "start": 6.5,
+                  "end": 7.0,
+                  "rawStart": 6.5,
+                  "rawEnd": 7.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w14",
+                  "text": "the",
+                  "kind": "word",
+                  "start": 7.0,
+                  "end": 7.5,
+                  "rawStart": 7.0,
+                  "rawEnd": 7.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w15",
+                  "text": "winter",
+                  "kind": "word",
+                  "start": 7.5,
+                  "end": 8.0,
+                  "rawStart": 7.5,
+                  "rawEnd": 8.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w16",
+                  "text": "storms.",
+                  "kind": "word",
+                  "start": 8.0,
+                  "end": 8.5,
+                  "rawStart": 8.0,
+                  "rawEnd": 8.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w17",
+                  "text": "The",
+                  "kind": "word",
+                  "start": 8.5,
+                  "end": 9.0,
+                  "rawStart": 8.5,
+                  "rawEnd": 9.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w18",
+                  "text": "smallest",
+                  "kind": "word",
+                  "start": 9.0,
+                  "end": 9.5,
+                  "rawStart": 9.0,
+                  "rawEnd": 9.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w19",
+                  "text": "bulb",
+                  "kind": "word",
+                  "start": 9.5,
+                  "end": 10.0,
+                  "rawStart": 9.5,
+                  "rawEnd": 10.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w20",
+                  "text": "saved",
+                  "kind": "word",
+                  "start": 10.0,
+                  "end": 10.5,
+                  "rawStart": 10.0,
+                  "rawEnd": 10.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w21",
+                  "text": "the",
+                  "kind": "word",
+                  "start": 10.5,
+                  "end": 11.0,
+                  "rawStart": 10.5,
+                  "rawEnd": 11.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w22",
+                  "text": "largest",
+                  "kind": "word",
+                  "start": 11.0,
+                  "end": 11.5,
+                  "rawStart": 11.0,
+                  "rawEnd": 11.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w23",
+                  "text": "ship",
+                  "kind": "word",
+                  "start": 11.5,
+                  "end": 12.0,
+                  "rawStart": 11.5,
+                  "rawEnd": 12.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w24",
+                  "text": "that",
+                  "kind": "word",
+                  "start": 12.0,
+                  "end": 12.5,
+                  "rawStart": 12.0,
+                  "rawEnd": 12.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w25",
+                  "text": "night.",
+                  "kind": "word",
+                  "start": 12.5,
+                  "end": 13.0,
+                  "rawStart": 12.5,
+                  "rawEnd": 13.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                }
+              ],
+              "language": "en",
+              "languageProbability": 0.99,
+              "durationSeconds": 13.0,
+              "engine": {
+                "id": "elevenlabs",
+                "modelId": "scribe_v2",
+                "modelSha256": null,
+                "engineVersion": "scribe_v2",
+                "locale": null
+              },
+              "verbatim": true,
+              "refined": true,
+              "pipelineVersion": 1,
+              "rawKey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "createdAt": "2026-10-25T09:12:41Z"
+            },
+            "label": "take-2"
+          },
+          {
+            "sourceKey": "3333333333333333333333333333333333333333333333333333333333333333",
+            "offsetSeconds": 24,
+            "wordIdPrefix": "r3.",
+            "gainDb": -1.8,
+            "transcript": {
+              "schemaVersion": 1,
+              "words": [
+                {
+                  "id": "w0",
+                  "text": "The",
+                  "kind": "word",
+                  "start": 0.0,
+                  "end": 0.5,
+                  "rawStart": 0.0,
+                  "rawEnd": 0.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w1",
+                  "text": "lighthouse",
+                  "kind": "word",
+                  "start": 0.5,
+                  "end": 1.0,
+                  "rawStart": 0.5,
+                  "rawEnd": 1.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w2",
+                  "text": "keeps",
+                  "kind": "word",
+                  "start": 1.0,
+                  "end": 1.5,
+                  "rawStart": 1.0,
+                  "rawEnd": 1.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w3",
+                  "text": "ships",
+                  "kind": "word",
+                  "start": 1.5,
+                  "end": 2.0,
+                  "rawStart": 1.5,
+                  "rawEnd": 2.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w4",
+                  "text": "away",
+                  "kind": "word",
+                  "start": 2.0,
+                  "end": 2.5,
+                  "rawStart": 2.0,
+                  "rawEnd": 2.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w5",
+                  "text": "from",
+                  "kind": "word",
+                  "start": 2.5,
+                  "end": 3.0,
+                  "rawStart": 2.5,
+                  "rawEnd": 3.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w6",
+                  "text": "the",
+                  "kind": "word",
+                  "start": 3.0,
+                  "end": 3.5,
+                  "rawStart": 3.0,
+                  "rawEnd": 3.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w7",
+                  "text": "rocks.",
+                  "kind": "word",
+                  "start": 3.5,
+                  "end": 4.0,
+                  "rawStart": 3.5,
+                  "rawEnd": 4.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w8",
+                  "text": "We",
+                  "kind": "word",
+                  "start": 4.0,
+                  "end": 4.5,
+                  "rawStart": 4.0,
+                  "rawEnd": 4.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w9",
+                  "text": "replaced",
+                  "kind": "word",
+                  "start": 4.5,
+                  "end": 5.0,
+                  "rawStart": 4.5,
+                  "rawEnd": 5.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w10",
+                  "text": "the",
+                  "kind": "word",
+                  "start": 5.0,
+                  "end": 5.5,
+                  "rawStart": 5.0,
+                  "rawEnd": 5.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w11",
+                  "text": "old",
+                  "kind": "word",
+                  "start": 5.5,
+                  "end": 6.0,
+                  "rawStart": 5.5,
+                  "rawEnd": 6.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w12",
+                  "text": "lamp",
+                  "kind": "word",
+                  "start": 6.0,
+                  "end": 6.5,
+                  "rawStart": 6.0,
+                  "rawEnd": 6.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w13",
+                  "text": "during",
+                  "kind": "word",
+                  "start": 6.5,
+                  "end": 7.0,
+                  "rawStart": 6.5,
+                  "rawEnd": 7.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w14",
+                  "text": "the",
+                  "kind": "word",
+                  "start": 7.0,
+                  "end": 7.5,
+                  "rawStart": 7.0,
+                  "rawEnd": 7.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w15",
+                  "text": "winter",
+                  "kind": "word",
+                  "start": 7.5,
+                  "end": 8.0,
+                  "rawStart": 7.5,
+                  "rawEnd": 8.0,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                },
+                {
+                  "id": "w16",
+                  "text": "storms.",
+                  "kind": "word",
+                  "start": 8.0,
+                  "end": 8.5,
+                  "rawStart": 8.0,
+                  "rawEnd": 8.5,
+                  "conf": null,
+                  "speaker": null,
+                  "timing": "native"
+                }
+              ],
+              "language": "en",
+              "languageProbability": 0.99,
+              "durationSeconds": 8.5,
+              "engine": {
+                "id": "elevenlabs",
+                "modelId": "scribe_v2",
+                "modelSha256": null,
+                "engineVersion": "scribe_v2",
+                "locale": null
+              },
+              "verbatim": true,
+              "refined": true,
+              "pipelineVersion": 1,
+              "rawKey": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "createdAt": "2026-10-25T09:12:41Z"
+            },
+            "label": "take-3"
+          }
+        ]
+      },
+      "transcript": {
+        "schemaVersion": 1,
+        "words": [
+          {
+            "id": "w0",
+            "text": "The",
+            "kind": "word",
+            "start": 0.0,
+            "end": 0.5,
+            "rawStart": 0.0,
+            "rawEnd": 0.5,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w1",
+            "text": "lighthouse",
+            "kind": "word",
+            "start": 0.5,
+            "end": 1.0,
+            "rawStart": 0.5,
+            "rawEnd": 1.0,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w2",
+            "text": "keeps",
+            "kind": "word",
+            "start": 1.0,
+            "end": 1.5,
+            "rawStart": 1.0,
+            "rawEnd": 1.5,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w3",
+            "text": "ships",
+            "kind": "word",
+            "start": 1.5,
+            "end": 2.0,
+            "rawStart": 1.5,
+            "rawEnd": 2.0,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w4",
+            "text": "away",
+            "kind": "word",
+            "start": 2.0,
+            "end": 2.5,
+            "rawStart": 2.0,
+            "rawEnd": 2.5,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w5",
+            "text": "from",
+            "kind": "word",
+            "start": 2.5,
+            "end": 3.0,
+            "rawStart": 2.5,
+            "rawEnd": 3.0,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w6",
+            "text": "the",
+            "kind": "word",
+            "start": 3.0,
+            "end": 3.5,
+            "rawStart": 3.0,
+            "rawEnd": 3.5,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w7",
+            "text": "rocks.",
+            "kind": "word",
+            "start": 3.5,
+            "end": 4.0,
+            "rawStart": 3.5,
+            "rawEnd": 4.0,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w8",
+            "text": "We",
+            "kind": "word",
+            "start": 4.0,
+            "end": 4.5,
+            "rawStart": 4.0,
+            "rawEnd": 4.5,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w9",
+            "text": "replaced",
+            "kind": "word",
+            "start": 4.5,
+            "end": 5.0,
+            "rawStart": 4.5,
+            "rawEnd": 5.0,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w10",
+            "text": "the",
+            "kind": "word",
+            "start": 5.0,
+            "end": 5.5,
+            "rawStart": 5.0,
+            "rawEnd": 5.5,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w11",
+            "text": "old",
+            "kind": "word",
+            "start": 5.5,
+            "end": 6.0,
+            "rawStart": 5.5,
+            "rawEnd": 6.0,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w12",
+            "text": "lamp",
+            "kind": "word",
+            "start": 6.0,
+            "end": 6.5,
+            "rawStart": 6.0,
+            "rawEnd": 6.5,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w13",
+            "text": "during",
+            "kind": "word",
+            "start": 6.5,
+            "end": 7.0,
+            "rawStart": 6.5,
+            "rawEnd": 7.0,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w14",
+            "text": "the",
+            "kind": "word",
+            "start": 7.0,
+            "end": 7.5,
+            "rawStart": 7.0,
+            "rawEnd": 7.5,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w15",
+            "text": "winter",
+            "kind": "word",
+            "start": 7.5,
+            "end": 8.0,
+            "rawStart": 7.5,
+            "rawEnd": 8.0,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          },
+          {
+            "id": "w16",
+            "text": "storms.",
+            "kind": "word",
+            "start": 8.0,
+            "end": 8.5,
+            "rawStart": 8.0,
+            "rawEnd": 8.5,
+            "conf": null,
+            "speaker": null,
+            "timing": "native"
+          }
+        ],
+        "language": "en",
+        "languageProbability": 0.99,
+        "durationSeconds": 8.5,
+        "engine": {
+          "id": "elevenlabs",
+          "modelId": "scribe_v2",
+          "modelSha256": null,
+          "engineVersion": "scribe_v2",
+          "locale": null
+        },
+        "verbatim": true,
+        "refined": true,
+        "pipelineVersion": 1,
+        "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+        "createdAt": "2026-10-25T09:12:41Z"
+      },
+      "edits": {
+        "pauseThresholdSeconds": 0.8,
+        "pauseKeepSeconds": 0.15,
+        "cutWordIds": [],
+        "cutPauseIds": [],
+        "corrections": {},
+        "clips": [],
+        "activeClipId": null
+      },
+      "captions": {
+        "styleId": "vox-bold",
+        "overrides": {},
+        "position": null,
+        "positionByAspect": {}
+      },
+      "export": {
+        "aspect": "9:16",
+        "quality": "standard",
+        "srt": false,
+        "folder": null
+      },
+      "share": {
+        "captions": {
+          "full": "Today we shipped the clipper. Thanks"
+        }
+      },
+      "ai": {
+        "results": []
+      },
+      "voiceLab": {
+        "segments": [],
+        "assets": [],
+        "cleanAudio": {
+          "mode": "off",
+          "assetId": null,
+          "mix": null
+        },
+        "voices": [],
+        "videoAssets": []
+      },
+      "extensions": {}
+    },
+    "momentsReply": {
+      "clips": [
+        {
+          "kind": "story",
+          "title": "The lighthouse",
+          "idea": "A small bulb saves a ship.",
+          "not_in_take": "",
+          "captionStyle": "karaoke",
+          "captionReason": "",
+          "score": 8,
+          "verdict": "post",
+          "scoreReason": "",
+          "parts": [
+            {
+              "startWord": 17,
+              "endWord": 24,
+              "takeReason": "“The lighthouse”"
+            },
+            {
+              "startWord": 0,
+              "endWord": 7
+            },
+            {
+              "startWord": 8,
+              "endWord": 16,
+              "takeReason": "“A whale knocked it over”"
+            },
+            {
+              "startWord": 34,
+              "endWord": 42,
+              "takeReason": "Only take with “the largest ship”"
+            }
+          ]
+        }
+      ]
+    },
+    "momentParts": [
+      [
+        17,
+        24
+      ],
+      [
+        8,
+        16
+      ],
+      [
+        34,
+        42
+      ]
+    ],
+    "momentReasons": [
+      "“The lighthouse”",
+      null,
+      "Only take with “the largest ship”"
+    ],
+    "crossRecordingReply": {
+      "clips": [
+        {
+          "kind": "story",
+          "title": "The lighthouse",
+          "idea": "A small bulb saves a ship.",
+          "not_in_take": "",
+          "captionStyle": "karaoke",
+          "captionReason": "",
+          "score": 8,
+          "verdict": "post",
+          "scoreReason": "",
+          "parts": [
+            {
+              "startWord": 0,
+              "endWord": 24
+            }
+          ]
+        }
+      ]
+    },
+    "planReply": {
+      "parts": [
+        {
+          "startWord": 18,
+          "endWord": 24
+        },
+        {
+          "startWord": 8,
+          "endWord": 16
+        },
+        {
+          "startWord": 34,
+          "endWord": 42
+        }
+      ]
+    },
+    "planParts": [
+      [
+        18,
+        24
+      ],
+      [
+        8,
+        16
+      ],
+      [
+        34,
+        42
+      ]
+    ],
+    "planReasons": [
+      null,
+      null,
+      "Only take with “the largest ship”"
+    ]
+  },
   "moments": [
     {
       "reply": {

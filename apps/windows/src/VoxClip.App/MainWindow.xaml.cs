@@ -15,6 +15,7 @@ using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Media.Pipeline;
 namespace VoxClip.App;
 
 /// <summary>Native title bar, Explorer, document tabs and full-window status routing.</summary>
@@ -117,7 +118,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(RegionKeyDown), true);
         // The editor's accelerators are scoped to its page, so the ones design §11.1 keeps working from the sidebar pane are
         // window accelerators that hand the key to the attached editor; [ and ] act on the Full take, clip and suggestion rows.
-        foreach (var gesture in ShortcutPolicy.PaneGestures) Root.KeyboardAccelerators.Add(PaneAccelerator(gesture));
+        foreach (var gesture in ShortcutPolicy.PaneGestures.Concat(ShortcutPolicy.RecordingGestures)) Root.KeyboardAccelerators.Add(PaneAccelerator(gesture));
         Nav.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(PaneRowKeyDown), false);
         takeRefresh = DispatcherQueue.CreateTimer();
         takeRefresh.IsRepeating = false;
@@ -204,7 +205,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         var accelerator = new KeyboardAccelerator
         {
             Key = Enum.Parse<VirtualKey>(parts[^1]),
-            Modifiers = (parts.Contains("Ctrl") ? VirtualKeyModifiers.Control : VirtualKeyModifiers.None) | (parts.Contains("Shift") ? VirtualKeyModifiers.Shift : VirtualKeyModifiers.None)
+            Modifiers = (parts.Contains("Ctrl") ? VirtualKeyModifiers.Control : VirtualKeyModifiers.None) | (parts.Contains("Shift") ? VirtualKeyModifiers.Shift : VirtualKeyModifiers.None) |
+                (parts.Contains("Alt") ? VirtualKeyModifiers.Menu : VirtualKeyModifiers.None)
         };
         accelerator.Invoked += (_, args) =>
         {
@@ -595,9 +597,14 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             var source = project.Media.Source;
             try
             {
-                frame = await App.Services.Thumbnails.GetAsync(source.ContentKey, media, Thumbnails.Candidates(project, null), video.RotationDegrees, loads.Token);
+                var recordings = project.Media.SpokenSources is { Count: > 0 }
+                    ? await RecordingRendering.AvailableAsync(project, App.Services.Projects, path, loads.Token) : null;
+                Task<string?> Poster(string? id) => recordings is null
+                    ? App.Services.Thumbnails.GetAsync(source.ContentKey, media, Thumbnails.Candidates(project, id), video.RotationDegrees, loads.Token)
+                    : App.Services.Thumbnails.GetProjectAsync(project, id, recordings, loads.Token);
+                frame = await Poster(null);
                 foreach (var id in clips)
-                    tiles[id] = (await App.Services.Thumbnails.GetAsync(source.ContentKey, media, Thumbnails.Candidates(project, id), video.RotationDegrees, loads.Token),
+                    tiles[id] = (await Poster(id),
                         tiles.TryGetValue(id, out var tile) ? tile.Card : null);
             }
             catch (OperationCanceledException) { return; }

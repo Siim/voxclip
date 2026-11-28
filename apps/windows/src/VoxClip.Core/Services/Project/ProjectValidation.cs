@@ -24,12 +24,13 @@ internal static class ProjectValidation
     {
         RejectDuplicateKeys(root);
         if (root.ValueKind != JsonValueKind.Object) throw Problem("/", "expected object");
-        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > TimelineEditFields.Version)
+        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > ProjectSerialization.CurrentVersion)
             throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
         var schemaVersion = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var supported) ? supported : 0;
         var supportsContext = schemaVersion >= 4;
         var supportsStories = schemaVersion >= 5;
         var supportsTimelineEdits = schemaVersion >= TimelineEditFields.Version;
+        var supportsSpokenSources = schemaVersion == ProjectSerialization.CurrentVersion;
         Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions clipStyle" + (supportsContext ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""), path: "/");
         if (root.GetProperty("format").ValueKind != JsonValueKind.String || root.GetProperty("format").GetString() != "voxclip-project")
             throw Problem("format", "invalid value");
@@ -41,11 +42,26 @@ internal static class ProjectValidation
         var saved = root.GetProperty("savedBy");
         Object(saved, "app version platform", path: "savedBy"); String(saved.GetProperty("app"), "VoxClip");
         String(saved.GetProperty("version"), "[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?"); Choice(saved.GetProperty("platform"), "macos", "windows");
-        var media = root.GetProperty("media"); Object(media, "source", supportsContext ? "additionalSources footage" : "", path: "media");
+        var media = root.GetProperty("media"); Object(media, supportsSpokenSources ? "source spokenSources" : "source", supportsContext ? "additionalSources footage" : "", path: "media");
+        if (supportsSpokenSources)
+        {
+            var spoken = media.GetProperty("spokenSources");
+            Array(spoken, "media/spokenSources", (item, path) =>
+            {
+                Object(item, "sourceKey offsetSeconds wordIdPrefix transcript", "gainDb label", path: path);
+                String(item.GetProperty("sourceKey"), Hash);
+                Number(item.GetProperty("offsetSeconds"), 1, int.MaxValue, true);
+                if (item.TryGetProperty("label", out var label)) Text(label, 0, 24);
+                if (item.TryGetProperty("gainDb", out var gain)) Number(gain, -12, 12);
+                Transcript(item.GetProperty("transcript"), normalizeWordText, path + "/transcript");
+            });
+            if (spoken.GetArrayLength() is < 1 or > 5) throw Problem("media/spokenSources", "expected one to five companion spoken recordings");
+        }
         var source = media.GetProperty("source");
         ValidateSource(source, "media/source");
         var sourceKeys = new HashSet<string>(StringComparer.Ordinal) { FootageKey(source) };
         var companionDurations = new Dictionary<string, double>(StringComparer.Ordinal);
+        var clockEnd = source.GetProperty("durationSeconds").GetDouble();
         if (media.TryGetProperty("additionalSources", out var additionalSources))
         {
             Array(additionalSources, "media/additionalSources", (reference, path) =>
@@ -57,6 +73,14 @@ internal static class ProjectValidation
                     companionDurations.Add(key, reference.GetProperty("durationSeconds").GetDouble());
             });
             Require(additionalSources.GetArrayLength() > 0);
+            if (supportsSpokenSources)
+            {
+                var last = media.GetProperty("spokenSources").EnumerateArray().Last();
+                var lastKey = last.GetProperty("sourceKey").GetString();
+                foreach (var reference in additionalSources.EnumerateArray())
+                    if (reference.GetProperty("contentKey").GetString() == lastKey)
+                        clockEnd = last.GetProperty("offsetSeconds").GetDouble() + reference.GetProperty("durationSeconds").GetDouble();
+            }
         }
         var placements = new List<ProjectFootage>();
         var placementIds = new HashSet<string>(StringComparer.Ordinal);
@@ -80,7 +104,7 @@ internal static class ProjectValidation
                     placement.GetProperty("kind").GetString()!, placement.GetProperty("start").GetDouble(), placement.GetProperty("end").GetDouble(),
                     new FootageSelection(selected.GetProperty("sourceKey").GetString()!, selected.GetProperty("start").GetDouble()),
                     Fade("fadeInSeconds"), Fade("fadeOutSeconds"));
-                Require(placementIds.Add(entry.Id) && entry.End <= source.GetProperty("durationSeconds").GetDouble() &&
+                Require(placementIds.Add(entry.Id) && entry.End <= clockEnd &&
                     companionDurations.TryGetValue(entry.Footage.SourceKey, out var duration) &&
                     (supportsTimelineEdits ? entry.HasPlayableSource(duration) : entry.Fits(duration)) &&
                     !placements.Any(other => other.ClipId == entry.ClipId && other.Start < entry.End && entry.Start < other.End));
@@ -106,7 +130,7 @@ internal static class ProjectValidation
                 Object(audio, "sampleRate channels", path: path + "/audio"); Number(audio.GetProperty("sampleRate"), 1, int.MaxValue, true); Number(audio.GetProperty("channels"), 1, int.MaxValue, true);
             });
         }
-        Nullable(root.GetProperty("transcript"), value => Transcript(value, normalizeWordText));
+        Nullable(root.GetProperty("transcript"), value => Transcript(value, normalizeWordText, "transcript"));
         var edits = root.GetProperty("edits"); Object(edits, "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId", path: "edits");
         Number(edits.GetProperty("pauseThresholdSeconds"), double.Epsilon, 10); Number(edits.GetProperty("pauseKeepSeconds"), 0, 1);
         UniqueStrings(edits.GetProperty("cutWordIds"), Id, "edits/cutWordIds"); UniqueStrings(edits.GetProperty("cutPauseIds"), "pause-after-" + Id, "edits/cutPauseIds");
@@ -116,13 +140,22 @@ internal static class ProjectValidation
             // leadInSeconds: schema v4 only, above 0 and at most the 0.6 s opening scan (ADR-R48 part 2).
             if (!supportsStories && clip.ValueKind == JsonValueKind.Object && (clip.TryGetProperty("kind", out _) || clip.TryGetProperty("parts", out _)))
                 throw Problem(path, "story clip needs schemaVersion 5");
-            Object(clip, "id startWordId endWordId title origin aiResultId aiClipIndex selected", supportsStories ? "leadInSeconds parts kind" : supportsContext ? "leadInSeconds" : "", path: path);
+            var optional = supportsStories ? "leadInSeconds parts kind" : supportsContext ? "leadInSeconds" : "";
+            if (supportsSpokenSources) optional += " displacedVersions";
+            Object(clip, "id startWordId endWordId title origin aiResultId aiClipIndex selected", optional, path: path);
+            if (clip.TryGetProperty("displacedVersions", out var displaced)) Array(displaced, path + "/displacedVersions", (range, rangePath) =>
+            {
+                Object(range, "startWordId endWordId", path: rangePath);
+                String(range.GetProperty("startWordId"), Id);
+                String(range.GetProperty("endWordId"), Id);
+            });
             if (clip.TryGetProperty("kind", out var kind) &&
                 (!clip.TryGetProperty("parts", out _) || kind.ValueKind != JsonValueKind.String || kind.GetString() is not ("story" or "showreel")))
                 throw Problem(path + "/kind", "invalid clip kind");
             if (clip.TryGetProperty("parts", out var parts)) Array(parts, path + "/parts", (part, partPath) =>
             {
-                Object(part, "id startWordId endWordId", "reframe", path: partPath);
+                Object(part, "id startWordId endWordId", supportsSpokenSources ? "reframe takeReason" : "reframe", path: partPath);
+                if (part.TryGetProperty("takeReason", out var reason)) Text(reason, 0, StoryClips.MaxTakeReasonScalars);
                 if (part.TryGetProperty("reframe", out var reframe))
                 {
                     Object(reframe, "mode zoom centerX centerY", path: partPath + "/reframe");
@@ -354,21 +387,21 @@ internal static class ProjectValidation
         Object(recipe.GetProperty("cost"), "quoteId usd", path: $"{path}/cost");
     }
 
-    private static void Transcript(JsonElement transcript, bool normalizeWordText)
+    private static void Transcript(JsonElement transcript, bool normalizeWordText, string path)
     {
-        Object(transcript, "schemaVersion words language languageProbability durationSeconds engine verbatim refined pipelineVersion rawKey createdAt", path: "transcript");
+        Object(transcript, "schemaVersion words language languageProbability durationSeconds engine verbatim refined pipelineVersion rawKey createdAt", path: path);
         Number(transcript.GetProperty("schemaVersion"), 1, 1, true);
         Nullable(transcript.GetProperty("language"), value => String(value, "[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")); Nullable(transcript.GetProperty("languageProbability"), value => Number(value, 0, 1));
         Number(transcript.GetProperty("durationSeconds"), 0); Boolean(transcript.GetProperty("verbatim")); Boolean(transcript.GetProperty("refined")); Number(transcript.GetProperty("pipelineVersion"), 1, int.MaxValue, true);
         String(transcript.GetProperty("rawKey"), Hash); Timestamp(transcript.GetProperty("createdAt"));
-        var engine = transcript.GetProperty("engine"); Object(engine, "id modelId modelSha256 engineVersion locale", path: "transcript/engine"); Choice(engine.GetProperty("id"), "elevenlabs", "whispercpp", "apple-speech");
+        var engine = transcript.GetProperty("engine"); Object(engine, "id modelId modelSha256 engineVersion locale", path: path + "/engine"); Choice(engine.GetProperty("id"), "elevenlabs", "whispercpp", "apple-speech");
         Nullable(engine.GetProperty("modelId"), value => Text(value, 0, 128)); Nullable(engine.GetProperty("modelSha256"), value => String(value, Hash));
         Text(engine.GetProperty("engineVersion"), 1, 128); Nullable(engine.GetProperty("locale"), value => Text(value, 0, 35));
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var previousStart = double.NegativeInfinity;
-        Array(transcript.GetProperty("words"), "transcript/words", (word, path) =>
+        Array(transcript.GetProperty("words"), path + "/words", (word, wordPath) =>
         {
-            Object(word, "id text kind start end rawStart rawEnd conf speaker timing", path: path); String(word.GetProperty("id"), Id); WordText(word.GetProperty("text"), normalizeWordText); Choice(word.GetProperty("kind"), "word", "event", "unlabeledSpeech");
+            Object(word, "id text kind start end rawStart rawEnd conf speaker timing", path: wordPath); String(word.GetProperty("id"), Id); WordText(word.GetProperty("text"), normalizeWordText); Choice(word.GetProperty("kind"), "word", "event", "unlabeledSpeech");
             Number(word.GetProperty("start"), 0); Number(word.GetProperty("end"), 0);
             var start = word.GetProperty("start").GetDouble();
             Require(start >= previousStart && word.GetProperty("end").GetDouble() > start && ids.Add(word.GetProperty("id").GetString()!));

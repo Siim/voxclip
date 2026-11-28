@@ -1164,7 +1164,7 @@ Rewrite's hooks now live in design.md §6.3: the scope bar, its AI picker, the R
 
 The command syntax, output object and exit codes follow architecture §9. This spec adds options to the architecture's `find-clips` and one new command:
 
-- `voxclip-cli find-clips --open <project> --preset best|hooks|topics|quotes|custom [--instruction <text>] --connector <id> [--model <id>] [--no-snap] [--dry-run] --json` runs §11 and prints the suggestions. It never modifies the project file. `--dry-run` prints the rendered `system`, `cachedBlock` and `instruction` for each window without sending anything; tests and prompt reviews use it.
+- `voxclip-cli find-clips --open <project> --preset best|hooks|topics|quotes|bestTakes|custom [--instruction <text>] --connector <id> [--model <id>] [--no-snap] [--dry-run] --json` runs §11 and prints the suggestions. It never modifies the project file. `bestTakes` requires two spoken recordings and passes their words and matched takes on the project clock. `--dry-run` prints the rendered `system`, `cachedBlock` and `instruction` for each window without sending anything; tests and prompt reviews use it.
 - `voxclip-cli llm-test --connector <id> [--model <id>] --json` runs §10.2 and exits 0 on pass. This command is new and must be added to architecture §9.2.
 - Keys come from environment variables only (§8.1). Exit codes follow §5.1.
 
@@ -1193,6 +1193,8 @@ own version string. Both native CLI suites check `shared/fixtures/cli/find-clips
 ---
 
 ## 11. Clip finder pipeline (M1)
+
+**Best versions** (`bestTakes`, prompt v4) compares spoken recordings in one request and needs at least two spoken recordings. Existing presets retain their v3 request bytes, including in one-recording projects. The new preset sends labelled recording ranges and TakeMatch beats with sentence flags and delivery signals. Its ordered reply parts may include `take_reason`; only quotes in that part's kept words survive. Keep the first valid take of a beat and drop parts crossing recording regions. On Mac the proposal card shows the reason below the parts strip with its recording label.
 
 Constants come from `shared/prompts/clip-finder.json` (`limits`, `presets`, `request`, `generation`).
 
@@ -1802,13 +1804,13 @@ Version 2 of the plan (planner v2, 2026-11-05) answers the first live evaluation
 
 | File | Holds |
 | --- | --- |
-| `shared/prompts/clip-autopilot.json` | File format `schemaVersion` 2, `promptVersion` 12. Shared moments and plan schemas, shape and seam rules, the `partsInstruction` and `revise` templates, tone and frames, looks, limits, output caps and minimum timeout. |
+| `shared/prompts/clip-autopilot.json` | File format `schemaVersion` 2, `promptVersion` 13. Shared moments and plan schemas, recording takes, shape and seam rules, the `partsInstruction` and `revise` templates, tone and frames, looks, limits, output caps and minimum timeout. |
 | `shared/catalog/music-prices.json` | Eleven Music list price in the Voice Lab price format (`voxclip-voice-lab-prices/1`), read by `VoiceLabPriceCatalog`. It is a separate file because both Core suites pin `voice-lab.json`'s hash and entry count. **TODO (lead):** verify the 0.15 USD per minute row before the music package ships; the pricing page also says music is billed per generation |
 | `shared/fixtures/autopilot/plan-validation-cases.json` | `voxclip-autopilot-validation/1`: a synthetic 30-item transcript, two rendered-transcript vectors and eleven hand-derived validation cases (version 1 fields); its `series` case replays as the moments stage. `sources` pins the prompt's SHA-256 |
 | `shared/fixtures/autopilot/plan-tone-cases.json` | `voxclip-autopilot-tone/1`: eleven hand-derived tone cases on the version 1 fixture's transcript (fixed, saved, Auto, As I said it and no tone; a reply that names another tone, an unknown one or a long summary) and four instruction vectors, the tone line each mode adds. `sources` pins the prompt's and `shared/data/rewrite-tones.json`'s SHA-256 |
 | `shared/data/rewrite-tones.json` | The tone catalogue (design.md §6.3.1), read by `RewriteToneCatalog` |
 | `shared/fixtures/autopilot/plan-v2-cases.json` | `voxclip-autopilot-v2/1`: a synthetic 150-word transcript of 0.5 s words and fourteen hand-derived cases for the version 2 fields, the finished length and its flags, and the moments stage. `sources` pins the same SHA-256 |
-| `shared/fixtures/autopilot/plan-parts-cases.json` | Stories, showreels, per-part edits, companion effects, music and legacy spans. `tools/fixtures/autopilot/generate_plan_frames.py` regenerates the vectors and the prompt hashes. |
+| `shared/fixtures/autopilot/plan-parts-cases.json` | Stories, showreels, per-part edits, companion effects, music, legacy spans and a synthetic three-recording two-stage replay. `tools/fixtures/autopilot/generate_plan_frames.py` regenerates the vectors and the prompt hashes. |
 | Mac Core `Domain/Autopilot/`, `Services/Autopilot/` | `ClipAutopilotPlan`, `ClipAutopilotMoment`, `ClipAutopilotSeries`, `ClipAutopilotPrompt`, `ClipAutopilotRequestBuilder`, `ClipAutopilotValidator`, `ClipAutopilotMapping`, `ClipAutopilotPricing`, `ClipAutopilotService`, `ClipAutopilotProgress` |
 
 ### 16.2 Contract
@@ -1816,6 +1818,7 @@ Version 2 of the plan (planner v2, 2026-11-05) answers the first live evaluation
 `ClipAutopilotPlan` (`version` 4) is one clip's decisions. The saved-plan reader accepts versions 1–4 and supplies defaults for newer fields. Word indices are transcript item positions, as in §11.2, and every range is inclusive.
 
 - `parts`: 1–10 `{startWord, endWord}` ranges in playback order. The reader treats legacy `startWord` and `endWord` as one part; the normalized plan also records their source envelope. A plan may tighten, drop or reorder an offered part, but may not extend, split or join it.
+- With several spoken recordings, the moments request includes labelled recording ranges and TakeMatch beats. It can choose one take per beat and include a `takeReason` of at most 160 characters per part. The plan still replies with word indices; its canonical proposal carries the inherited reason and removes quotes that no longer match its kept words. Keeping a story saves those reasons with its parts. A single recording retains the v12 moments and plan request bytes.
 - `not_in_take`: what the creator asked for but the recording lacks. It never substitutes invented spoken words.
 - `title` (at most 120 scalars), `hook` (the on-screen text for the first 2 s), `postText` (short X or LinkedIn text).
 - `corrections` (v2): `{word, heard, text, reason}`, a misheard word spelled right in the transcript and captions. `heard` is the word as the transcript showed it, `text` its replacement; the audio is unchanged.
@@ -1951,6 +1954,8 @@ Every send checks the model's context as Voice Lab sends do (§12.8): `est()` of
 `ClipAutopilotLiveEvalTests` runs only with `VOXCLIP_AUTOPILOT_LIVE_EVAL=1`, never in CI. It needs a project (`VOXCLIP_AUTOPILOT_EVAL_PROJECT`) and an output folder under `/tmp/voxclip-autopilot-eval/` (`VOXCLIP_AUTOPILOT_EVAL_OUT`); `VOXCLIP_AUTOPILOT_EVAL_CLIP=start-end` picks the single clip (the best series clip otherwise). Before any send it runs Claude Code's sign-in check and refuses an `authMethod` naming an API key or an `ANTHROPIC_API_KEY` in the environment. It then plans a two-stage series with two extra Claude Code lanes and one single clip, and writes every request, every raw reply, the checked plans, `table.json` and `summary.md` (stage and wall times, picks, finished lengths, corrections, captions, looks, speeds, flags). Nothing it writes is committed. Run it in a clean environment, without the parent's `CLAUDE*` and `ANTHROPIC_*` variables, as the app would start the CLI.
 
 For the v12 benchmark, additionally set `VOXCLIP_LIVE_TESTS=1` to check that a three-clip run includes a story or showreel.
+
+The v13 `threeRecordingLiveEvaluation` is a separate opt-in test (`VOXCLIP_LIVE_TESTS=1`). It sends only the moments stage, using the synthetic three-recording fixture and a Claude Code plan sign-in without API-key overrides. It checks the first returned clip for the solo punchline, a single recording per part, and no repeated beat before the validator can trim duplicates.
 
 Planner v2 evaluation (Claude Code 2.1.318, Opus, plan sign-in, three prompt rounds on the 5:48 test clip; prompt v5 kept): the series took 103 s (moments 22 s, four clip plans of 37–71 s, three at once) against 236–338 s for version 1. All four clips finished at 21–34 s; it corrected both misheard product names inside the picks, each citing the right spelling from the names line; the captions were four different styles; one look for the whole series (warm); speed 1.1 on slow delivery. A single clip took 39 s for a 42 s span and 78 s for an 83 s span. A round that told stage 1 never to pad to 20 s made it pick wider spans (clips 36–50 s), so it was reverted.
 

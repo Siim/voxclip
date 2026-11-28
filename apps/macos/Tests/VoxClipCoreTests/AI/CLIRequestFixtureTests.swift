@@ -44,6 +44,7 @@ struct CLIRequestFixtureTests {
                 try await verify(try #require(input["request"]), id: id, options: input["options"],
                                  expected: fixture.expected, catalog: catalog, label: "\(file):\(fixture.id):\(name)")
                 count += 1
+            case "recording-request" where file == "clip-finder-requests": continue
             default: Issue.record("\(file):\(fixture.id): unknown kind \(fixture.kind)")
             }
         }

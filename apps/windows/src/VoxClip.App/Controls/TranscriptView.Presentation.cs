@@ -100,7 +100,9 @@ public sealed partial class TranscriptView
         var gutter = (Grid)grid.Children[0];
         Canvas.SetZIndex(gutter, 1);
         var timecode = (TextBlock)gutter.Children[0];
-        timecode.Text = FormatTakeTime(model.Words[item.StartIndex].Start) + (item.Speaker is null ? "" : "\n" + item.Speaker);
+        var offset = model.HasSeveralRecordings && model.RecordingOf(item.StartIndex) is { } recording
+            ? (double)recording.OffsetSamples / model.RecordingClock!.SampleRate : 0;
+        timecode.Text = FormatTakeTime(model.Words[item.StartIndex].Start - offset) + (item.Speaker is null ? "" : "\n" + item.Speaker);
         timecode.FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"];
         timecode.Foreground = Brush("VcGutterTextBrush");
         var glyphs = (Canvas)gutter.Children[1];
@@ -125,6 +127,12 @@ public sealed partial class TranscriptView
         if (ReferenceEquals(inlineEditor, editor)) CloseInlineEditor(false);
         ClearEditorHost(editor);
         rich.Blocks.Clear();
+        if (item.RecordingHeading is { } heading)
+        {
+            var section = new Paragraph { Margin = new(0, 0, 0, 6) };
+            section.Inlines.Add(new Run { Text = heading, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            rich.Blocks.Add(section);
+        }
         var paragraph = new Paragraph();
         var runs = new List<WordRun>();
         var pauses = new List<PauseRun>();
@@ -136,6 +144,13 @@ public sealed partial class TranscriptView
             model.HasSelection ? model.SelectionStart : -1, model.HasSelection ? model.SelectionEnd : -1, parts);
         var actionsAfter = pieces.LastOrDefault(piece => piece.Change?.Ordinal == focusedChange);
         var partLabels = new HashSet<int>();
+        var recordingView = model.TranscriptRecordingView;
+        var recordingLines = recordingView.Kind == RecordingViewKind.PlayOrder ? model.RecordingClipLines
+            .Where(line => line.Alternatives.Count > 0).ToDictionary(line => model.Index(line.FirstId)) : null;
+        var openLine = model.OpenRecordingLine;
+        var openAfter = openLine is null ? -1 : model.Index(openLine.LastId);
+        var soloLines = recordingView is { Kind: RecordingViewKind.Recording, Key: not null } ? model.OtherRecordingLines
+            .Where(run => run.Key == recordingView.Key).ToDictionary(run => model.Index(run.StartWordId)) : null;
         foreach (var piece in pieces)
         {
             if (piece.Part > 0 && parts is not null && parts[piece.Part - 1].First >= item.StartIndex && partLabels.Add(piece.Part))
@@ -144,7 +159,7 @@ public sealed partial class TranscriptView
                     Margin = new(3, 0, 4, 0), Foreground = Brush("VcTextPrimaryBrush") };
                 AutomationProperties.SetName(label, $"Part {piece.Part}");
                 paragraph.Inlines.Add(new InlineUIContainer { Child = new Border { Child = label, BorderThickness = new(1),
-                    CornerRadius = new(4), BorderBrush = StoryPartStyle.Brush(this, piece.Part), Margin = new(0, 0, 4, 0) } });
+                    CornerRadius = new(4), BorderBrush = PartBrush(parts[piece.Part - 1]), Margin = new(0, 0, 4, 0) } });
             }
             Inline inline;
             if (piece.Kind == TranscriptPieceKind.Fold)
@@ -177,7 +192,24 @@ public sealed partial class TranscriptView
                     if (pausesByIndex.TryGetValue(piece.Last, out var pause)) pauses.Add(new(pause, run, run));
                 }
             }
+            if (piece.Kind == TranscriptPieceKind.Source)
+            {
+                if (recordingLines?.GetValueOrDefault(piece.First) is { } line) AddRecordingLineMarker(paragraph, line);
+                if (soloLines?.GetValueOrDefault(piece.First) is { } solo)
+                {
+                    paragraph.Inlines.Add(new LineBreak());
+                    paragraph.Inlines.Add(new InlineUIContainer { Child = RecordingShortcutRow.Solo(model, solo, true,
+                        audition => RecordingAuditionRequested?.Invoke(audition), key => LocateRecordingRequested?.Invoke(key)) });
+                    paragraph.Inlines.Add(new LineBreak());
+                }
+            }
             paragraph.Inlines.Add(inline);
+            if (piece.Kind == TranscriptPieceKind.Source && openLine is not null && piece.First <= openAfter && piece.Last >= openAfter)
+            {
+                paragraph.Inlines.Add(new LineBreak());
+                paragraph.Inlines.Add(new InlineUIContainer { Child = RecordingVersionFold(openLine, rich.ActualWidth) });
+                paragraph.Inlines.Add(new LineBreak());
+            }
             if (piece.Kind == TranscriptPieceKind.Fold) paragraph.Inlines.Add(new Run { Text = "\u200b" });
             displays.Add(new(inline, piece));
             if (ReferenceEquals(piece, actionsAfter) && piece.Change is { } focused)
@@ -232,7 +264,7 @@ public sealed partial class TranscriptView
         {
             foreach (var group in visual.Display.Where(display => display.Piece.Part > 0).GroupBy(display => display.Piece.Part))
             {
-                var color = StoryPartStyle.Brush(this, group.Key).Color;
+                var color = PartBrush(model.ClipParts[group.Key - 1]).Color;
                 foreach (var rect in group.SelectMany(display => visual.Overlay.Rectangles(display.Inline))) visual.Overlay.PartBand(rect, color);
             }
         }
@@ -359,4 +391,7 @@ public sealed partial class TranscriptView
         var total = Math.Max(0, (int)Math.Floor(seconds));
         return total >= 3600 ? $"{total / 3600}:{total / 60 % 60:00}:{total % 60:00}" : $"{total / 60}:{total % 60:00}";
     }
+
+    private SolidColorBrush PartBrush(ClipPartRow part) => model?.StoryRecordingRegions.Count > 1 && part.Recording is { } region
+        ? RecordingStyle.Brush(this, region, part.RecordingShade) : StoryPartStyle.Brush(this, part.Number);
 }

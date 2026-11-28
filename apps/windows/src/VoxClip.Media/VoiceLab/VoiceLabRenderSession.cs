@@ -1,6 +1,5 @@
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
-using VoxClip.Media.Ffmpeg;
 
 namespace VoxClip.Media.VoiceLab;
 
@@ -101,16 +100,4 @@ internal static class VoiceLabTempo
 
     // The permanent nonunity refusal (voice-lab.md §10.5). It stays until a later ADR adopts a micro-stretch (§8.9.5).
     internal static void RefuseNonunityFit() => throw new VoiceLabTempoException();
-}
-
-internal sealed class NativeVoiceLabSource(AudioDecoder decoder) : IVoiceLabSource
-{
-    private long next = -1;
-    public void Read(long startSample, Span<float> stereo, CancellationToken ct)
-    {
-        if (next != startSample) decoder.Seek(startSample);
-        var frames = stereo.Length / 2;
-        decoder.Read(stereo, frames, ct);
-        next = startSample + frames;
-    }
 }

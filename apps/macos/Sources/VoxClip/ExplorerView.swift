@@ -174,7 +174,11 @@ import VoxClipCore
             let outline = shell.outlineEntries
             Section {
                 if shell.explorerExpanded(.outline) {
-                    ForEach(outline) { entry in
+                    if let heading = editor.storyRecordingHeading {
+                        Text(heading).font(.system(size: 11, weight: .semibold))
+                            .fixedSize(horizontal: false, vertical: true).selectionDisabled()
+                    }
+                    ForEach(editor.activeClip == nil && editor.hasSeveralRecordings ? [] : outline) { entry in
                         Group {
                             if entry.partID != nil {
                                 StoryOutlineRow(shell: shell, editor: editor, entry: entry)
@@ -182,8 +186,18 @@ import VoxClipCore
                                 ExplorerOutlineRow(entry: entry, selectedFocused: shell.selection == .outline(entry.id) && listFocused)
                             }
                         }.tag(SidebarItem.outline(entry.id)).id(SidebarItem.outline(entry.id))
+                        if editor.hasSeveralRecordings, let part = editor.activeClip?.parts?.first(where: { $0.id == entry.partID }) {
+                            RecordingPartVersions(editor: editor, part: part).selectionDisabled()
+                        }
                     }
-                    if editor.activeClip != nil { StoryOutlineAdd(editor: editor).selectionDisabled() }
+                    if editor.activeClip != nil {
+                        if editor.hasSeveralRecordings { OtherRecordingLines(editor: editor).selectionDisabled() }
+                        StoryOutlineAdd(editor: editor).selectionDisabled()
+                    }
+                    else {
+                        if editor.hasSeveralRecordings { RecordingStartOutline(editor: editor).selectionDisabled() }
+                        AddRecordingMenu(editor: editor).selectionDisabled()
+                    }
                 }
             } header: { ExplorerHeader(shell: shell, section: .outline, count: outline.count) }
             .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.outline.accessibilityLabel(count: outline.count))
@@ -487,14 +501,19 @@ import VoxClipCore
 
 @MainActor extension EditorModel {
     func suggestedCardDetails(_ clip: ClipRange) -> (badge: String, summary: String, parts: [ProposalStripPart], reason: String, missing: String?)? {
-        guard let found = foundSuggestion(clip), let ranges = clip.playPartIndices(in: words) else { return nil }
-        let parts = ProposalStripPart.from(ranges.map { .init(startWord: $0.lowerBound, endWord: $0.upperBound) }, words: words)
+        guard let found = foundSuggestion(clip) else { return nil }
+        guard let ranges = clip.playPartIndices(in: words) else { return nil }
+        let proposalParts = zip(ranges, clip.playParts).map { range, part in
+            let reason = part.takeReason ?? found.parts?.first { $0.startWordId == part.startWordId && $0.endWordId == part.endWordId }?.takeReason
+            return ClipProposal.Part(startWord: range.lowerBound, endWord: range.upperBound, takeReason: reason)
+        }
+        let parts = ProposalStripPart.from(proposalParts, words: words, clock: recordingClock)
         let kind: ClipProposal.NewClip.Kind = parts.count == 1 ? .stretch : clip.kind == .showreel ? .showreel : .story
         let score = suggestionScore(clip) ?? found.score
         let locations = parts.count > 1 ? "in your order, from \(parts.count) places in the take" : parts.first.map { "\(durationLabel($0.start))–\(durationLabel($0.start + $0.duration))" }
         let summary = [durationLabel(editedDuration(clip)), "\(score)/10", locations].compactMap { $0 }.joined(separator: " · ")
         let missing = found.notInTake.flatMap { $0.isEmpty ? nil : "Not in this take: \($0)" }
-        return (kind.cardLabel(parts: parts.count), summary, parts.count > 1 ? parts : [], found.reason, missing)
+        return (kind.cardLabel(parts: parts.count), summary, parts.count > 1 || parts.contains { $0.takeReason != nil } ? parts : [], found.reason, missing)
     }
 }
 

@@ -305,6 +305,24 @@ import VoxClipCore
     #if DEBUG
     var settingsWindowForTests: NSWindow? { settingsWindow }
     #endif
+    private func recordingLineForMenu() -> (EditorModel, RecordingClipLine)? {
+        guard let editor = keyEditor,
+              let line = Self.recordingLine(for: editor, responder: NSApp.keyWindow?.firstResponder) else { return nil }
+        return (editor, line)
+    }
+
+    static func recordingLine(for editor: EditorModel, responder: NSResponder?) -> RecordingClipLine? {
+        if let transcript = responder as? TranscriptNSTextView, let line = transcript.recordingLineAtCaret {
+            return line
+        }
+        if TimelineItemShortcut.focusedCanvas(responder) != nil,
+           let line = editor.recordingClipLines.first(where: { line in
+               guard !line.alternatives.isEmpty, let first = editor.index(line.start), let last = editor.index(line.end) else { return false }
+               return editor.words[first].start <= editor.sourceTime && editor.sourceTime <= editor.words[last].end
+           }) { return line }
+        return nil
+    }
+
     @objc private func performEditorCommand(_ item: NSMenuItem) {
         if let shortcut = TimelineItemShortcut(menuTag: item.tag) {
             TimelineItemShortcut.focusedCanvas(NSApp.keyWindow?.firstResponder)?.interaction.handleItemShortcut(shortcut)
@@ -312,6 +330,12 @@ import VoxClipCore
         }
         let shell = model.shell
         switch item.tag {
+        case 97:
+            if let (editor, line) = recordingLineForMenu() { editor.showRecordingLineVersions(line) }
+            return
+        case 90...96:
+            if validateMenuItem(item) { keyEditor?.chooseRecordingShortcut(item.tag - 90) }
+            return
         case 13: shell.selection = .home; return
         case 14: if shell.document != nil { shell.selection = .fullTake }; return
         case 16: shell.toggleSidebar(); return
@@ -468,6 +492,8 @@ import VoxClipCore
                 item.toolTip = editor?.storyRewriteReason(for: editor?.rewriteScopeNow)
             }
             switch item.tag {
+            case 97: return recordingLineForMenu() != nil
+            case 90...96: return keyEditor.map { $0.hasSeveralRecordings && item.tag - 90 <= $0.recordingRegions.count } ?? false
             case 13: return mainWindowIsKey
             case 14: return mainWindowIsKey && model.shell.document != nil
             case 16:
@@ -657,6 +683,13 @@ import VoxClipCore
         command(view, "Search or Run a Command…", 61, "k")
         command(view, "Home", 13, "1")
         command(view, "Full Take", 14, "2")
+        let recordingItem = NSMenuItem(title: "Transcript Recording", action: nil, keyEquivalent: "")
+        let recordingMenu = NSMenu(title: recordingItem.title)
+        for number in 0...6 {
+            command(recordingMenu, number == 0 ? "All Recordings" : "Recording \(number)", 90 + number, String(number), [.command, .option])
+        }
+        recordingItem.submenu = recordingMenu
+        view.addItem(recordingItem)
         command(view, "Hide Sidebar", 16, "s", [.command, .control])
         command(view, "Hide Timeline", 56, "j")
         let frame = NSMenuItem(title: "Frame", action: nil, keyEquivalent: "")
@@ -680,6 +713,7 @@ import VoxClipCore
         command(playback, "Back 3 Seconds", 46, "j", [])
         command(playback, "Forward 3 Seconds", 47)
         let clip = menu("Clip")
+        command(clip, "Show Other Versions of This Line", 97, "y", [.command, .option])
         command(clip, "Make Clip from Selection", 29, "k", [.command, .option])
         command(clip, "Find Clips…", 34, "k", [.command, .shift])
         command(clip, "Make It Postable", 62)

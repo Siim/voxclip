@@ -300,6 +300,8 @@ public sealed partial class EditorViewModel : ObservableObject
         if (isLeaving || state is null || state.ActiveClipId == clipId || clipId is not null && !state.Clips.Any(clip => clip.Id == clipId)) return false;
         CaptionDrag.Cancel();
         selectedPartId = null;
+        recordingView = null;
+        partPickKey = null;
         state = state with { ActiveClipId = clipId };
         project = project with { Edits = project.Edits with { ActiveClipId = clipId } };
         IsScopeChange = true;
@@ -511,7 +513,15 @@ public sealed partial class EditorViewModel : ObservableObject
             () => $"Clip {Number(id)} made.") ? id : null;
     }
     /// <summary>Keep a suggestion: it becomes the next numbered clip.</summary>
-    public bool Keep(string id) => Announce(ApplyBatch([new EditOperation.SetClipSelected(id, true)]), () => $"Clip {Number(id)} kept.");
+    public bool Keep(string id)
+    {
+        if (HasSeveralRecordings && state is { } current && current.Clips.Any(clip => clip.Id == id && !clip.Selected))
+        {
+            var next = reduce(current, new EditOperation.SetClipSelected(id, true));
+            return Announce(next != current && ReplaceProject(EditingEngine.ApplyToProject(project, next), "Keep clip"), () => $"Clip {Number(id)} kept.");
+        }
+        return Announce(ApplyBatch([new EditOperation.SetClipSelected(id, true)]), () => $"Clip {Number(id)} kept.");
+    }
     /// <summary>A row's Rewrite or Export (design §3.4): a suggestion is kept first, as one undo step with no prompt, so the
     /// action opens on it exactly as on a kept clip. True when the clip is kept now; false for an unknown clip or a
     /// suggestion this project cannot keep.</summary>
@@ -799,7 +809,7 @@ public sealed partial class EditorViewModel : ObservableObject
     }
     public bool CanPreviewCut => HasSelection && CanExport;
     internal TimeRange? PreviewCutRange() => CanPreviewCut
-        ? new TimeRange(Math.Max(0, Words[SelectionStart].Start - 2), Math.Min(project.Media.Source.DurationSeconds, Words[SelectionEnd].End + 2)) : null;
+        ? new TimeRange(ClampProjectTime(Words[SelectionStart].Start - 2), ClampProjectTime(Words[SelectionEnd].End + 2)) : null;
     /// <summary>Playhead and paragraph times as <c>m:ss.d</c>, or <c>h:mm:ss.d</c> past an hour; design §4.1 (C4).</summary>
     public static string Timecode(double seconds)
     {
@@ -858,21 +868,12 @@ public sealed partial class EditorViewModel : ObservableObject
     private void Refresh()
     {
         RefreshClipParts();
-        Paragraphs.Clear();
+        RefreshTranscriptParagraphs();
         Clips.Clear();
         if (state is not null)
         {
             try { Summary = summarize(state); }
             catch (VoxClipException exception) { Notice = UiError.Message(exception, "Editing"); Summary = new(0, state.CutWordIds.Count, state.Pauses.Count, state.CutPauseIds.Count, false, false, false, true); }
-            var start = 0;
-            foreach (var range in TranscriptParagraphs.Split(Words))
-            {
-                var end = range.End.Value;
-                // Keep the existing presentation rule: a hidden next word cannot start a row.
-                if (end < Words.Count && !PresentedWord(end).Visible) continue;
-                Paragraphs.Add(new(start, end - start, Timecode(Words[start].Start), Words[start].Speaker));
-                start = end;
-            }
             var source = project.Media.Source;
             var sampleRate = source.Audio?.SampleRate is > 0 ? source.Audio.SampleRate : 48000;
             double EditedLength(EditState scoped) => EditingEngine.BuildPlan(scoped, source.DurationSeconds, sampleRate).Duration;
@@ -906,7 +907,7 @@ public sealed partial class EditorViewModel : ObservableObject
     }
 }
 
-public sealed record TranscriptParagraph(int StartIndex, int Count, string Timecode, string? Speaker);
+public sealed record TranscriptParagraph(int StartIndex, int Count, string Timecode, string? Speaker, string? RecordingHeading = null);
 
 /// <summary>What the export ledger knows about a clip; the ledger arrives with the export dialog's redesign (round 2).</summary>
 public enum ClipExportState { None, Exported, ChangedSinceExport, Exporting, Failed }

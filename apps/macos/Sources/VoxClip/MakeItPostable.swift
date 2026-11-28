@@ -148,7 +148,7 @@ enum MakeItInverse {
     /// The clip's opening lead-in before "Opens on a clear look at you" (ADR-R48).
     case leadIn(clipID: String, previous: Double?)
     /// The clip's crop before "9:16 follows your face".
-    case reframe(clipID: String, previous: ReframeSettings?)
+    case reframe(clipID: String, previous: ReframeSettings?, parts: [ClipPicture.Crop.Part] = [])
     /// The clip's cover before "Cover frame chosen".
     case cover(clipID: String, previous: Double?, previousTitle: String?)
 }
@@ -205,6 +205,8 @@ struct MakeItRow: Identifiable, Equatable {
     /// The cap plus every amount Continue approved.
     private(set) var approved: Decimal
     private(set) var spent: Decimal = 0
+    private(set) var plannerSpent: Decimal = 0
+    private var plannerReserved: Decimal = 0
     /// What the waiting step needs beyond what is left, in whole cents; nil while nothing waits.
     private(set) var needed: Decimal?
     @ObservationIgnored private var waiting: CheckedContinuation<Bool, Never>?
@@ -216,6 +218,17 @@ struct MakeItRow: Identifiable, Equatable {
     /// A $0 cap means no paid voice or music at all: fixes are cuts and wording only, and nothing asks for more.
     var paidAllowed: Bool { cap > 0 }
     func charge(_ usd: Decimal) { spent += usd }
+
+    func reservePlanner(_ estimate: Decimal) -> Bool {
+        guard estimate > 0, plannerSpent + plannerReserved + estimate <= cap else { return false }
+        plannerReserved += estimate
+        return true
+    }
+
+    func finishPlanner(reserved estimate: Decimal, charged: Decimal) {
+        plannerReserved -= estimate
+        plannerSpent += charged
+    }
 
     /// Waits at the cap for the creator: true once Continue approved `shortfall` (rounded up to the cent), false after Stop.
     func ask(_ shortfall: Decimal) async -> Bool {
@@ -1340,8 +1353,10 @@ extension EditorModel {
             guard let next = ClipPicture.settingLeadIn(previous, clipID: clipID, in: project) else { return false }
             if next != project { replace(next, name: name) }
             return true
-        case .reframe(let clipID, let previous):
-            guard let next = ClipPicture.settingControls(clipID, in: project, { $0.reframe = previous }) else { return false }
+        case .reframe(let clipID, let previous, let parts):
+            let restored = parts.isEmpty ? ClipPicture.settingControls(clipID, in: project, { $0.reframe = previous }) :
+                ClipPicture.restorePartCrops(parts, clipID: clipID, in: project)
+            guard let next = restored else { return false }
             if next != project { replace(next, name: name) }
             return true
         case .cover(let clipID, let previous, let previousTitle):

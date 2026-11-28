@@ -28,7 +28,7 @@ def one_of(*keys):
     return {"oneOf": [requires(key) for key in keys]}
 
 
-def timeline_commands(index):
+def timeline_commands(index, use_recording):
     number = {"type": "number"}
     seconds = {**number, "minimum": 0}
     count = {"type": "integer", "minimum": -2147483648, "maximum": 2147483647}
@@ -37,7 +37,10 @@ def timeline_commands(index):
     split = {"items": {**selection["items"], "minItems": 0}}
     def command(op, fields, optional=None):
         return obj({"op": {"const": op}, **fields, **(optional or {})}, ["op", *fields])
-    variants = [command("trim", {**single, "edge": {"enum": ["start", "end"]}, "toWord": index}),
+    content_key = {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+    variants = [command(use_recording["properties"]["op"]["const"], {"key": content_key},
+                        {"transcriptRevision": {**content_key, "readOnly": True}}),
+                command("trim", {**single, "edge": {"enum": ["start", "end"]}, "toWord": index}),
                 command("splitAll", {"atWord": index}),
                 command("fade", {**single, "edge": {"enum": ["in", "out"]}, "seconds": seconds}),
                 command("setGain", {**single, "db": number}),
@@ -54,7 +57,7 @@ def timeline_commands(index):
                      command("nudge", {**selected, "frames": count}), command("nudge", {**selected, "words": count}),
                      command("split", {**(split if selected == selection else single), "atWord": index}),
                      command("duplicate", selected, {"toWord": index}), command("delete", selected)]
-    return array({"oneOf": variants}, 30)
+    return {**array({"oneOf": variants}, 30), "contains": use_recording, "minContains": 0, "maxContains": 1}
 
 
 def music_shape(index):
@@ -107,7 +110,8 @@ def main():
             "else": {"properties": {"parts": {"minItems": 2}}}}}
 
     write("clip-proposal", "VoxClip canonical clip proposal", {
-        **obj({"target": target, "reason": reason, **edits}, ["target", "reason"]),
+        **obj({"target": target, "reason": reason, **edits, "parts": array(obj({**span, "takeReason": text(160)}, span), 12)},
+              ["target", "reason"]),
         "anyOf": [requires(key) for key in edits],
         "allOf": [parts_for_new({"properties": {"target": requires("new")}}, "target")],
     })
@@ -115,14 +119,15 @@ def main():
     legacy_edits = {key: edits[key] for key in ("cuts", "captionStyle", "title", "effects")} | legacy_music
     legacy = {**obj({"clipId": clip_id, "reason": reason, **legacy_edits}, ["clipId", "reason"]),
               "anyOf": [requires(key) for key in legacy_edits], "not": requires(*legacy_music)}
-    harness_edits = {**edits, "edits": timeline_commands(index), "effects": {**edits["effects"], "description": (
+    use_recording = {"properties": {"op": {"const": "useRecording"}}}
+    harness_edits = {**edits, "edits": timeline_commands(index, use_recording), "effects": {**edits["effects"], "description": (
         "Use any clip-plan entry. Footage references a sourceKey from read_clips. "
         "Asset requests are reviewed in VoxClip; this tool never sends or spends.")}}
     write("harness-timeline", "VoxClip harness timeline v2", {
         **obj({"clipId": clip_id, "newClip": new_clip, "reason": reason, **harness_edits, **legacy_music}, ["reason"]),
         **one_of("clipId", "newClip"), "anyOf": [requires(key) for key in harness_edits | legacy_music],
         "allOf": [parts_for_new(requires("newClip"), "newClip"),
-                  {"if": requires("edits"), "then": requires("clipId")},
+                  {"if": requires("newClip", "edits"), "then": {"properties": {"edits": {"items": use_recording}}}},
                   {"not": {"anyOf": [requires(first, second) for first, second in (
                       ("music", "musicTrackId"), ("music", "generateMusic"), ("musicTrackId", "generateMusic"))]}}],
     })

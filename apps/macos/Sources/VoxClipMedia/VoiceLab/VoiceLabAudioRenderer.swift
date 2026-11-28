@@ -208,13 +208,11 @@ enum VoiceLabAudioRenderer {
         let operation = try VoiceLabAssetRecovery.Operation.create(in: scratchRoot)
         let scratch = scratchRoot.appendingPathComponent(operation.name, isDirectory: true)
         do {
-            let sourceURL = scratch.appendingPathComponent("source.caf")
             let mixedURL = scratch.appendingPathComponent("mixed.caf")
             let fitURLs = Dictionary(uniqueKeysWithValues: input.prepared.selectedSegmentRecipes.map {
                 ($0.segmentId, scratch.appendingPathComponent("fit-\($0.segmentId).caf"))
             })
-            let sourceFrames = try await stageSource(request.sourceURL, to: sourceURL, rate: plan.sampleRate,
-                                                     totalFrames: plan.totalSourceSamples)
+            let sources = try await stageRecordings(request, plan: plan, in: scratch)
             var remainingFit = estimate.fitFrames
             let items = input.prepared.selectedSegmentRecipes
             for (index, item) in items.enumerated() {
@@ -235,7 +233,7 @@ enum VoiceLabAudioRenderer {
                 try reserveDisk(scratch, frames: plan.outputSamples + remainingFit)
             }
             try mix(plan: plan, selected: input.prepared.selectedSegmentRecipes, prepared: Set(prepared.keys),
-                    sourceURL: sourceURL, sourceFrames: sourceFrames, fitURLs: fitURLs, to: mixedURL)
+                    sources: sources, fitURLs: fitURLs, to: mixedURL)
             try Task.checkCancellation()
             return VoiceLabRenderLease(mixedAudioURL: mixedURL, scratch: operation, preparedAssets: prepared)
         } catch {
@@ -297,7 +295,49 @@ enum VoiceLabAudioRenderer {
         return result
     }
 
-    private static func stageSource(_ source: URL, to url: URL, rate: Double, totalFrames: Int64,
+    private struct StagedSource {
+        let audio: AVAudioFile
+        let frames: Int64
+        let offset: Int64
+        let duration: Int64
+
+        init(url: URL, frames: Int64, offset: Int64 = 0, duration: Int64) throws {
+            audio = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
+            self.frames = frames
+            self.offset = offset
+            self.duration = duration
+        }
+    }
+
+    private static func stageRecordings(_ request: RenderRequest, plan: VoiceLabOutputPlan, in scratch: URL,
+                                        isolation: isolated (any Actor)? = #isolation) async throws -> [StagedSource] {
+        if request.recordings.isEmpty {
+            let url = scratch.appendingPathComponent("source.caf")
+            let frames = try await stageSource(request.sourceURL, to: url, rate: plan.sampleRate, totalFrames: plan.totalSourceSamples)
+            let source = try StagedSource(url: url, frames: frames, duration: plan.totalSourceSamples)
+            return Array(repeating: source, count: plan.pieces.count)
+        }
+        guard request.spanSources.count == plan.pieces.count else { throw VoiceLabAssetError.invalidSelection("recording spans") }
+        var staged: [String: StagedSource] = [:]
+        for (index, recording) in request.recordings.enumerated() {
+            let region = recording.region
+            let duration = Int64(region.durationSamples)
+            let url = scratch.appendingPathComponent("source-\(index).caf")
+            let frames = try await stageSource(recording.url, to: url, rate: plan.sampleRate, totalFrames: duration,
+                                               gain: Float(pow(10, region.gainDb / 20)))
+            staged[recording.key] = try StagedSource(url: url, frames: frames, offset: Int64(region.offsetSamples), duration: duration)
+        }
+        return try zip(plan.pieces, request.spanSources).map { piece, key in
+            guard let source = staged[key], piece.sourceStartSample >= source.offset,
+                  piece.sourceEndSample <= source.offset + source.duration,
+                  piece.kind == .source || source.offset == 0 else {
+                throw VoiceLabAssetError.invalidSelection("recording span")
+            }
+            return source
+        }
+    }
+
+    private static func stageSource(_ source: URL, to url: URL, rate: Double, totalFrames: Int64, gain: Float = 1,
                                     isolation: isolated (any Actor)? = #isolation) async throws -> Int64 {
         let reader = try AVAssetReader(asset: AVURLAsset(url: source))
         reader.timeRange = CMTimeRange(start: .zero, duration: CMTime(value: totalFrames, timescale: Int32(rate)))
@@ -332,6 +372,10 @@ enum VoiceLabAudioRenderer {
                         let bytes = frames * 2 * MemoryLayout<Float>.size
                         guard CMBlockBufferCopyDataBytes(data, atOffset: offset * 8, dataLength: bytes, destination: destination) == noErr else {
                             throw VoxClipError.decodeFailed("Cannot read source PCM")
+                        }
+                        if gain != 1 {
+                            let values = destination.assumingMemoryBound(to: Float.self)
+                            for sample in 0..<(frames * 2) { values[sample] *= gain }
                         }
                         buffer.frameLength = AVAudioFrameCount(frames)
                         try file.write(from: buffer)
@@ -503,10 +547,16 @@ enum VoiceLabAudioRenderer {
     static func mix(plan: VoiceLabOutputPlan, selected: [VoiceLabSelectedRecipe],
                     prepared: Set<String>, sourceURL: URL, sourceFrames: Int64,
                     fitURLs: [String: URL], to url: URL) throws {
+        let source = try StagedSource(url: sourceURL, frames: sourceFrames, duration: plan.totalSourceSamples)
+        try mix(plan: plan, selected: selected, prepared: prepared, sources: Array(repeating: source, count: plan.pieces.count),
+                fitURLs: fitURLs, to: url)
+    }
+
+    private static func mix(plan: VoiceLabOutputPlan, selected: [VoiceLabSelectedRecipe], prepared: Set<String>,
+                            sources: [StagedSource], fitURLs: [String: URL], to url: URL) throws {
         guard let pcm = AVAudioFormat(standardFormatWithSampleRate: plan.sampleRate, channels: 2) else {
             throw VoxClipError.decodeFailed("Cannot configure mixed audio")
         }
-        let source = try AVAudioFile(forReading: sourceURL, commonFormat: .pcmFormatFloat32, interleaved: false)
         let recipes = Dictionary(uniqueKeysWithValues: selected.map { ($0.segmentId, $0.recipe) })
         let output = try AVAudioFile(forWriting: url, settings: pcm.settings, commonFormat: .pcmFormatFloat32, interleaved: false)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: pcm, frameCapacity: AVAudioFrameCount(block)),
@@ -515,29 +565,32 @@ enum VoiceLabAudioRenderer {
         defer { scratch.deallocate() }
         for (index, piece) in plan.pieces.enumerated() {
             try Task.checkCancellation()
-            let windows = try [index > 0 ? makeSeam(left: plan.pieces[index - 1], right: piece, plan: plan,
-                                                    source: source, sourceFrames: sourceFrames, fitURLs: fitURLs, recipes: recipes) : nil,
-                               index + 1 < plan.pieces.count ? makeSeam(left: piece, right: plan.pieces[index + 1], plan: plan,
-                                                                          source: source, sourceFrames: sourceFrames, fitURLs: fitURLs, recipes: recipes) : nil].compactMap { $0 }
+            let source = sources[index]
+            let sameBefore = index > 0 && sources[index - 1].offset == source.offset
+            let sameAfter = index + 1 < plan.pieces.count && sources[index + 1].offset == source.offset
+            let windows = try [sameBefore ? makeSeam(left: plan.pieces[index - 1], right: piece, plan: plan,
+                                                     source: source.audio, sourceFrames: source.frames, fitURLs: fitURLs, recipes: recipes) : nil,
+                               sameAfter ? makeSeam(left: piece, right: plan.pieces[index + 1], plan: plan,
+                                                    source: source.audio, sourceFrames: source.frames, fitURLs: fitURLs, recipes: recipes) : nil].compactMap { $0 }
             let length = piece.outputEndSample - piece.outputStartSample
             let audio: AVAudioFile
             let offset: Int64
             var voiced: VoicedGain?
             if piece.kind == .source {
-                guard piece.sourceEndSample <= sourceFrames else { throw VoxClipError.decodeFailed("Source audio ends before selected range") }
-                audio = source; offset = piece.sourceStartSample
+                guard piece.sourceEndSample - source.offset <= source.frames else { throw VoxClipError.decodeFailed("Source audio ends before selected range") }
+                audio = source.audio; offset = piece.sourceStartSample - source.offset
             } else {
                 guard let id = piece.segmentId, let url = fitURLs[id], let recipe = recipes[id], prepared.contains(id) else {
                     throw VoiceLabAssetError.invalidSelection(piece.segmentId ?? "segment")
                 }
                 audio = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
                 offset = recipe.seams.in.fadeSamples / 2
-                voiced = try VoicedGain(recipe: recipe, source: source, rate: plan.sampleRate)
+                voiced = try VoicedGain(recipe: recipe, source: source.audio, rate: plan.sampleRate)
             }
             let fades = piece.kind == .source ? SourceFades(length: length, rate: plan.sampleRate,
-                fadeIn: !(index > 0 && plan.pieces[index - 1].kind == .synth) && piece.sourceStartSample > 0,
-                fadeOut: !(index + 1 < plan.pieces.count && plan.pieces[index + 1].kind == .synth) &&
-                    piece.sourceEndSample < plan.totalSourceSamples) : nil
+                fadeIn: !(sameBefore && plan.pieces[index - 1].kind == .synth) && piece.sourceStartSample > source.offset,
+                fadeOut: !(sameAfter && plan.pieces[index + 1].kind == .synth) &&
+                    piece.sourceEndSample < source.offset + source.duration) : nil
             var position: Int64 = 0
             while position < length {
                 try Task.checkCancellation()

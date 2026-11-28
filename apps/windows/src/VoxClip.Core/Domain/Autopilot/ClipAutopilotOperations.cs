@@ -125,10 +125,11 @@ public static partial class ClipAutopilotMapping
             if (previousRanges is not null)
                 for (var partIndex = 0; partIndex < previousRanges.Count; partIndex++)
                     if (previousRanges[partIndex] is var bound && bound.Start <= range.StartWord && range.EndWord <= bound.End)
-                        return previous[partIndex] with { StartWordId = start, EndWordId = end };
+                        return previous[partIndex] with { StartWordId = start, EndWordId = end, TakeReason = plan is null ? previous[partIndex].TakeReason : range.TakeReason };
             var id = "proposal-part-" + (index + 1).ToString(CultureInfo.InvariantCulture);
             while (previous.Any(part => part.Id == id)) id += "-new";
-            return previous.FirstOrDefault(part => part.StartWordId == start && part.EndWordId == end) ?? new ClipPart(id, start, end);
+            var exact = previous.FirstOrDefault(part => part.StartWordId == start && part.EndWordId == end);
+            return exact is not null ? exact with { TakeReason = plan is null ? exact.TakeReason : range.TakeReason } : new ClipPart(id, start, end, TakeReason: plan is null ? null : range.TakeReason);
         }).ToArray() ?? previous;
         if (parts.Count is < 1 or > 12 || StoryClips.Indices(parts.Select(part => (part.StartWordId, part.EndWordId)), words) is not { } ranges ||
             proposal.Target.New is { } create && (create.Kind == "stretch") != (parts.Count == 1))

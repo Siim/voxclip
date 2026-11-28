@@ -22,6 +22,7 @@ The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 10. Project file semantics
 11. Conformance
 12. Deferred and out of scope
+13. Take matching across recordings
 
 ---
 
@@ -160,6 +161,10 @@ Preview and `voxclip-cli export --clip` on both platforms use the same part orde
 
 Schema v5 carries story clips and their AI suggestion metadata (`parts` as word ranges, and `notInTake` of at most 200 characters). Without a story clip, writers keep the legacy suggestion fields and do not write v5. Removing the last story clip returns the document to v4. Legacy documents do not upgrade merely by loading and saving.
 
+With [spoken recordings](../adr/R54-spoken-recordings-on-one-project-clock.md), each part (or an ordinary clip) must use words from one recording. A story's hull can span several recordings; it is still not a playback range. Part IDs and framing stay with their slot when **Use version** replaces its words, and an optional `takeReason` (up to 160 characters, v7 only) records why a version was chosen. A part edit that would stop paid voice work selects and announces a copy, for example **Clip 1 copy**, without altering the original.
+
+Add, move, remove and trim a part are named Undo steps. Adding inserts after the requested part, or appends; moving with no preceding part places it first. **Add recording** promotes a known companion. **Remove recording** refuses while a part, cut, correction, suggestion or anchored item still uses the region. It leaves the companion and its file alone. Removing the last spoken companion returns the project to v6 and clears comparison reasons, not parts.
+
 ### 2.6 EditSegment (planner input)
 
 ```text
@@ -196,6 +201,18 @@ EditPlan {
 The macOS canonical initializer takes `sampleRate`, `totalSamples`, `cuts` and `kept`; output samples and joins are derived from the kept intervals. The legacy initializer with explicit derived values is deprecated and asserts their agreement in DEBUG builds. Decoding still normalizes stale derived fields from kept intervals without changing the wire format.
 
 On Windows, construction, record copies and decoding silently normalize supplied output samples and joins from the kept intervals, sample rate and source bounds in both Debug and Release. Supplied derived fields never override those values, regardless of initializer order.
+
+`ProjectClock` is the source side of this mapping for a project with spoken companions. It joins the immutable local transcripts in clock order on the primary sample grid and exposes the regions, guard gaps and clock end for planning. Companion IDs are qualified (`r2.w1`); the primary transcript and all its IDs stay exact. `resolve`/`sourceTime` map a clock sample to a recording key and a local sample on the primary grid, and `mapTime` is the inverse inside that region. Region ends are exclusive and a guard gap resolves to no recording. The edit state uses the joined words and does not make pauses between recordings. The planner and renderer consume the clock separately from the file format.
+
+On Windows, timeline seeks, transport jumps and Preview This Cut use the project-clock end, not the primary file's end. Ctrl+Shift+Y from the timeline uses the playhead, even when the transcript is showing one recording, and opens the line's other versions in Play Order.
+
+A paid Voice Lab patch in the primary recording can play alongside source speech from a companion. On Windows, snapshot validation checks the primary file's own duration separately from the project-clock length of the edit plan.
+
+For a multi-recording project, `totalSamples` is the clock end. The edit and Voice Lab planners plan each recording in its own time on the primary grid, then add its offset to each kept span. A full take keeps regions in clock order; a story keeps its parts in play order. The complement of those spans includes every guard gap. Kept spans stay in project-clock samples so other edit layers still use one axis; a media caller resolves each span's start through `ProjectClock` to get the recording key and local sample.
+
+`TimelinePieces.isRecordingSeam(at:)` (`IsRecordingSeam` on Windows) identifies a change of recording between consecutive pieces in playback order. It also works on a full take with no part seams. The first caption after either kind of seam starts a new page. Fades are unchanged except that a recording's own start and end count as source edges, so a span touching one has no fade on that side.
+
+`shared/fixtures/recordings/plan-cases.json` uses `five-part-a1-b1-b2-a2-b3` as the reference for the recording shortcut vectors; it records the ordered word ranges and the local kept samples for each part. `tools/fixtures/recordings/generate.py` derives these from the existing single-recording oracle.
 
 ### 2.8 CaptionWord
 
@@ -636,6 +653,10 @@ On either plan, source-to-edited lookup uses a source-sorted index carrying each
 
 The Windows story render test compares framing at the opening and each part seam on the fixture's 30 fps output grid. It checks the center of each frame at its own resolution, both before encoding and in decoded MP4 output.
 
+On Mac, preview and export use the same plan and resolve each kept span to its recording and local sample. Each recording keeps its own picture orientation and framing. The filmstrip, waveform and frame analysis read each recording's cache; cover choices and reframe observations stay on the project clock. An unresolved or changed recording stops the render: “0010 is missing. Locate it to use its words.”
+
+The Mac measures integrated loudness over spoken words when adding a recording. It stores the difference from the primary, rounded to 0.1 dB and limited to ±12 dB. The composition decodes each kept audio span to a common 48 kHz stereo grid before applying the gain, music and ducking; the final social loudness pass does not change. Final Cut Pro XML references a separate asset per used recording and starts each span at that recording's local time. The export check compares each recording seam's picture with every recording's frame under the same crop and pan and zoom, and warns when the adjacent speech differs by more than 3 LU.
+
 ### 7.1 buildSegments
 
 ```text
@@ -655,6 +676,8 @@ buildSegments(state, activeClip?):        // activeClip = resolved indices or no
 ```
 
 Words outside the clip are cut only inside this function. Pauses cut for the full take stay in force inside a clip, so a clip never contains audio that the full take cuts. For example, a cut pause right after the clip's last word shortens the clip's 0.25 s tail to the pause breath. VoxConvo behaves the same way.
+
+With spoken companions, each part or ordinary clip must stay in one region (otherwise: “A part comes from one recording.”). Only words and pauses from that region take part in its edge calculations. Lead-in, tail padding, cut reach and `pauseKeepSeconds` cannot enter a guard gap; the gap after the region's last word is a source tail, not a pause. Single-recording projects keep the original planning path and sample counts.
 
 ### 7.2 clipTimes (reference `clips.ts:32-40`)
 
@@ -892,7 +915,7 @@ On Windows, steps 1 and 2 probe a candidate only if it has one of two forms, che
 ### 10.4 Loading and validation
 
 - Schema-pattern checks have no wall-clock deadline: a valid project must not fail to open because the machine is busy. Windows uses non-backtracking regexes with an explicit infinite match timeout on both raw and model validation paths, preserving the schema's accepted patterns. Untyped load failures become `projectUnreadable`; cancellation and existing typed project and Voice Lab errors keep their meaning.
-- `format` must be `voxclip-project`. A file with a higher `schemaVersion` MUST NOT be edited ("made with a newer VoxClip"). Older versions are migrated in memory and written as the current version.
+- `format` must be `voxclip-project`. A file with a higher `schemaVersion` MUST NOT be edited ("made with a newer VoxClip"). Writers preserve the version unless the features in the project require another one. V7 is used only with `media.spokenSources`.
 - The file must decode strictly into the typed project model, and the transcript invariants (2.2) must hold. Otherwise it is rejected as damaged (`projectUnreadable`). Strict decoding is the runtime form of schema validation (architecture 2.1): unknown keys are rejected except under `extensions`, required keys must be present (explicit `null` included), and the schema's enum, pattern, range and uniqueness rules are checked in code. No JSON Schema engine runs in the apps; the test suites validate every file the apps write with a real JSON Schema 2020-12 validator.
 - References are then checked against the transcript and the derived pauses. Unknown ids in `cutWordIds`, `cutPauseIds` or `corrections` are dropped. So are clips with an unknown word id or with start after end, corrections on non-`word` items, corrections equal to the transcribed text, an `activeClipId` that names no clip (set to null), `aiResultId` values that resolve to nothing (set to null together with `aiClipIndex`), and `share.captions` entries whose key is neither `full` nor an existing clip id. Each drop is reported in the open log, and the cleaned state is what the next save writes.
 - `media.source.durationSeconds` and `audio.sampleRate` feed `buildEditPlan`. A null `audio` means rate 48000.
@@ -990,3 +1013,58 @@ Timeline vectors pin legacy and synthetic render pieces, zero-length filtering, 
 - **Recording (M2).** Live pause chips use 1.0 s on raw times. After recording, the import pipeline runs on the recorded file.
 - **Voice Lab (M3).** Version 2 stores reversible source-preserving replacements; version 3 adds explicit render recipes and request-bound Core preparation (Voice Lab §10.5). Core plans `source`/`synth` output pieces without changing the subtractive plan or source word times. Actual Media composition, insertion mapping, lip-sync rendering and disclosure outputs remain later work.
 - **Caption gap filling and paging** are owned by the captions spec, which consumes `captionCopy`.
+
+## 13. Take matching across recordings
+
+`TakeMatch` takes an ordered list of `(key, words)` pairs. The first recording is primary. Word lists are in their recording's transcript order and use local timings. Recording keys and word IDs are opaque; a word range always belongs to its named recording. This is a pure comparison: it calls no service, changes no transcript and ranks no take.
+
+### 13.1 Sentences and beats
+
+- Use the clip transcript line breaks: `.!?。！？` at the end of an item (ignoring trailing `"'”’)`), at least **1.2 s** before the next item, **41 items**, or the end of the list.
+- For comparison, use §4.7 normalization after NFC, and omit events, unlabeled speech, §4.11 fillers and empty normalized tokens. Keep the original item positions for word IDs.
+- Two nonempty token lists match when their length ratio is in **0.5…2**, inclusive, and the longest common subsequence (LCS) covers at least **0.6** of the shorter list. Visit recording pairs in input order. For each sentence of the earlier recording, take the first eligible sentence at or after the pair's cursor; a match advances the cursor past that sentence. A beat may have only one take per recording, and all its pairs must match. Do not group takes if that would reverse any recording's order.
+- Every sentence appears once, including unmatched sentences as solo beats. Preserve the primary's order and place intervening beats before their next matched neighbour, or after their preceding neighbour when there is no next one. Break otherwise unconstrained ordering by input recording order, then sentence order. Number the resulting beats `beat1`, `beat2`, …; within a beat, takes are in recording order.
+
+### 13.2 Aligned spans
+
+Each ordered pair of takes in a beat has a span into the destination take. Trace the same LCS used for matching; when advancing either side would preserve the same LCS length, advance the destination. Start at the beginning of the destination take, or immediately after the last clause break before its first aligned word. End with the first clause break at or after the last aligned word, or at the end of the take if there is none. Clause breaks are `,，、-–—.。` at the end of an item, ignoring the same closing punctuation as for lines.
+
+`changedWordIds` lists unaligned items inside that inclusive range, in destination order. An isolated final match still anchors the span but is marked as changed when it ends one take's lexical tokens and the other take continues in the same clause, with at least **2** unaligned lexical tokens on both sides between it and the previous match. Thus “kind of for time” versus “that supports time tracking,” keeps the new clause through “tracking,” and underlines all four replacement words, without pulling in the following clause.
+
+### 13.3 Flags, solo runs and delivery signals
+
+- `restart`: a sentence with **1–8** speech items (words and unlabeled speech) where fillers plus repeated normalized lexical words beyond their first occurrence make up **more than half**, or which contains a listed phrase as contiguous lexical tokens. Check all phrase lists because the input contains no language metadata.
+- `falseStart`: at least one lexical token, followed within **10 s** (end to start) by a sentence in the same recording whose first *N* lexical tokens cover at least **0.6** of the first sentence by LCS, where *N* is the first sentence's lexical token count.
+- `cutOff`: the take contains the first or last item in its recording. Without media duration, this is an edge signal, not proof that audio was cut. Emit flags in the order above.
+
+Restart phrases (shown normalized):
+
+| Language | Phrases |
+|---|---|
+| English | `sorry where was i`; `let me start again`; `one more time` |
+| Estonian | `vabandust kus ma olin`; `alustan uuesti`; `üks kord veel` |
+| German | `sorry wo war ich`; `ich fange noch mal an`; `noch einmal` |
+
+Return solo runs in recording and transcript order. A run contains consecutive unmatched sentences without `restart` or `falseStart`; either flag breaks the run. Its `afterBeatId` and `beforeBeatId`, when present, name the nearest multi-take beats in that same recording on either side. `cutOff` by itself does not exclude a run.
+
+For every take, report the §4.11 filler count (including unlabeled speech), longest nonnegative gap in seconds between speech items, and restart count. Count one restart for each run of **2 or more** equal consecutive lexical tokens where each adjacent pair spans at most **3 s** from the first token's start to the second's end. Words per minute counts transcribed word items, including verbal fillers, over the take's full span (zero for a zero-duration take). Mean ASR confidence averages only known confidences of transcribed word items and is absent if none are known. Report the same `cutOff` boolean as in the flags.
+
+Both Cores replay `shared/fixtures/recordings/take-match-cases.json`. Regenerate it with `python3 tools/fixtures/recordings/generate_takes.py`.
+
+### 13.5 Recording shortcuts
+
+Build `TakeMatch` from the project clock in region order. Each region contributes its own words, with the clock's word IDs and local timings. **Start from recording** keeps the whole recording except takes flagged `restart` or `falseStart`, which split the kept runs into parts. It selects the new clip in the same edit and reports the new part IDs and omitted takes. The title uses the first seven kept words, as in Make Clip. Show omitted lines in recording order beside their nearest kept parts, including before the first kept part. **Put Back** restores each line in place in one undo step.
+
+**Use version** replaces only the current take's range with the aligned span for the chosen recording. When there is a split, the first slice keeps the original ID; the later slices get new IDs. All slices inherit the part's reframe. **Add part** inserts a range after a word in the clip (splitting that part when needed), or appends if no word is supplied. Put Back uses Add part. `placement` returns the end of the preceding beat's version in the clip, or no word when the beat is absent.
+
+The Windows Outline shows left-out lines next to their nearest kept parts, including consecutive lines before the first part. **Put Back** restores one line at a time in recording order; each restore is one **Add part** undo step. **Add a recording** and Harness **Keep** save the measured level with the recording in the same edit. Cancelling Add during the measurement leaves the project unchanged. **Don't match level** in the recording chip menu restores the original level for preview and export and can be undone.
+
+After an edit, a touched part joins a neighbour when both have the same reframe mode and their word ranges are consecutive in one recording. The earlier part keeps its ID. The edit reports any split and the IDs in each join. Word and time anchors stay unchanged, so an item can disappear with its words and reappear when the words return.
+
+A shortcut returns one named Undo step containing the exact before and after project snapshots; a no-op creates no step.
+
+On Mac, **Play in Place** and **Play There** audition a temporary edit without changing the saved clip. The timeline's **Show Other Versions of This Line** command uses the playhead even when a recording chip is selected, then reveals the fold in play order.
+
+A shortcut that would stop paid lip-sync or a whole-clip revoice from playing selects a copy instead. The original clip and voice data stay intact. A copy plays source speech where a part no longer includes the whole paid lip-sync window.
+
+Regenerate `shared/fixtures/recordings/command-cases.json` with `python3 tools/fixtures/recordings/generate_commands.py`. Its expected five-part ranges and sample plan come from `plan-cases.json`.

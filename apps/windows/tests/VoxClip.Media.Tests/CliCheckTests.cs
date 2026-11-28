@@ -73,6 +73,18 @@ public sealed class CliCheckTests : IDisposable
     }
 
     [Fact]
+    public void RecordingSeamMatchesTheSharedCheckShape()
+    {
+        var input = new ExportCheckInput([], null, null, null, 1d / 30, null, new(320, 180))
+        {
+            Recordings = [new(new(1.25, "0007", "0010"), true, null, null)],
+        };
+        var check = CliCheck.Json(new(ExportCheck.Run(input), 0, 0, 0, null, null));
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(FixtureLoader.ReadText("fixtures/cli/check-seam.json")), check["sync"]));
+        Assert.False(check.ContainsKey("recordingSeams"));
+    }
+
+    [Fact]
     public async Task APassingCheckIsTheMacsJsonAndExitsZero()
     {
         var (check, exit, edit) = await CheckAsync(Export(), null, "--clip", "fq-clip-1", "--aspect", "9:16");

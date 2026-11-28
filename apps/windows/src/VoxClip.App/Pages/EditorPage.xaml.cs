@@ -53,6 +53,7 @@ public sealed partial class EditorPage : Page
     private PendingProjectSave projectWrites = null!;
     private Task pendingWaveform = Task.CompletedTask;
     private CancellationTokenSource? waveformRequest;
+    private ProjectMedia? waveformMedia;
     private ProjectLeaveBoundary leave = null!;
     /// <summary>This editor's lease on its project's cache entry, from opening to closing (architecture §8.2).</summary>
     private OpenProjectCacheLease? cacheLease;
@@ -104,6 +105,7 @@ public sealed partial class EditorPage : Page
         ViewModel = new(project);
         preview = new PreviewEngine();
 #endif
+        ViewModel.SetOtherRecordingLinesExpanded(!demo && App.Services.Get(OtherRecordingLinesSetting, false));
         ViewModel.SetMediaUnavailable(!demo && mediaPath is null);
         // Eviction never strips or removes the entry of a project open in any window, and opening it marks it used.
         if (!demo) { cacheLease = new(App.Services.Cache); cacheLease.Hold(project.Media.Source.ContentKey); }
@@ -127,6 +129,10 @@ public sealed partial class EditorPage : Page
         pauseBreath = App.Services.Get("editing.pauseBreath", "natural");
         App.Services.SettingsChanged += EditorSettingsChanged;
         Transcript.Attach(ViewModel);
+        Transcript.RecordingAuditionRequested = PlayRecordingAudition;
+        Transcript.StopRecordingAuditionRequested = StopRecordingAudition;
+        Transcript.LocateRecordingRequested = LocateRecording;
+        Transcript.TranscribingRecordingLabel = () => TranscribingRecordingLabel;
         Transcript.RewriteRequested += (_, _) => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite");
         Timeline.Attach(ViewModel);
         CaptionDrag.Attach(ViewModel);
@@ -134,7 +140,11 @@ public sealed partial class EditorPage : Page
         Transcript.MakeClipRequested += (_, _) => MakeClipAndReveal();
         Transcript.PlayRequested += (_, _) => _ = RunAsync(PlayFromHereAsync, "Preview");
         Transcript.PreviewCutRequested += (_, _) => _ = RunAsync(PreviewCutAsync, "Preview");
-        Timeline.SeekRequested += (_, time) => _ = RunAsync(() => SeekSourceAsync(time), "Preview");
+        Timeline.SeekRequested += (_, time) =>
+        {
+            RevealRecordingAt(time);
+            _ = RunAsync(() => SeekSourceAsync(time), "Preview");
+        };
         Timeline.PlayRequested += (_, _) => _ = RunAsync(TogglePlaybackAsync, "Preview");
         Timeline.OpenMusicRequested += (_, _) =>
         {
@@ -145,8 +155,13 @@ public sealed partial class EditorPage : Page
         {
             if (args.PropertyName == nameof(EditorViewModel.CanExport)) UpdateExport();
             if (args.PropertyName == nameof(EditorViewModel.IsReadOnly)) { UpdateAiTag(); SizeStage(); }
+            if (args.PropertyName == nameof(EditorViewModel.Project) && waveformMedia is not null && waveformMedia != ViewModel.Project.Media)
+                RequestWaveform();
             if (args.PropertyName is nameof(EditorViewModel.Busy) or nameof(EditorViewModel.CanFindClips)) UpdateFindClips();
+            if (args.PropertyName is nameof(EditorViewModel.TranscriptRecordingView) or nameof(EditorViewModel.Busy)) RefreshSelectorBar();
         };
+        ViewModel.IsRecordingMissing = source => !File.Exists(RecordingPath(source));
+        RefreshSelectorBar();
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
         UpdateFindClips();
         Bindings.Update();
@@ -239,18 +254,42 @@ public sealed partial class EditorPage : Page
     private void RequestWaveform()
     {
         waveformRequest?.Cancel();
+        waveformMedia = ViewModel.Project.Media;
+        Timeline.SetRecordingMedia(null);
         Timeline.SetWaveform([]);
         if (disposed || demo || ViewModel.IsReadOnly || media is not { Audio: not null } source) return;
         var request = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         waveformRequest = request;
-        pendingWaveform = LoadWaveformAsync(source, ViewModel.Project.Media.Source.ContentKey, request, pendingWaveform);
+        pendingWaveform = LoadWaveformAsync(source, ViewModel.Project, request, pendingWaveform);
     }
-    private async Task LoadWaveformAsync(MediaInfo source, string contentKey, CancellationTokenSource request, Task previous)
+    private async Task LoadWaveformAsync(MediaInfo source, Project project, CancellationTokenSource request, Task previous)
     {
         try
         {
             await previous;
-            var levels = await App.Services.Waveform.GetAsync(source, contentKey, request.Token);
+            IReadOnlyList<float> levels;
+            if (project.Media.SpokenSources is not { Count: > 0 })
+                levels = await App.Services.Waveform.GetAsync(source, project.Media.Source.ContentKey, request.Token);
+            else
+            {
+                var clock = ProjectClock.Build(project);
+                var paths = await RecordingRendering.AvailableAsync(project, App.Services.Projects, owner.ProjectPath ?? source.Path, request.Token);
+                if (!disposed && !request.IsCancellationRequested && ReferenceEquals(waveformRequest, request)) Timeline.SetRecordingMedia(paths);
+                const double bucketSeconds = .05;
+                var samples = new float[checked((int)Math.Ceiling(clock.TotalSamples / (clock.SampleRate * bucketSeconds)))];
+                foreach (var region in clock.Regions)
+                {
+                    if (!paths.TryGetValue(region.Key, out var reference) || reference.Audio is null) continue;
+                    var recording = reference.AbsolutePath == source.Path ? source : await new FfmpegMediaProbe().ProbeAsync(reference.AbsolutePath, request.Token);
+                    var localLevels = await App.Services.Waveform.GetAsync(recording, region.Key, request.Token);
+                    var offset = (int)Math.Round(region.OffsetSamples / (clock.SampleRate * bucketSeconds));
+                    var localCount = (int)Math.Ceiling(region.DurationSamples / (clock.SampleRate * bucketSeconds));
+                    var gain = (float)Math.Pow(10, region.GainDb / 20);
+                    for (var index = 0; index < Math.Min(Math.Min(localCount, localLevels.Count), samples.Length - offset); index++)
+                        samples[offset + index] = localLevels[index] * gain;
+                }
+                levels = samples;
+            }
             if (!disposed && !request.IsCancellationRequested && ReferenceEquals(waveformRequest, request)) Timeline.SetWaveform(levels);
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested) { }
@@ -298,6 +337,7 @@ public sealed partial class EditorPage : Page
                 state.Transcript.Language, voice?.Prepared.OutputPlan.Duration ?? plan.Duration), new HarfBuzzGlyphShaper(), null, ct);
         var snapshot = new ComposeSnapshot(source, plan, captions, output) { VoiceLab = voice, Clip = clip };
         snapshot = voice?.CaptureSnapshot(snapshot) ?? snapshot;
+        snapshot = await RecordingRendering.BindAsync(project, snapshot, App.Services.Projects, owner.ProjectPath ?? source.Path, ct);
         // Screen recordings placed over this scope replace the picture there, upright (doc/spec/context-demo.md, design §6.9).
         return snapshot with
         {
@@ -330,7 +370,10 @@ public sealed partial class EditorPage : Page
         CaptionDrag.Position(position.EditedTime);
         captions?.UpdatePosition(position.EditedTime, sourceTime);
         if (previewStop is { } stop && (stop.OnEditedAxis ? position.EditedTime : sourceTime) >= stop.Time && preview is not null)
-        { previewStop = null; _ = RunAsync(() => SourceTransportAsync(token => preview.PauseAsync(token)), "Preview"); }
+        {
+            previewStop = null;
+            _ = RunAsync(auditioningRecording ? StopRecordingAuditionAsync : () => SourceTransportAsync(token => preview.PauseAsync(token)), "Preview");
+        }
         if (changed) Transcript.RefreshVisuals();
     }
     private void PlaybackFaulted(object? sender, Exception exception)
@@ -372,6 +415,7 @@ public sealed partial class EditorPage : Page
     /// <summary>Make clip needs words selected (design §6.2).</summary>
     private void SelectionChanged(object? sender, EventArgs args)
     {
+        RefreshRecordingSelection();
         MakeClipCommand.IsEnabled = ViewModel.HasSelection && !ViewModel.IsReadOnly && !ViewModel.Busy && !ViewModel.IsLeaving;
         PreviewCutCommand.IsEnabled = ViewModel.CanPreviewCut;
         UpdateRewriteCommand();
@@ -380,7 +424,8 @@ public sealed partial class EditorPage : Page
     }
     private void UpdateRewriteCommand()
     {
-        AutomationProperties.SetHelpText(RewriteCommand, ViewModel.IsStoryClip ? EditorViewModel.StoryRewriteReason : "");
+        var recordingReason = ViewModel.RecordingVoiceReason();
+        AutomationProperties.SetHelpText(RewriteCommand, recordingReason ?? (ViewModel.IsStoryClip ? EditorViewModel.StoryRewriteReason : ""));
         if (shellInitialized && shellJobs is not null)
         {
             RewriteCommand.Visibility = Visibility.Visible;
@@ -388,7 +433,7 @@ public sealed partial class EditorPage : Page
             return;
         }
         RewriteCommand.Visibility = Visibility.Visible;
-        RewriteCommand.IsEnabled = ShellEditable && ViewModel.HasTranscript && !ViewModel.IsStoryClip;
+        RewriteCommand.IsEnabled = ShellEditable && ViewModel.HasTranscript && !ViewModel.IsStoryClip && recordingReason is null;
     }
     private async Task RenderUnavailableCaptionsAsync()
     {
@@ -420,6 +465,7 @@ public sealed partial class EditorPage : Page
     private void ModelChanged(object? sender, EventArgs args)
     {
         if (!ready || disposed) return;
+        RefreshSelectorBar();
         UpdateExport();
         SizeStage();
         UpdateAiTag();
@@ -576,6 +622,7 @@ public sealed partial class EditorPage : Page
     }
     private async Task SeekSourceAsync(double source)
     {
+        await StopRecordingAuditionAsync();
         // Every seek is a transport action, which ends an open correction first (design §4.2).
         await playback.EndCorrectionAsync(ViewModel);
         previewStop = null;
@@ -589,7 +636,7 @@ public sealed partial class EditorPage : Page
     private async Task SeekSourceCoreAsync(double source, CancellationToken token)
     {
         var snapshot = await SnapshotAsync(token);
-        if (preview is not null && !ViewModel.IsReadOnly) await preview.SeekAsync(snapshot.Timeline.MapTime(source), true, token);
+        if (preview is not null && !ViewModel.IsReadOnly) await preview.SeekAsync(snapshot.Timeline.MapTime(ViewModel.ClampProjectTime(source)), true, token);
     }
     private async Task RunAsync(Func<Task> action, string label)
     {
@@ -627,7 +674,7 @@ public sealed partial class EditorPage : Page
     }
     private async Task OpenRewriteAsync(bool insertion, string? instruction = null, WholeClipIntent? wholeClipIntent = null)
     {
-        if (insertion || ViewModel.IsStoryClip ||
+        if (insertion || ViewModel.IsStoryClip || ViewModel.RecordingVoiceReason(wholeScope: wholeClipIntent is not null) is not null ||
             ViewModel.IsReadOnly || ViewModel.Busy || ViewModel.IsLeaving || rightContent is null ||
 !ViewModel.HasTranscript) return;
         if (wholeClipIntent is { } existingIntent && rewrite is { IsOpen: true } existing && rewritePanel is { } existingPanel &&
@@ -948,10 +995,11 @@ public sealed partial class EditorPage : Page
     private async void PlayClicked(object sender, RoutedEventArgs args) => await RunAsync(TogglePlaybackAsync, "Preview");
     private async void BackClicked(object sender, RoutedEventArgs args) => await RunAsync(() => SeekSourceAsync(Math.Max(0, ViewModel.SourceTime - 3)), "Preview");
     private async void ForwardClicked(object sender, RoutedEventArgs args) =>
-        await RunAsync(() => SeekSourceAsync(Math.Min(ViewModel.Project.Media.Source.DurationSeconds, ViewModel.SourceTime + 3)), "Preview");
+        await RunAsync(() => SeekSourceAsync(ViewModel.SourceTime + 3), "Preview");
     private async Task TogglePlaybackAsync()
     {
         previewStop = null;
+        if (auditioningRecording) { await StopRecordingAuditionAsync(); return; }
         var pause = await playback.PausesAsync(ViewModel, () => preview?.Position.IsPlaying == true);
         await SourceTransportAsync(async token =>
         {
@@ -1050,21 +1098,35 @@ public sealed partial class EditorPage : Page
         action();
         return true;
     }
+    private bool TimelineHasFocus => InputState.DescendsFrom(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject, TimelineHost);
+
     private void InstallAccelerators()
     {
         void Add(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
         {
             var accelerator = new KeyboardAccelerator { Key = key, Modifiers = modifiers, ScopeOwner = EditorRoot };
+            var gesture = ShortcutPolicy.Gesture(key.ToString(), modifiers.HasFlag(VirtualKeyModifiers.Control),
+                modifiers.HasFlag(VirtualKeyModifiers.Shift), modifiers.HasFlag(VirtualKeyModifiers.Menu));
             accelerator.Invoked += (_, args) =>
             {
-                if (!ShortcutPolicy.EditorMayHandle(InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), Transcript.CorrectionOpen, InputState.Down(VirtualKey.Control), InputState.Down(VirtualKey.Menu), true)) return;
+                var textFocus = InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot));
+                if (gesture == ShortcutPolicy.RecordingVersionsGesture)
+                {
+                    if (ShortcutPolicy.OpensRecordingVersions(key.ToString(), InputState.Down(VirtualKey.Control),
+                            InputState.Down(VirtualKey.Shift), InputState.Down(VirtualKey.Menu), textFocus, Transcript.CorrectionOpen))
+                        args.Handled = Transcript.ShowOtherRecordingVersions(TimelineHasFocus);
+                    return;
+                }
+                var unboundAlt = InputState.Down(VirtualKey.Menu) && !ShortcutPolicy.RecordingGestures.Contains(gesture);
+                if (!ShortcutPolicy.EditorMayHandle(textFocus, Transcript.CorrectionOpen, InputState.Down(VirtualKey.Control), unboundAlt, true)) return;
                 action(); args.Handled = true;
             };
             EditorRoot.KeyboardAccelerators.Add(accelerator);
-            shortcuts[ShortcutPolicy.Gesture(key.ToString(), modifiers.HasFlag(VirtualKeyModifiers.Control), modifiers.HasFlag(VirtualKeyModifiers.Shift))] = action;
+            shortcuts[gesture] = action;
         }
         Add(VirtualKey.Z, VirtualKeyModifiers.Control, ViewModel.Undo);
         Add(VirtualKey.Y, VirtualKeyModifiers.Control, ViewModel.Redo);
+        Add(VirtualKey.Y, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => Transcript.ShowOtherRecordingVersions(TimelineHasFocus));
         Add(VirtualKey.Z, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, ViewModel.Redo);
         // Ctrl+R on a word selection with an empty field rewrites it in the default tone at once (design §6.3.1).
         Add(VirtualKey.R, VirtualKeyModifiers.Control, () =>
@@ -1083,6 +1145,12 @@ public sealed partial class EditorPage : Page
         Add((VirtualKey)187, VirtualKeyModifiers.Control, () => ZoomFocusedEditor(1));
         Add((VirtualKey)189, VirtualKeyModifiers.Control, () => ZoomFocusedEditor(-1));
         Add(VirtualKey.Number0, VirtualKeyModifiers.Control, () => Transcript.Zoom(0, true));
+        for (var number = 0; number <= 6; number++)
+        {
+            var recording = number;
+            Add((VirtualKey)((int)VirtualKey.Number0 + number), VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu,
+                () => { if (ViewModel.ChooseRecordingShortcut(recording)) RevealRecordingStart(); });
+        }
         Add(VirtualKey.Left, VirtualKeyModifiers.Control, () => { ViewModel.MoveSentence(-1); Transcript.SelectionMovedByKeyboard(); _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); });
         Add(VirtualKey.Right, VirtualKeyModifiers.Control, () => { ViewModel.MoveSentence(1); Transcript.SelectionMovedByKeyboard(); _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); });
         Add(VirtualKey.Home, VirtualKeyModifiers.Control, () => { ViewModel.Select(0); Transcript.SelectionMovedByKeyboard(); });
@@ -1100,6 +1168,11 @@ public sealed partial class EditorPage : Page
     private async void EditorKeyDown(object sender, KeyRoutedEventArgs args)
     {
         if (!ready || args.Handled || args.Key == VirtualKey.F6) return;
+        if (ViewModel.PartPickRecording is not null && !InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)))
+        {
+            if (args.Key == VirtualKey.Escape && !CaptionDrag.IsDragging && ViewModel.FinishPartPick()) { args.Handled = true; return; }
+            if (args.Key == VirtualKey.Enter && ViewModel.AddSelectionAsPart()) { args.Handled = true; return; }
+        }
         if (args.Key == VirtualKey.Escape && CaptionDrag.IsDragging) { CaptionDrag.Cancel(); args.Handled = true; return; }
         var focused = FocusManager.GetFocusedElement(XamlRoot);
         var editorFocus = InputState.DescendsFrom(focused as DependencyObject, Transcript) || InputState.DescendsFrom(focused as DependencyObject, PreviewPane) || InputState.DescendsFrom(focused as DependencyObject, Timeline);

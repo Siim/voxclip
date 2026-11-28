@@ -234,7 +234,7 @@ struct TimelineClock {
     init(_ project: Project, plan: EditPlan, scope: String?) {
         self.plan = plan; self.scope = scope
         let clip = project.edits.clips.first { $0.id == scope }
-        let words = project.transcript?.words ?? []
+        let words = ProjectClock.build(project).words
         self.clip = clip; self.words = words
         cutWordIDs = Set(project.edits.cutWordIds)
         let rate = plan.sampleRate

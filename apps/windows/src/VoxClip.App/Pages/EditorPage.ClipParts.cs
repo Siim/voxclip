@@ -5,6 +5,83 @@ namespace VoxClip.App.Pages;
 
 public sealed partial class EditorPage
 {
+    private bool auditioningRecording;
+
+    internal void PlayRecordingAudition(ViewModels.RecordingAudition audition) => _ = RunAsync(async () =>
+    {
+        if (!ShellEditable || EditingEngine.FromProject(audition.Project) is not { } state) return;
+        var original = ViewModel.Project;
+        var first = ViewModel.Index(audition.FirstId);
+        var last = ViewModel.Index(audition.LastId);
+        if (first < 0 || last < first) return;
+        var sourceStart = ViewModel.Words[first].Start;
+        var sourceEnd = ViewModel.Words[last].End;
+        await playback.EndCorrectionAsync(ViewModel);
+        var snapshot = await SnapshotAsync(lifetime.Token, state, audition.Project);
+        await previewChanges.WaitAsync(lifetime.Token);
+        try
+        {
+            await SourceTransportAsync(async token =>
+            {
+                if (preview is null || !ReferenceEquals(original, ViewModel.Project)) return;
+                var pieces = new TimelinePieces(snapshot.Timeline).Pieces
+                    .Where(piece => piece.Source.Start < sourceEnd && piece.Source.End > sourceStart).ToArray();
+                if (pieces.Length == 0) return;
+                var start = pieces[0].Edited.Start + Math.Max(0, sourceStart - pieces[0].Source.Start);
+                var end = pieces[^1].Edited.End - Math.Max(0, pieces[^1].Source.End - sourceEnd);
+                auditioningRecording = true;
+                await preview.UpdateSnapshotAsync(snapshot, token);
+                presenter?.Attach(snapshot);
+                await preview.SeekAsync(Math.Max(0, start - 1), true, token);
+                previewStop = (Math.Min(snapshot.Timeline.Duration, end + 1), true);
+                await preview.PlayAsync(token);
+            });
+        }
+        finally { previewChanges.Release(); }
+    }, "Preview");
+
+    private void StopRecordingAudition() => _ = RunAsync(StopRecordingAuditionAsync, "Preview");
+
+    internal void PlayRecordingVersion(string id, ViewModels.RecordingVersion version) => _ = RunAsync(async () =>
+    {
+        if (!ShellEditable || ViewModel.ClipParts.FirstOrDefault(part => part.Id == id) is not { } part ||
+            ViewModel.RecordingVersionPreview(id, version) is not { } candidate || EditingEngine.FromProject(candidate) is not { } state) return;
+        await playback.EndCorrectionAsync(ViewModel);
+        var original = ViewModel.Project;
+        var snapshot = await SnapshotAsync(lifetime.Token, state, candidate);
+        await previewChanges.WaitAsync(lifetime.Token);
+        try
+        {
+            await SourceTransportAsync(async token =>
+            {
+                if (preview is null || !ReferenceEquals(original, ViewModel.Project)) return;
+                var seams = new TimelinePieces(snapshot.Timeline).Pieces.Select((piece, index) => (piece, index)).ToArray();
+                var pieces = new TimelinePieces(snapshot.Timeline);
+                var boundaries = seams.Where(entry => pieces.IsPartSeam(entry.index)).Select(entry => entry.piece.Edited.Start)
+                    .Prepend(0).Append(snapshot.Timeline.Duration).ToArray();
+                var index = part.Number - 1;
+                if (index + 1 >= boundaries.Length) return;
+                var start = index == 0 ? 0 : Math.Max(boundaries[index - 1], boundaries[index] - 1);
+                auditioningRecording = true;
+                await preview.UpdateSnapshotAsync(snapshot, token);
+                presenter?.Attach(snapshot);
+                await preview.SeekAsync(start, true, token);
+                previewStop = (Math.Min(snapshot.Timeline.Duration, boundaries[index + 1] + 1), true);
+                await preview.PlayAsync(token);
+            });
+        }
+        finally { previewChanges.Release(); }
+    }, "Preview");
+
+    private async Task StopRecordingAuditionAsync()
+    {
+        if (!auditioningRecording) return;
+        auditioningRecording = false;
+        previewStop = null;
+        await SourceTransportAsync(token => preview?.PauseAsync(token) ?? Task.CompletedTask);
+        await UpdatePreviewAsync();
+    }
+
     internal void PlayStoryPart(string id) => _ = RunAsync(async () =>
     {
         if (!ShellEditable || !ViewModel.IsStoryClip || !ViewModel.SelectPart(id) || ViewModel.SelectedPart is not { } part) return;

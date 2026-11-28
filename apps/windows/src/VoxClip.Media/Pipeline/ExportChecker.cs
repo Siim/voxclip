@@ -89,7 +89,7 @@ public sealed class ExportChecker
         var wav = Path.Combine(scratch, "export-check-" + Guid.NewGuid().ToString("N") + "-16k.wav");
         try
         {
-            var measured = await MediaThread.Run("vc-export-check", () => Measure(file, snapshot.Output, hearing is null ? null : wav, ct), ct).ConfigureAwait(false);
+            var measured = await MediaThread.Run("vc-export-check", () => Measure(file, snapshot, edit, hearing is null ? null : wav, ct), ct).ConfigureAwait(false);
             var measureSeconds = clock.Elapsed.TotalSeconds;
             IReadOnlyList<ExportCheckHeard>? heard = null;
             var skipped = ExportCheck.NoLocalEngine;
@@ -107,6 +107,7 @@ public sealed class ExportChecker
                 ? new ExportCheckLoudness(loudness, meter.IntegratedLufs(), meter.TruePeakDbtp) : null, measured.Frame)
             {
                 HearingSkipped = skipped, Cuts = edit.Cuts, Phrases = edit.Phrases,
+                Recordings = measured.Recordings,
                 Boxes = [.. ExportCheckExpectation.CaptionBoxes(snapshot.Captions, snapshot.Output.Size, snapshot.Speed), .. TitleBoxes(snapshot, sharedRoot)],
             };
             return new(ExportCheck.Run(input), measureSeconds, hearSeconds, clock.Elapsed.TotalSeconds,
@@ -137,22 +138,26 @@ public sealed class ExportChecker
     }
 
     private sealed record Measured(ExportCheckTrack? Video, ExportCheckTrack? Audio, double FrameSeconds, PixelSize Frame,
-        SocialLoudnessMeasurement? Loudness, long? HeardSamples);
+        SocialLoudnessMeasurement? Loudness, long? HeardSamples, IReadOnlyList<ExportCheckRecordingMeasurement> Recordings);
 
     /// <summary>The tracks' ranges and the frame from the file; the audio measured by the shared ADR-R47 meter at its own rate and
     /// channels and, with <paramref name="wav"/>, written there as 16 kHz mono PCM for the engine. The audio is read for its known
     /// length under a bounded token: the decoder pads with silence past the end and never returns 0.</summary>
-    private static Measured Measure(IExportFile file, OutputSpec output, string? wav, CancellationToken ct)
+    private static Measured Measure(IExportFile file, ComposeSnapshot snapshot, ExportCheckExpectation.Edit edit, string? wav, CancellationToken ct)
     {
+        var output = snapshot.Output;
         var frameSeconds = file.FrameRate is { } fps && fps > 0 && double.IsFinite(fps) ? 1 / fps : 1 / Math.Max(1, output.FrameRate);
         var frame = file.Frame is { Width: > 0, Height: > 0 } size ? size : output.Size;
-        if (file.Audio is not { } audio) return new(file.Video, null, frameSeconds, frame, null, null);
+        var pictures = RecordingChecks.Pictures(file.PicturePath, snapshot, edit, frameSeconds, ct);
+        if (file.Audio is not { } audio) return new(file.Video, null, frameSeconds, frame, null, null,
+            edit.RecordingSeams.Select((seam, index) => new ExportCheckRecordingMeasurement(seam, pictures[index], null, null)).ToArray());
         var channels = file.Channels;
         if (file.SampleRate <= 0 || channels <= 0) throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "The export's audio has an unsupported format.");
         var total = Math.Max(0, (long)Math.Round((audio.End - audio.Start) * file.SampleRate, MidpointRounding.AwayFromZero));
         using var bounded = CancellationTokenSource.CreateLinkedTokenSource(ct);
         bounded.CancelAfter(TimeSpan.FromSeconds(60 + 2 * (audio.End - audio.Start)));
         var meter = new SocialLoudnessMeter(file.SampleRate, channels);
+        var levels = RecordingChecks.Levels(edit, file.SampleRate, channels, audio.Start);
         var resampler = wav is null ? null : new SincResampler(file.SampleRate, 16_000);
         using var writer = wav is null ? null : new WaveWriter(wav, 16_000, 1, false);
         var block = Math.Max(1, file.SampleRate / 10);
@@ -167,6 +172,11 @@ public sealed class ExportChecker
                 var got = file.Read(samples, frames, bounded.Token);
                 if (got <= 0) throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "The export's audio did not decode.");
                 meter.Append(samples.AsSpan(0, got * channels));
+                foreach (var (before, after) in levels)
+                {
+                    before.Append(read, samples.AsSpan(0, got * channels));
+                    after.Append(read, samples.AsSpan(0, got * channels));
+                }
                 if (resampler is not null)
                 {
                     for (var index = 0; index < got; index++)
@@ -185,7 +195,8 @@ public sealed class ExportChecker
             throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "The export's audio took too long to decode.");
         }
         if (resampler is not null) writer!.Write(resampled.AsSpan(0, resampler.Finish(resampled)));
-        return new(file.Video, audio, frameSeconds, frame, meter.Finish(), writer?.Samples);
+        return new(file.Video, audio, frameSeconds, frame, meter.Finish(), writer?.Samples, edit.RecordingSeams.Select((seam, index) =>
+            new ExportCheckRecordingMeasurement(seam, pictures[index], levels[index].Before.Finish(), levels[index].After.Finish())).ToArray());
     }
 
     /// <summary>The words the local engine hears in the 16 kHz copy, with their times.</summary>
@@ -205,6 +216,8 @@ public sealed class ExportChecker
 /// own rate and channels.</summary>
 internal interface IExportFile : IDisposable
 {
+    /// <summary>The native video input for recording-source checks, when available.</summary>
+    string? PicturePath => null;
     /// <summary>The video track's range, null without one.</summary>
     ExportCheckTrack? Video { get; }
     /// <summary>The audio track's range, null without one.</summary>
@@ -227,11 +240,13 @@ internal sealed unsafe class FfmpegExportFile : IExportFile
 {
     private readonly AudioDecoder? decoder;
 
-    private FfmpegExportFile(ExportCheckTrack? video, ExportCheckTrack? audio, double? frameRate, PixelSize? frame, AudioDecoder? decoder)
+    private FfmpegExportFile(string path, ExportCheckTrack? video, ExportCheckTrack? audio, double? frameRate, PixelSize? frame, AudioDecoder? decoder)
     {
+        PicturePath = video is null ? null : path;
         Video = video; Audio = audio; FrameRate = frameRate; Frame = frame; this.decoder = decoder;
     }
 
+    public string? PicturePath { get; }
     public ExportCheckTrack? Video { get; }
     public ExportCheckTrack? Audio { get; }
     public double? FrameRate { get; }
@@ -274,7 +289,7 @@ internal sealed unsafe class FfmpegExportFile : IExportFile
                     : new PixelSize(parameters->width, parameters->height);
             }
         }
-        return new FfmpegExportFile(video, audio, rate, frame, audio is null ? null : new AudioDecoder(path));
+        return new FfmpegExportFile(path, video, audio, rate, frame, audio is null ? null : new AudioDecoder(path));
     }
 
     public int Read(Span<float> interleaved, int frames, CancellationToken ct) => decoder!.Read(interleaved, frames, ct);

@@ -11,6 +11,7 @@ internal static class VoiceLabCapacity
     // Scoped to the calling async flow so tests can reject at the real preparation boundary.
     internal static readonly AsyncLocal<Func<string, long>?> AvailableBytes = new();
     internal static readonly AsyncLocal<Func<string, string>?> VolumeIdentity = new();
+    private static readonly object MountTable = new();
     internal readonly record struct Allocation(string Path, long Bytes);
 
     internal static long Bytes(long count, long multiplier, long overhead = 0)
@@ -110,7 +111,10 @@ internal static class VoiceLabCapacity
             return identity.ToString();
         }
         var comparison = OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        return DriveInfo.GetDrives().Select(drive => drive.Name).Where(name =>
+        // Off Windows, GetDrives reads getmntinfo's one shared buffer, so concurrent calls can crash the process.
+        string[] mounts;
+        lock (MountTable) mounts = DriveInfo.GetDrives().Select(drive => drive.Name).ToArray();
+        return mounts.Where(name =>
             full.Equals(name.TrimEnd(Path.DirectorySeparatorChar), comparison) ||
             full.StartsWith(name.EndsWith(Path.DirectorySeparatorChar) ? name : name + Path.DirectorySeparatorChar,
                 comparison)).OrderByDescending(name => name.Length).FirstOrDefault()

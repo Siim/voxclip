@@ -73,6 +73,8 @@ struct TranscriptClipMark: Equatable {
     let range: NSRange
     let suggested: Bool
     var partIndex: Int? = nil
+    var recording: ProjectClock.Region? = nil
+    var alternateRecordingShade = false
 }
 
 /// One display paragraph of the take (`TranscriptParagraphs`): where its text starts, its
@@ -109,6 +111,7 @@ struct TranscriptParagraphContent: Equatable {
             case inserted
             /// The blank the focused change's Keep and Undo buttons stand over.
             case spacer
+            case recordingControl
         }
         var kind: Kind
         var id: String
@@ -119,9 +122,12 @@ struct TranscriptParagraphContent: Equatable {
         var change: TranscriptChangeMark?
         /// The buttons a spacer makes room for.
         var actions: [TranscriptChangeAction] = []
+        var recordingControl: RecordingInlineControl?
     }
     var firstWord: Int
     var start: Double
+    var endWord: Int? = nil
+    var recordingHeading: String? = nil
     var pieces: [Piece] = []
     /// The room under the paragraph for the focused change's Rewrite thread (design.md §6.3): added to its paragraph
     /// spacing, so the thread sits in the transcript's flow and the paragraphs after it move down.
@@ -324,6 +330,7 @@ struct TranscriptAppearance: Equatable {
     private(set) var font = DesignValues.transcriptFont(size: DesignValues.transcriptTextSize)
     /// The take's display paragraphs in text order; they never reflow per clip (notes.md §5).
     private(set) var paragraphs: [TranscriptParagraph] = []
+    private var paragraphsByTime: [Int] = []
     /// The paragraph holding the playhead, whose timecode reads in text.secondary.
     private(set) var currentParagraph: Int?
     /// Rebuilds that changed the text storage.
@@ -496,6 +503,7 @@ struct TranscriptAppearance: Equatable {
             defer { offset += block.length + 1 }
             return TranscriptParagraph(offset: offset, firstWord: block.content.firstWord, start: block.content.start)
         }
+        paragraphsByTime = model.hasSeveralRecordings ? paragraphs.indices.sorted { paragraphs[$0].start < paragraphs[$1].start } : []
         // A whole-document write styled every span for `pending`: an `update` to it restyles nothing.
         wholeStyle = whole ? pending : nil
         // Words that became or stopped being AI words outside the replaced paragraphs restyle now.
@@ -510,11 +518,19 @@ struct TranscriptAppearance: Equatable {
         var marks: [String: TranscriptClipMark] = [:]
         var stories: [String: [TranscriptClipMark]] = [:]
         for clip in model.sortedClips {
+            let clock = model.recordingClock
+            let keys = Set(clip.playParts.compactMap { model.hasSeveralRecordings ? clock?.region(of: $0.startWordId)?.key : nil })
+            var prior: ProjectClock.Region?
+            var alternate = false
             let parts = clip.playParts.enumerated().compactMap { position, part -> TranscriptClipMark? in
+                let region = keys.count > 1 ? clock?.region(of: part.startWordId) : nil
+                alternate = region != nil && prior == region && !alternate
+                prior = region
                 guard let first = text.map.span(id: part.startWordId), let last = text.map.span(id: part.endWordId),
                       first.range.location <= last.range.location else { return nil }
                 let range = NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
-                return TranscriptClipMark(range: range, suggested: clip.origin == .ai && !clip.selected, partIndex: clip.parts == nil ? nil : position)
+                return TranscriptClipMark(range: range, suggested: clip.origin == .ai && !clip.selected,
+                    partIndex: clip.parts == nil ? nil : position, recording: region, alternateRecordingShade: alternate)
             }
             if clip.parts != nil { stories[clip.id] = parts }
             else { marks[clip.id] = parts.first }
@@ -584,12 +600,26 @@ struct TranscriptAppearance: Equatable {
         var result: [TranscriptParagraphContent] = []
         result.reserveCapacity(split.count)
         let visible = model.focusesClip ? scopes?.sorted { $0.lowerBound < $1.lowerBound } : nil
-        let paragraphs = split.flatMap { source -> [Range<Int>] in
-            visible?.map { source.clamped(to: Range($0)) }.filter { !$0.isEmpty } ?? [source]
+        let paragraphs: [(Range<Int>, String?)]
+        if let sections = model.recordingTranscriptSections() {
+            let seams = Set(model.scopePartBounds?.flatMap { [$0.lowerBound, $0.upperBound + 1] } ?? []).sorted()
+            paragraphs = sections.flatMap { section in
+                split.lazy.map { $0.clamped(to: section.words) }.filter { !$0.isEmpty }.flatMap { range in
+                    let edges = [range.lowerBound] + seams.filter { range.lowerBound < $0 && $0 < range.upperBound } + [range.upperBound]
+                    return zip(edges, edges.dropFirst()).map { $0..<$1 }
+                }.enumerated().map { position, range in
+                    (range, position == 0 ? section.heading : nil)
+                }
+            }
+        } else {
+            paragraphs = split.flatMap { source -> [Range<Int>] in
+                visible?.map { source.clamped(to: Range($0)) }.filter { !$0.isEmpty } ?? [source]
+            }.map { ($0, nil) }
         }
-        for paragraph in paragraphs {
+        for (paragraph, heading) in paragraphs {
             guard !paragraph.isEmpty else { continue }
-            var content = TranscriptParagraphContent(firstWord: paragraph.lowerBound, start: words[paragraph.lowerBound].start)
+            var content = TranscriptParagraphContent(firstWord: paragraph.lowerBound, start: words[paragraph.lowerBound].start,
+                endWord: model.hasSeveralRecordings ? paragraph.upperBound : nil, recordingHeading: heading)
             var position = paragraph.lowerBound
             /// A cut pause after the word just shown starts a run there.
             var pendingPause: Pause?
@@ -651,6 +681,7 @@ struct TranscriptAppearance: Equatable {
             result.append(content)
         }
         if let proposal { placeSpacer(in: &result, proposal: proposal) } else { spacerID = nil; spacerActions = [] }
+        placeRecordingControls(in: &result, model: model)
         // The thread's room under the focused change's last paragraph (design.md §6.3 "Talk back to Claude").
         threadParagraph = nil
         if let slot = model.rewriteThreadSlot(proposal),
@@ -667,6 +698,36 @@ struct TranscriptAppearance: Equatable {
             }
         }
         return result
+    }
+
+    private func placeRecordingControls(in paragraphs: inout [TranscriptParagraphContent], model: EditorModel) {
+        guard model.hasSeveralRecordings, model.activeClip != nil else { return }
+        var before: [String: [RecordingInlineControl]] = [:], after: [String: [RecordingInlineControl]] = [:]
+        switch model.transcriptRecordingScope {
+        case .playOrder:
+            for omitted in model.recordingOmittedLines {
+                if let preceding = omitted.after { after[preceding, default: []].append(.omitted(omitted)) }
+                else if let following = omitted.before { before[following, default: []].append(.omitted(omitted)) }
+            }
+            for line in model.recordingClipLines where !line.alternatives.isEmpty {
+                before[line.start, default: []].append(.marker(line))
+                if model.recordingOpenLineID == line.id { after[line.end, default: []].insert(.versions(line), at: 0) }
+            }
+        case .recording(let key):
+            for run in model.otherRecordingLines where run.key == key { before[run.startWordId] = [.solo(run)] }
+        case .all: return
+        }
+        for index in paragraphs.indices {
+            paragraphs[index].pieces = paragraphs[index].pieces.flatMap { piece -> [TranscriptParagraphContent.Piece] in
+                guard piece.kind == .word else { return [piece] }
+                let leading = before.removeValue(forKey: piece.id) ?? []
+                let trailing = after.removeValue(forKey: piece.id) ?? []
+                func controls(_ values: [RecordingInlineControl]) -> [TranscriptParagraphContent.Piece] {
+                    values.map { .init(kind: .recordingControl, id: piece.id, text: "", recordingControl: $0) }
+                }
+                return controls(leading) + [piece] + controls(trailing)
+            }
+        }
     }
 
     /// Puts the Keep and Undo buttons' blank (impl-plan item 23) after the focused change's last
@@ -707,6 +768,9 @@ struct TranscriptAppearance: Equatable {
     /// a fold replaces the word space (notes.md §5).
     private func build(_ content: TranscriptParagraphContent, styles: BuildStyles) -> (text: NSAttributedString, spans: [TranscriptSpan]) {
         let value = NSMutableAttributedString()
+        if let heading = content.recordingHeading {
+            value.append(NSAttributedString(string: heading + "\u{2028}", attributes: styles.mono))
+        }
         var spans: [TranscriptSpan] = []
         spans.reserveCapacity(content.pieces.count)
         let pieces = content.pieces
@@ -715,6 +779,16 @@ struct TranscriptAppearance: Equatable {
             let next = index + 1 < pieces.count ? pieces[index + 1].kind : nil
             let space = next != .fold && next != .comma && next != .spacer ? " " : ""
             switch piece.kind {
+            case .recordingControl:
+                guard let control = piece.recordingControl, let model = text?.model else { continue }
+                if !control.inline, value.length > 0, !value.string.hasSuffix("\u{2028}") {
+                    value.append(NSAttributedString(string: "\u{2028}", attributes: styles.body))
+                }
+                let attachment = RecordingInlineAttachment(control, editor: model, transcript: text)
+                let attributed = NSMutableAttributedString(attachment: attachment)
+                attributed.addAttributes(styles.body, range: NSRange(location: 0, length: attributed.length))
+                value.append(attributed)
+                if !control.inline, next != nil { value.append(NSAttributedString(string: "\u{2028}", attributes: styles.body)) }
             case .aiMarker:
                 spans.append(TranscriptSpan(id: piece.id, range: range, pause: false, kind: .ai))
                 value.append(NSAttributedString(string: piece.text, attributes: styles.marker))
@@ -868,14 +942,16 @@ struct TranscriptAppearance: Equatable {
     /// The paragraph holding take time `seconds`: the last one starting at or before it, else the first.
     func paragraph(atTime seconds: Double) -> Int? {
         guard !paragraphs.isEmpty else { return nil }
+        func position(_ index: Int) -> Int { paragraphsByTime.isEmpty ? index : paragraphsByTime[index] }
         var lower = 0, upper = paragraphs.count
-        while lower < upper { let middle = (lower + upper) / 2; if paragraphs[middle].start <= seconds { lower = middle + 1 } else { upper = middle } }
-        return max(0, lower - 1)
+        while lower < upper { let middle = (lower + upper) / 2; if paragraphs[position(middle)].start <= seconds { lower = middle + 1 } else { upper = middle } }
+        return position(max(0, lower - 1))
     }
     /// True when the paragraph holds a word of the open clip, or no clip is open (Full Take).
     func isInScope(paragraph index: Int) -> Bool {
         guard let scope = appearance?.scope else { return true }
-        let words = paragraphs[index].firstWord..<(index + 1 < paragraphs.count ? paragraphs[index + 1].firstWord : transcript.count)
+        let end = blocks[index].content.endWord ?? (index + 1 < paragraphs.count ? paragraphs[index + 1].firstWord : transcript.count)
+        let words = paragraphs[index].firstWord..<end
         return words.overlaps(Range(scope))
     }
     /// Redraws the paragraph's fragment, so its gutter shows the current timecode's colour.

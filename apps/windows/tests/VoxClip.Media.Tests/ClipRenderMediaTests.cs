@@ -4,6 +4,7 @@ using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Domain.ExportChecks;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Cli;
 using VoxClip.Media.Audio;
@@ -22,6 +23,139 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
 {
     private const int Rate = 48_000;
     private static JsonElement Cases() => FixtureLoader.ReadJson("fixtures/clip-render/clip-render-cases.json").RootElement.Clone();
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "RequiresFFmpeg")]
+    public async Task FiveStoryPartsRenderVoiceFromTheirOwnRecording(bool mp4)
+    {
+        await NativeTest.RequireAsync(windows: mp4);
+        var ct = TestContext.Current.CancellationToken;
+        var first = RecordingStoryFixture.MediaPath("0007");
+        var second = RecordingStoryFixture.MediaPath("0010");
+        var probe = new FfmpegMediaProbe();
+        var media = await probe.ProbeAsync(first, ct);
+        var other = await probe.ProbeAsync(second, ct);
+        var parts = new[] { (true, .5), (false, .75), (false, 2.5), (true, 2.25), (false, 1.5) };
+        static long Samples(double seconds) => (long)Math.Round(seconds * Rate);
+        var offset = Samples(6);
+        RecordingRenderSource primary = new("first", "0007", first, 0, Samples(6), 0, 0);
+        RecordingRenderSource companion = new("second", "0010", second, offset, Samples(6), -6, other.Video!.RotationDegrees);
+        Assert.Equal(90, companion.RotationDegrees);
+        var kept = parts.Select(part => {
+            var start = Samples(part.Item2) + (part.Item1 ? offset : 0);
+            return new MediaInterval(start, start + Rate / 2);
+        }).ToArray();
+        var plan = new EditPlan(Rate, Samples(12), [], kept, Samples(2.5), []);
+        var snapshot = new ComposeSnapshot(media, plan, null, new(new(320, 180), 30, 500_000))
+        { SpanSources = parts.Select(part => part.Item1 ? companion : primary).ToArray() };
+        var directory = Directory.CreateTempSubdirectory("voxclip-recording-story-");
+        try
+        {
+            var path = Path.Combine(directory.FullName, mp4 ? "story.mp4" : "story.wav");
+            if (mp4)
+                await new Exporter().ExportAsync(new(snapshot, new ExportTarget.Clip("story"), ExportAspect.Source, ExportQuality.Standard, path, null)
+                    { Loudness = VoxClip.Core.Domain.Loudness.ExportLoudness.Off }, null, ct);
+            else await EditedAudioReader.WriteWaveAsync(snapshot, path, ct);
+            await MediaThread.Run("vc-test-recording-story", () =>
+            {
+                using var firstAudio = new AudioDecoder(first, 2);
+                using var secondAudio = new AudioDecoder(second, 2);
+                using var sources = new RecordingVideo(first, hardware: false);
+                using var exported = mp4 ? new VideoDecoder(path, hardware: false) : null;
+                var composer = new FrameComposer(new TestRasterizer(), FixtureLoader.SharedRoot);
+                var composed = AllocateFrame(snapshot.Output.Size);
+                var timeline = new TimelineCursor(plan);
+                var rendered = new float[Samples(2.5) * 2];
+                if (mp4)
+                {
+                    using var renderedAudio = new AudioDecoder(path, 2);
+                    Assert.Equal(rendered.Length / 2, renderedAudio.Read(rendered, rendered.Length / 2, ct));
+                }
+                else
+                {
+                    using var wave = new BinaryReader(File.OpenRead(path));
+                    Assert.Equal(44 + rendered.Length * sizeof(float), wave.BaseStream.Length);
+                    wave.BaseStream.Position = 20;
+                    Assert.Equal(3, wave.ReadUInt16());
+                    Assert.Equal(2, wave.ReadUInt16());
+                    Assert.Equal(Rate, wave.ReadInt32());
+                    wave.BaseStream.Position = 44;
+                    for (var sample = 0; sample < rendered.Length; sample++) rendered[sample] = wave.ReadSingle();
+                }
+                for (var partIndex = 0; partIndex < parts.Length; partIndex++)
+                {
+                    var (isCompanion, start) = parts[partIndex];
+                    var decoder = isCompanion ? secondAudio : firstAudio;
+                    decoder.Seek((long)Math.Round(start * decoder.SampleRate));
+                    var original = new float[decoder.SampleRate];
+                    decoder.Read(original, original.Length / 2, ct);
+                    var cursor = partIndex * Rate / 2;
+                    var strongest = Enumerable.Range(-32, 65).Max(shift =>
+                    {
+                        double dot = 0, beforePower = 0, afterPower = 0;
+                        for (var index = 2400; index < 9600; index++)
+                        {
+                            var before = original[(int)Math.Round(index * (double)decoder.SampleRate / Rate) * 2];
+                            var after = rendered[(cursor + index + shift) * 2];
+                            dot += before * after; beforePower += before * before; afterPower += after * after;
+                        }
+                        return dot / Math.Sqrt(beforePower * afterPower);
+                    });
+                    Assert.True(strongest > .90, $"Part {partIndex + 1}: {strongest}");
+                    if (!mp4)
+                    {
+                        var rms = Math.Sqrt(Enumerable.Range(2400, 7200).Average(index => Math.Pow(rendered[(cursor + index) * 2], 2)));
+                        var referenceRms = Math.Sqrt(Enumerable.Range(2400, 7200).Average(index =>
+                            Math.Pow(original[(int)Math.Round(index * (double)decoder.SampleRate / Rate) * 2], 2)));
+                        var gain = Math.Pow(10, (isCompanion ? companion.GainDb : primary.GainDb) / 20);
+                        Assert.InRange(rms / referenceRms, gain * .95, gain * 1.05);
+                    }
+
+                    const double intoPart = 6 / 30d;
+                    var time = partIndex / 2d + intoPart;
+                    var reference = sources.Read(isCompanion ? companion : primary, start + intoPart, ct);
+                    var expectedCounter = RecordingFrameCounter(reference, rotated: false);
+                    Assert.InRange(expectedCounter, (int)Math.Round((start + intoPart) * 30) - 1, (int)Math.Round((start + intoPart) * 30) + 1);
+                    var (recording, localTime) = timeline.Picture(snapshot, timeline.Source(time));
+                    var decoded = sources.Read(recording, localTime, ct);
+                    if (exported is null) composer.Compose(decoded, composed, snapshot, time, false, ct);
+                    var output = exported?.ReadAt(time, false, ct) ?? composed;
+                    var actualCounter = RecordingFrameCounter(output, rotated: isCompanion);
+                    Assert.True(Math.Abs(actualCounter - expectedCounter) <= 1,
+                        $"Part {partIndex + 1}: expected frame {expectedCounter}, got {actualCounter}.");
+                }
+                return true;
+            }, ct);
+            if (mp4)
+            {
+                var checker = new ExportChecker(null, directory.FullName, FixtureLoader.SharedRoot);
+                var correct = await checker.CheckAsync(path, snapshot, ExportCheckExpectation.Make(snapshot, null), VoxClip.Core.Domain.Loudness.ExportLoudness.Off, ct);
+                Assert.DoesNotContain(correct.Report[ExportCheckKind.Sync]!.Items, item => item.Kind == ExportCheckItemKind.PictureSource);
+                var wrong = snapshot with { SpanSources = snapshot.SpanSources.Select(source => source with { Path = source.Path == first ? second : first }).ToArray() };
+                var checkedAgainstWrong = await checker.CheckAsync(path, wrong, ExportCheckExpectation.Make(wrong, null), VoxClip.Core.Domain.Loudness.ExportLoudness.Off, ct);
+                Assert.Contains(checkedAgainstWrong.Report[ExportCheckKind.Sync]!.Items, item => item.Kind == ExportCheckItemKind.PictureSource);
+            }
+        }
+        finally { directory.Delete(true); }
+    }
+
+    private static int RecordingFrameCounter(PixelBuffer frame, bool rotated)
+    {
+        var counter = 0;
+        for (var bit = 0; bit < 8; bit++)
+        {
+            var sourceX = 37 + 9 * bit;
+            const double sourceY = 61.5;
+            var column = (int)(rotated ? (256 - sourceY) / 256 * frame.Width : sourceX);
+            var row = (int)(rotated ? sourceX / 144d * frame.Height : sourceY);
+            var pixel = frame.Pixels.Span.Slice(row * frame.Stride + column * 4, 3);
+            var luma = .114 * pixel[0] + .587 * pixel[1] + .299 * pixel[2];
+            if (luma > 145) counter |= 1 << bit;
+        }
+        return counter;
+    }
 
     [Theory]
     [InlineData(false)]

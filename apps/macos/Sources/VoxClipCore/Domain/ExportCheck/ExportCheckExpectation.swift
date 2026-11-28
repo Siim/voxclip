@@ -4,6 +4,13 @@ import Foundation
 /// phrases Voice Lab speaks, the cuts and the caption cards. The export check (ADR-R49) compares the exported file with
 /// these, so they come from the same plan and layout the renderer used, never from the file's pixels.
 public enum ExportCheckExpectation {
+    public struct RecordingBoundary: Sendable, Equatable {
+        public var seam: ExportCheckItem.RecordingSeam
+        public var fromKey: String
+        public var toKey: String
+        public var left: Range<Double>
+        public var right: Range<Double>
+    }
     public struct AudioWindow: Sendable, Equatable {
         public enum Kind: String, Sendable { case music, sound, gap }
         public var kind: Kind
@@ -20,6 +27,7 @@ public enum ExportCheckExpectation {
         /// The rendered length, seconds.
         public var duration: Double
         public var audioWindows: [AudioWindow] = []
+        public var recordingBoundaries: [RecordingBoundary] = []
         public init(words: [ExportCheckInput.Word], phrases: [ExportCheckInput.Phrase], cuts: [Double], duration: Double) {
             self.words = words; self.phrases = phrases; self.cuts = cuts; self.duration = duration
         }
@@ -33,7 +41,35 @@ public enum ExportCheckExpectation {
         var result = try edit(timeline: render.timeline, speed: render.speedTiming, effects: render.effects?.effects ?? [], state: state,
                               duration: render.renderedDuration)
         result.audioWindows = audioWindows(render)
+        result.recordingBoundaries = recordingBoundaries(render)
+        if !result.recordingBoundaries.isEmpty {
+            result.cuts = Array(Set(result.cuts + result.recordingBoundaries.map(\.seam.at))).sorted()
+        }
         return result
+    }
+
+    private static func recordingBoundaries(_ render: RenderRequest) -> [RecordingBoundary] {
+        guard render.recordings.count > 1 else { return [] }
+        var cursor: Int64 = 0
+        let starts: [Int64]
+        switch render.timeline {
+        case .legacy(let plan):
+            starts = plan.kept.map { span in defer { cursor += span.count }; return cursor }
+        case .voiceLab(let plan): starts = plan.pieces.map(\.outputStartSample)
+        }
+        guard starts.count == render.spanSources.count else { return [] }
+        let labels = Dictionary(uniqueKeysWithValues: render.recordings.map { ($0.key, $0.region.label) })
+        var runs: [(key: String, start: Double)] = []
+        for (key, start) in zip(render.spanSources, starts) where key != runs.last?.key {
+            runs.append((key, render.speedTiming.rendered(Double(start) / render.timeline.sampleRate)))
+        }
+        return runs.indices.dropFirst().compactMap { index in
+            let before = runs[index - 1], after = runs[index]
+            guard let from = labels[before.key], let to = labels[after.key] else { return nil }
+            let end = index + 1 < runs.count ? runs[index + 1].start : render.renderedDuration
+            return RecordingBoundary(seam: .init(at: after.start, from: from, to: to), fromKey: before.key, toKey: after.key,
+                left: max(before.start, after.start - 2)..<after.start, right: after.start..<min(end, after.start + 2))
+        }
     }
 
     private static func audioWindows(_ render: RenderRequest) -> [AudioWindow] {

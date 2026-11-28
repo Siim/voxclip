@@ -114,6 +114,8 @@ extension CLIWorkflow {
                 if let value = item.value { detail += String(format: " %.3f", value) }
                 if let band = item.band { detail += " in the \(band.rawValue) band" }
                 if let count = item.count { detail += " (\(count) cards)" }
+                if let seam = item.recordingSeam { detail += " \(seam.from) → \(seam.to)" }
+                if let reason = item.reason, item.kind == .recordingLevel { detail += " \(reason)" }
                 lines.append(detail)
             }
         }

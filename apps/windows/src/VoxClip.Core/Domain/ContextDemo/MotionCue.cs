@@ -23,7 +23,7 @@ public sealed record MotionCue(string Id, [property: JsonPropertyName("clipID")]
             Require(cue is not null && ContextDemoValidation.Identifier(cue.Id) && ContextDemoValidation.Identifier(cue.ClipID));
             Require(identities.Add(cue!.Id) && clips.Contains(cue.ClipID));
             ValidateRange(cue.SourceStart, cue.SourceEnd);
-            Require(cue.SourceEnd <= project.Media.Source.DurationSeconds && cue.Keyframes is { Count: >= 2 and <= 8 });
+            Require(cue.SourceEnd <= project.Media.ClockDurationSeconds && cue.Keyframes is { Count: >= 2 and <= 8 });
             var previous = double.NegativeInfinity;
             for (var index = 0; index < cue.Keyframes.Count; index++)
             {

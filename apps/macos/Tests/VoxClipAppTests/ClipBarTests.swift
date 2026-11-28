@@ -38,6 +38,24 @@ private actor HookFixtureConnector: LLMConnector {
 @MainActor struct ClipBarTests {
     /// `performClick` sends its action through `NSApp`, so every test needs the application, also when it runs alone.
     init() { _ = NSApplication.shared }
+
+    @Test func selectionInAnotherRecordingAddsToTheOpenClip() async throws {
+        let shared = try SharedResources.locate()
+        let fixture = shared.root.appendingPathComponent("fixtures/recordings/reference-recordings.voxclip")
+        var project = try JSONProjectStore.decode(Data(contentsOf: fixture))
+        let clip = ClipRange(id: "manual", startWordId: "w1", endWordId: "w7", origin: .manual, selected: true)
+        project.edits.clips = [clip]
+        let (shell, editor, undo, _) = try await open(project)
+        defer { editor.close() }
+        shell.choose(.clip(clip.id))
+        let other = try #require(editor.recordingRegions.dropFirst().first)
+        editor.chooseRecordingTranscript(.recording(other.key))
+        editor.selectedWordIDs = ["r2.w12", "r2.w13"]
+        #expect(editor.recordingPartSelectionTitle == "Add to Clip 1 as Part")
+        undo.beginUndoGrouping(); editor.addSelectionAsStoryPart(); undo.endUndoGrouping()
+        #expect(editor.activeClip?.playParts.map(\.startWordId) == ["w1", "r2.w12"])
+        #expect(undo.undoActionName == "Add part")
+    }
     /// The interview take with one clip, w1…w7, open: two fillers (w2 "um,", w6 "uh") and the pause after w3 inside it,
     /// the pause after w8 outside it, nothing cut.
     private func tightenProject() throws -> Project {
