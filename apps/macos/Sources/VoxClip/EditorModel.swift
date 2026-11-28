@@ -51,7 +51,8 @@ struct EditorRenderSnapshot {
             rewriteOpenTask?.cancel(); updateSelectionEnds(); refreshPendingSendScope()
         }
     }
-    /// Where Play range, P or an Ask Claude row's ▶ stops, in source seconds. Space and every seek end it.
+    /// Where Play range, P or an Ask Claude row's ▶ stops, on the output (Edited) clock: the take time after a story
+    /// part can play before an earlier one, so Out is where its end plays (`mapEndTime`). Space and every seek end it.
     var previewStop: Double? { didSet { previewStopArmed = false } }
     /// Whether playback has reported a time before `previewStop`: only then does reaching it stop, so a time
     /// queued from before the seek can't end the range at once.
@@ -911,7 +912,7 @@ struct EditorRenderSnapshot {
                     playhead = edited; sourceTime = source
                     if let stop = recordingAuditionEnd, edited >= stop { stopRecordingAudition() }
                     if let stop = previewStop {
-                        if source < stop { previewStopArmed = true } else if previewStopArmed { preview.pause(); previewStop = nil }
+                        if edited < stop { previewStopArmed = true } else if previewStopArmed { preview.pause(); previewStop = nil }
                     }
                     if let stop = storyPartPlaybackEnd, edited >= stop { preview.pause(); storyPartPlaybackEnd = nil }
                 case .playing(let playing): isPlaying = playing
@@ -1712,15 +1713,15 @@ struct EditorRenderSnapshot {
         while sentence && position > 0 && position < words.count - 1 && !words[max(0, position - 1)].text.hasSuffix(".")
         select(words[position].id, extend: extend)
     }
-    /// Seeks the preview. A seek ends any stop (`previewStop`); `stop` sets a new one once the seek has landed, so a
-    /// time from before the seek can't end it at once.
+    /// Seeks the preview. A seek ends any stop (`previewStop`); `stop` (take time) sets a new one once the seek has
+    /// landed, so a time from before the seek can't end it at once.
     func seek(source: Double, stop: Double? = nil) {
         guard let renderTimeline else { return }
         previewStop = nil
-        let time = renderTimeline.mapTime(source)
+        let time = renderTimeline.mapTime(source), end = stop.map(renderTimeline.mapEndTime)
         Task { [weak self] in
             guard let self else { return }
-            do { try await preview.seek(to: time, exact: true); playhead = time; sourceTime = source; if let stop { previewStop = stop } }
+            do { try await preview.seek(to: time, exact: true); playhead = time; sourceTime = source; if let end { previewStop = end } }
             catch { previewError = await app.safeError(error, context: .preview) }
         }
     }

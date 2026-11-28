@@ -36,6 +36,8 @@ private actor PrecisionTestSettings: SettingsStore {
     }
     /// Playback reached `source`.
     func report(_ source: Double) { continuation.yield(.time(edited: timeline?.mapTime(source) ?? source, source: source)) }
+    /// Playback reached `edited` on the output clock, the take time the plan plays there.
+    func reportEdited(_ edited: Double) { continuation.yield(.time(edited: edited, source: timeline?.sourceTime(edited) ?? edited)) }
     func play() { isPlaying = true; continuation.yield(.playing(true)) }
     func pause() { pauses += 1; isPlaying = false; continuation.yield(.playing(false)) }
     func close() { continuation.finish() }
@@ -381,7 +383,7 @@ private actor PrecisionTestSettings: SettingsStore {
         let out = 512.0 / 30
         // Play range plays from In and stops at Out.
         model.playTimelineRange(); await settle()
-        #expect(model.previewStop == out && abs(model.sourceTime - 12.4) < 1e-6 && model.isPlaying)
+        #expect(model.previewStop == model.renderTimeline?.mapEndTime(out) && abs(model.sourceTime - 12.4) < 1e-6 && model.isPlaying)
         model.transport("k")
         // Cut range is shown but cuts nothing yet.
         #expect(!model.timelineCanCut)
@@ -532,7 +534,7 @@ private actor PrecisionTestSettings: SettingsStore {
         engine.whileSeeking = [20.5, 20.6]
         _ = model.setTimelineRange(from: 12.4, to: 17.06, on: .source)
         model.playTimelineRange(); await settle(); await settle()
-        #expect(engine.pauses == 0 && model.previewStop == out && engine.isPlaying, "Old times past Out don't end the range")
+        #expect(engine.pauses == 0 && model.previewStop == engine.timeline?.mapEndTime(out) && engine.isPlaying, "Old times past Out don't end the range")
         #expect(abs(model.sourceTime - 12.4) < 1e-6)
         engine.whileSeeking = []
         engine.report(16.9); await settle()
@@ -557,6 +559,32 @@ private actor PrecisionTestSettings: SettingsStore {
         model.playTimelineRange(); await settle(); await settle()
         model.seek(source: 14); engine.report(14.1); engine.report(17.3); await settle()
         #expect(engine.isPlaying && model.previewStop == nil)
+    }
+
+    /// A story clip that plays words 20–29 (19.9–29.9 s, Edited 0–10) before words 10–13 (9.9–13.9 s, Edited 10–14):
+    /// Play range over the end of the first part stops where that part ends on the output, though the take time
+    /// playing next (9.9 s) is before Out.
+    @Test func playRangeStopsAtOutOnTheEditedClockAcrossReorderedStoryParts() async throws {
+        var fixture = try project()
+        let story = ClipRange(id: "story", startWordId: "t10", endWordId: "t29", parts: [
+            .init(id: "late", startWordId: "t20", endWordId: "t29"), .init(id: "early", startWordId: "t10", endWordId: "t13")
+        ])
+        fixture.edits.clips = [story]; fixture.edits.activeClipId = story.id
+        let engine = ReportingPreview(), app = try app()
+        let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: engine)
+        defer { model.close() }
+        model.showsCuts = true
+        await model.start()
+        let timeline = try #require(model.renderTimeline, "\(String(describing: model.previewError))")
+        engine.timeline = timeline
+        #expect(model.storyTimeline != nil && abs(timeline.duration - 14) < 1e-6 && abs(timeline.mapTime(28) - 8.1) < 1e-6)
+        model.setTimelineRange(source: 28...29.9, anchor: 28.5)
+        model.playTimelineRange(); await settle(); await settle()
+        #expect(engine.isPlaying && abs(model.sourceTime - 28) < 1e-6)
+        engine.reportEdited(9.9); await settle()
+        #expect(engine.isPlaying)
+        engine.reportEdited(10.05); await settle()
+        #expect(engine.pauses == 1 && !engine.isPlaying && model.previewStop == nil, "Playback stops at the end of the part, not in the next one")
     }
 
     @Test(arguments: [CGFloat(700), 1280]) func everyRangeActionShowsInTheEditBar(_ width: CGFloat) throws {

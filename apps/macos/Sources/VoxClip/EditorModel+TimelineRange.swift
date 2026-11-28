@@ -213,20 +213,21 @@ extension EditorModel {
         return timelinePieces.indices(overlapping: range.lowerBound..<range.upperBound, on: .source).isEmpty ? Self.timelinePlayRangeAllCutReason : nil
     }
 
-    /// Play range: from In, stopping at Out (`previewStop`). The stop is set once the seek has
-    /// landed, so a time from playback past Out can't end the range before it starts.
+    /// Play range: from In, stopping where Out plays on the output (`previewStop`), so a story part
+    /// played before an earlier one stops at its end. The stop is set once the seek has landed,
+    /// so a time from playback past Out can't end the range before it starts.
     func playTimelineRange() {
-        guard let range = timelineActionRange, let renderTimeline else { return }
+        guard timelinePlayRangeReason == nil, let range = timelineActionRange, let renderTimeline else { return }
         if recordingAuditionTask != nil { stopRecordingAudition() }
         storyPartPlaybackEnd = nil
         endCorrection()
-        let time = renderTimeline.mapTime(range.lowerBound)
+        let time = renderTimeline.mapTime(range.lowerBound), end = renderTimeline.mapEndTime(range.upperBound)
         previewStop = nil
         Task { [weak self] in
             guard let self else { return }
             do {
                 try await preview.seek(to: time, exact: true); playhead = time; sourceTime = range.lowerBound
-                previewStop = range.upperBound
+                previewStop = end
                 preview.play(); isPlaying = preview.isPlaying
             } catch { previewError = await app.safeError(error, context: .preview) }
         }
