@@ -291,6 +291,31 @@ private actor CutEdgeTestSettings: SettingsStore {
         #expect(kept.project.edits.cutEdges == ["w3": 1.205])
     }
 
+    /// The row sits in the edit bar beside Cut selection and fits a narrow window: the hint and a reason give way first.
+    @Test func theEditBarRowFitsBesideCutSelection() async throws {
+        let app = try app()
+        defer { try? FileManager.default.removeItem(at: app.locations.root) }
+        let (offer, _) = editor(app, project: try Self.project(cut: ["w2"]))
+        let (flat, _) = editor(app, project: try Self.project(cut: ["w2"]), levels: Self.levels(dips: []))
+        defer { offer.close(); flat.close() }
+        flat.selectedWordIDs = ["w2"]
+        for (name, model) in [("offer", offer), ("no-quiet-point", flat)] {
+            for width in [700.0, 1056.0] {
+                let size = NSSize(width: width, height: 210)
+                let host = ShellHost.controller(TimelinePanel(model: model, shell: WorkspaceShell(app: app)), app: app)
+                let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+                window.isReleasedWhenClosed = false; window.contentViewController = host
+                defer { window.close() }
+                host.view.frame = CGRect(origin: .zero, size: size); host.view.layoutSubtreeIfNeeded()
+                let rects = DebugRightColumn.markers(in: host.view)
+                let action = try #require(rects["timeline.cutEdges.action"], "\(name) at \(width)")
+                let cut = try #require(rects["timeline.cutSelection"])
+                #expect(action.width > 5 && action.minX > cut.maxX && action.maxX <= size.width, "\(name) at \(width)")
+            }
+            try await ReviewCaptures.capture(TimelineEditBar(model: model), name: "cut-edges-\(name)", size: CGSize(width: 1056, height: 28))
+        }
+    }
+
     @Test func editMenuListsFixCutEdges() throws {
         _ = NSApplication.shared
         let previous = NSApp.mainMenu

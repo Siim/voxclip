@@ -90,6 +90,11 @@ extension EditorModel {
                     Button("Titles & effects…") { model.openTimelineEditor(.effects) }
                     Button("\(model.timelineTrimTitle)…") { model.openTimelineEditor(.trim) }.disabled(!model.timelineCanTrim)
                     Button("Cut selection") { model.cutSelection() }.disabled(!model.timelineCanCut)
+                    Divider()
+                    if let choice = model.selectedCutEdge {
+                        Button(choice.action) { model.useSelectedCutEdge() }.disabled(choice.reason != nil || !model.capabilities.edit)
+                    }
+                    Button("Fix cut edges") { model.fixCutEdges() }.disabled(!model.canFixCutEdges)
                 }.fixedSize().controlSize(.small)
                 .accessibilityLabel("Timeline edits")
                 .columnLayoutEvidence("timeline.editMenu")
@@ -106,18 +111,59 @@ extension EditorModel {
                         .disabled(!model.timelineCanCut).help("Cut the selected words and pauses (Delete). Undo with ⌘Z.")
                         .columnLayoutEvidence("timeline.cutSelection")
                     if model.selectedWordIDs.isEmpty && model.selectedPauseIDs.isEmpty {
+                        // The hint gives way to a cut edge row in a narrow bar.
                         Text("Drag across the waveform to select words or a pause.")
-                            .foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+                            .foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail).layoutPriority(-1)
                     } else {
                         let words = model.selectedWordIDs.count, pauses = model.selectedPauseIDs.count
                         Text([words == 0 ? nil : "\(words) \(words == 1 ? "word" : "words")", pauses == 0 ? nil : "\(pauses) \(pauses == 1 ? "pause" : "pauses")"].compactMap { $0 }.joined(separator: ", "))
                             .foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    if let row = model.cutEdgeBarRow {
+                        Divider().frame(height: 14)
+                        TimelineCutEdgeRow(model: model, row: row)
                     }
                     Spacer(minLength: 0)
                 }
                 .buttonStyle(.borderless).controlSize(.small).font(.callout)
                 .padding(.horizontal, 10).frame(height: TimelineMetrics.editBar)
             }
+        }
+    }
+}
+
+/// The edit bar's cut edge row (editing §5.10, design.md "Manual cuts and trims on Mac"): its line, then its inline
+/// action, disabled with the reason beside it. No sheet, no confirmation; the action is one undo step.
+@MainActor struct TimelineCutEdgeRow: View {
+    let model: EditorModel
+    let row: CutEdgeBarRow
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(row.text).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+            if let action = row.action {
+                Text("·").foregroundStyle(.tertiary).accessibilityHidden(true)
+                Button(action) { model.runCutEdgeBarAction() }
+                    .fixedSize()
+                    .disabled(row.reason != nil || !model.capabilities.edit)
+                    .help(row.reason ?? help(action))
+                    .accessibilityIdentifier("voxclip.timeline.cutEdges.action")
+                    .columnLayoutEvidence("timeline.cutEdges.action")
+                if let reason = row.reason {
+                    // The reason gives way first in a narrow bar; its help keeps the whole of it.
+                    Text(reason).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail).layoutPriority(-1)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("voxclip.timeline.cutEdges")
+        .columnLayoutEvidence("timeline.cutEdges")
+    }
+
+    private func help(_ action: String) -> String {
+        switch action {
+        case "Fix cut edges": "Move the old cuts' edges into the quiet between words. Undo with ⌘Z."
+        case "Use word edge": "End this cut exactly on the word edge. Undo with ⌘Z."
+        default: "Move this cut's edges into the quiet between words. Undo with ⌘Z."
         }
     }
 }
