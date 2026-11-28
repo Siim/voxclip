@@ -313,14 +313,37 @@ private let gradeClipRoot: URL = {
         let plain = try await CompositionBuilder().build(Self.request(source, controls: nil))
         let still = try await ClipStillFrame.capture(plain, renderedSeconds: 15.2 / 30)
         #expect(still.renderedTime == CMTime(value: 15, timescale: 30) && still.size == CGSize(width: Self.width, height: Self.height))
-        let hover = try Self.frame(try await still.still(controls: controls))
+        let hover = try Self.frame(try await still.still(colorOf: controls))
         #expect(hover == (try #require(try await Self.exportFrames(graded, [15])[15])))
         let gradedStill = try await ClipStillFrame.capture(graded, renderedSeconds: 0.5)
-        let compare = try Self.frame(try await gradedStill.still(controls: nil))
+        let compare = try Self.frame(try await gradedStill.still(colorOf: nil))
         #expect(compare == (try #require(try await Self.exportFrames(plain, [15])[15])))
         #expect(compare != hover)
         let past = try await ClipStillFrame.capture(plain, renderedSeconds: 9)
         #expect(past.renderedTime == CMTime(value: 59, timescale: 30), "a time past the end takes the last frame")
+    }
+
+    /// Compare on a flipped, turned clip keeps the framing and drops only the colour: the export of the same flip and turn
+    /// as filmed. A hover's controls lend only their colour, so the render's framing stays whatever they hold.
+    @Test(.timeLimit(.minutes(3))) func compareOnAFramedClipIsTheFramedExportAsFilmed() async throws {
+        let source = try await Self.clip()
+        var framing = ProjectClipControls(clipId: "clip-main")
+        framing.flipHorizontal = true
+        framing.rotationDegrees = 90
+        var graded = try Self.warmPrint()
+        graded.flipHorizontal = true
+        graded.rotationDegrees = 90
+        let gradedGraph = try await CompositionBuilder().build(Self.request(source, controls: graded))
+        let framedGraph = try await CompositionBuilder().build(Self.request(source, controls: framing))
+        let plainGraph = try await CompositionBuilder().build(Self.request(source, controls: nil))
+        let still = try await ClipStillFrame.capture(gradedGraph, renderedSeconds: 0.5)
+        let compare = try Self.frame(try await still.still(colorOf: nil))
+        let framedExport = try #require(try await Self.exportFrames(framedGraph, [15])[15])
+        #expect(compare == framedExport)
+        #expect(compare != (try #require(try await Self.exportFrames(plainGraph, [15])[15])), "the flip and turn stay")
+        let framedStill = try await ClipStillFrame.capture(framedGraph, renderedSeconds: 0.5)
+        let hover = try Self.frame(try await framedStill.still(colorOf: try Self.warmPrint()))
+        #expect(hover == (try #require(try await Self.exportFrames(gradedGraph, [15])[15])))
     }
 
     /// A look's tile is the export's frame for that look, cropped to the face-anchor square: the same pixels before the
@@ -332,7 +355,7 @@ private let gradeClipRoot: URL = {
         var pictureOnly = look
         pictureOnly.colorGrade?.grain = 0
         let tile = try Self.frame(try still.tile(controls: look, center: (x: 0.5, y: 0.3), pixels: Self.width))
-        let export = try Self.frame(try await still.still(controls: pictureOnly))
+        let export = try Self.frame(try await still.still(colorOf: pictureOnly))
         #expect(tile.width == Self.width && tile.height == Self.width)
         // The square of side 360 centred 30% down a 640-high frame starts at row 12.
         var worst = 0
@@ -342,7 +365,7 @@ private let gradeClipRoot: URL = {
             }
         }
         #expect(worst <= 1, "worst \(worst)")
-        let grainy = try Self.frame(try await still.still(controls: look))
+        let grainy = try Self.frame(try await still.still(colorOf: look))
         #expect(grainy != export, "the export has the look's grain; the tile leaves it out")
     }
 }

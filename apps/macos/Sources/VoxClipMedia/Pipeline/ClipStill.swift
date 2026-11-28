@@ -26,7 +26,8 @@ extension AVAsynchronousVideoCompositionRequest: CompositorFrame {
 /// composition, and keeps them; every still is then drawn from them by the same compose as preview and export:
 /// - `stillBeforeGrade()` is the framed picture `o` the grade starts from (crop and fill, flip and turns, lip-sync layers,
 ///   context demo, illustration), for the tiles;
-/// - `still(controls:)` is the whole frame with other colour controls, captions included, for hover, Compare and drags;
+/// - `still(colorOf:)` is the whole frame with other colour controls over the render's framing, captions included, for
+///   hover, Compare and drags;
 /// - `tile(controls:center:pixels:)` is one look's square tile of `o`, graded by the real kernels.
 /// Stills render at the export's output size, so grain and the vignette sit where the export puts them.
 public final class ClipStillFrame: @unchecked Sendable {
@@ -87,14 +88,24 @@ public final class ClipStillFrame: @unchecked Sendable {
         catch let failure as FrameCompositor.FrameFailure { throw failure.error }
     }
 
-    /// The whole frame as preview and export draw it at this time, with `controls` in place of the clip's: byte for byte the
-    /// export's frame with those controls, captions and titles included. Only the colour controls may differ from the
-    /// clip's (a look, adjustments, a grade, or none for Compare); the framing must be the render's own.
-    public func still(controls: ProjectClipControls?) async throws -> CGImage {
+    /// The whole frame as preview and export draw it at this time, with the colour state of `colorOf` (its look, adjustments
+    /// and grade) in place of the clip's: byte for byte the export's frame with that colour, captions and titles included.
+    /// The framing stays the render's own (shape, flip, quarter turns, reframe), whatever `colorOf` holds; nil removes the
+    /// colour state, for Compare's As filmed.
+    public func still(colorOf controls: ProjectClipControls?) async throws -> CGImage {
         var render = instruction.request
-        render.clipControls = controls
+        render.clipControls = Self.colour(of: controls, over: render.clipControls)
         let buffer = try await request().rendered(by: Self.compositor, instruction: instruction.forStill(request: render))
         return try Self.image(buffer)
+    }
+
+    /// `framing` with the look, adjustments and grade of `colour` (none when nil); nil when nothing is left to render.
+    static func colour(of colour: ProjectClipControls?, over framing: ProjectClipControls?) -> ProjectClipControls? {
+        var merged = framing ?? ProjectClipControls(clipId: colour?.clipId ?? "")
+        merged.look = colour?.look ?? .original
+        merged.colorAdjustments = colour?.colorAdjustments
+        merged.colorGrade = colour?.colorGrade
+        return merged.isDefault ? nil : merged
     }
 
     /// One look's tile: the square of `o` centred on `center` (the face anchor in the output frame, normalised from the top
