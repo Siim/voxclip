@@ -1,8 +1,10 @@
 #if WIN_UI_TESTS
+using System.Text.RegularExpressions;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Project;
 using VoxClip.Tests.Support;
 using Xunit;
@@ -307,6 +309,106 @@ public sealed class TimelinePrecisionTests
         Assert.Null(model.TimelinePlayRangeReason);
     }
 
+    [Fact]
+    public void MakeClipFromARangeSnapsOnlyToWordsTheRangeOverlaps()
+    {
+        // Word 13 is short (12.85–12.95), just after word 12's tail. A range over that tail makes a clip of word 12, never of the
+        // short word beside it that the range doesn't reach.
+        var model = Model(("t13", 12.85, 12.95));
+        model.SetExactRange(12.6, 12.8, 12.6);
+        Assert.False(model.HasSelection);
+        Assert.Equal((model.Index("t12"), model.Index("t12")), model.TimelineRangeClipWords);
+        Assert.Null(model.TimelineMakeClipReason);
+        Assert.NotNull(model.MakeClip());
+        Assert.Equal(("t12", "t12"), (model.ActiveClip?.StartWordId, model.ActiveClip?.EndWordId));
+    }
+
+    [Fact]
+    public void EveryMakeClipEntryPointGatesOnTheTimelineReason()
+    {
+        // A range that reaches a word without holding it whole selects no word, yet makes a clip: the ClipBar, the command palette
+        // and the edit bar all ask TimelineMakeClipReason, never HasSelection.
+        var pages = string.Concat(Directory.EnumerateFiles(Path.Combine(AppRoot, "Pages"), "EditorPage*.cs").Select(File.ReadAllText));
+        Assert.DoesNotMatch(@"MakeClipCommand\.IsEnabled\s*=[^;]*HasSelection", pages);
+        Assert.Equal(2, Regex.Matches(pages, @"MakeClipCommand\.IsEnabled\s*=[^;]*ViewModel\.TimelineMakeClipReason is null").Count);
+        Assert.Matches(@"Command\(""clip\.make"",[^\n]*ViewModel\.TimelineMakeClipReason is null", pages);
+        Assert.DoesNotMatch(@"Command\(""clip\.make"",[^\n]*HasSelection", pages);
+        Assert.Contains("model => model.TimelineMakeClipReason is null", EditBarSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PlayRangeStopsAtOutOnTheEditedClockOfTheTimelineItSeeksOn()
+    {
+        // A story that plays words 20–24, then words 10–12: after part 1 the source clock runs back before Out, so a stop on the
+        // source clock never comes.
+        var model = Model();
+        var story = model.Project.Edits.Clips[0] with { StartWordId = "t10", EndWordId = "t24", Parts = [new("p1", "t20", "t24"), new("p2", "t10", "t12")] };
+        model = new(model.Project with { Edits = model.Project.Edits with { Clips = [story], CutWordIds = [] } });
+        Assert.True(model.IsStoryClip);
+        model.SetExactRange(23, 40, 23);
+        var range = Assert.IsType<TimeRange>(model.TimelineActionRange);
+        var timeline = new RenderTimeline.Legacy(TimelineLayout.Plan(model));
+        var play = Assert.IsType<(double Start, double Stop)>(EditorViewModel.TimelineRangePlayback(timeline, range));
+        Assert.Equal(timeline.MapTime(range.Start), play.Start, 9);
+        Assert.Equal(timeline.MapEndTime(range.End), play.Stop, 9);
+        Assert.True(play.Stop > play.Start);
+        Assert.True(play.Stop <= timeline.MapTime(model.Words[model.Index("t10")].Start) + 1e-9);
+        // The page seeks and stops on that one render timeline, on the edited clock.
+        var page = File.ReadAllText(Path.Combine(AppRoot, "Pages", "EditorPage.xaml.cs"));
+        var start = page.IndexOf("private async Task PlayTimelineRangeAsync(", StringComparison.Ordinal);
+        var body = page[start..page.IndexOf("    private ", start + 1, StringComparison.Ordinal)];
+        Assert.Contains("EditorViewModel.TimelineRangePlayback(snapshot.Timeline, range)", body, StringComparison.Ordinal);
+        Assert.Contains("previewStop = (play.Stop, true);", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("range.End", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PlayRangeIsDisabledWithItsReasonWhenNothingInTheRangePlays()
+    {
+        var model = Model();
+        var played = 0;
+        model.TimelineRangePlayRequested += (_, _) => played++;
+        // Inside cut word 14, and words 14–15 selected: both cut, so nothing plays.
+        model.SetExactRange(14.1, 14.7, 14.1);
+        Assert.Equal(EditorViewModel.TimelinePlayRangeCutReason, model.TimelinePlayRangeReason);
+        Assert.False(model.PlayTimelineRange());
+        model.Select(model.Index("t14"));
+        model.Select(model.Index("t15"), true);
+        Assert.Equal(EditorViewModel.TimelinePlayRangeCutReason, model.TimelinePlayRangeReason);
+        Assert.False(model.PlayTimelineRange());
+        Assert.Equal(0, played);
+        // A range that reaches a kept word plays.
+        model.SetExactRange(14.1, 16.2, 14.1);
+        Assert.Null(model.TimelinePlayRangeReason);
+        Assert.True(model.PlayTimelineRange());
+        Assert.Equal(1, played);
+    }
+
+    [Fact]
+    public void ADisabledCutSelectionSaysWhy()
+    {
+        var model = Model();
+        Assert.Equal(EditorViewModel.TimelineRangeHint, model.TimelineCutReason);
+        // Word 14 is already cut.
+        model.Select(model.Index("t14"));
+        Assert.Equal(EditorViewModel.TimelineAlreadyCutReason, model.TimelineCutReason);
+        Assert.False(model.TimelineCanCut);
+        model.Select(model.Index("t16"));
+        Assert.Null(model.TimelineCutReason);
+        Assert.True(model.TimelineCanCut);
+        model.SetExactRange(12.4, 17.06, 12.4);
+        Assert.Equal(EditorViewModel.TimelineCutRangeReason, model.TimelineCutReason);
+        Assert.False(model.TimelineCanCut);
+        var readOnly = Model();
+        readOnly.Select(readOnly.Index("t16"));
+        readOnly.Busy = true;
+        Assert.NotNull(readOnly.TimelineCutReason);
+        Assert.False(readOnly.TimelineCanCut);
+        // The edit bar's disabled Cut selection shows that reason as its tooltip and accessibility help.
+        Assert.Contains("model => model.TimelineCutReason is null", EditBarSource, StringComparison.Ordinal);
+        Assert.Contains("model => model.TimelineCutReason ?? CutHelp", EditBarSource, StringComparison.Ordinal);
+    }
+
     // MARK: Word ticks
 
     [Fact]
@@ -326,17 +428,23 @@ public sealed class TimelinePrecisionTests
         Assert.Empty(model.TimelineWordEdges(0, 9.9, Same, Same, false).Starts);
     }
 
+    private static string AppRoot => Path.Combine(Path.GetDirectoryName(SharedResources.ResolveRoot())!, "apps", "windows", "src", "VoxClip.App");
+    private static string EditBarSource => File.ReadAllText(Path.Combine(AppRoot, "Controls", "TimelineView.EditBar.cs"));
+
     private static ClipEffect Effect(EditorViewModel model, string id) =>
         ClipEffect.Parse(model.Project.ClipEffects.Single(effect => effect.GetProperty("id").GetString() == id));
 
     private static Project Fixture() => ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/projects/clip-from-long-take.voxclip"));
 
-    /// <summary>A 60-second, 30 fps take of 0.8-second words a second apart, with Clip 1 on words 10–29 and words 14 and 15 cut.</summary>
-    private static EditorViewModel Model()
+    /// <summary>A 60-second, 30 fps take of 0.8-second words a second apart, with Clip 1 on words 10–29 and words 14 and 15 cut;
+    /// <paramref name="timing"/> moves the words it names.</summary>
+    private static EditorViewModel Model(params (string Id, double Start, double End)[] timing)
     {
         var project = Fixture();
         var words = Enumerable.Range(0, 60).Select(index => project.Transcript!.Words[0] with
-            { Id = $"t{index}", Text = index % 10 == 9 ? "word." : "word", Start = index, End = index + 0.8, RawStart = index, RawEnd = index + 0.8 }).ToArray();
+            { Id = $"t{index}", Text = index % 10 == 9 ? "word." : "word", Start = index, End = index + 0.8, RawStart = index, RawEnd = index + 0.8 })
+            .Select(word => timing.FirstOrDefault(entry => entry.Id == word.Id) is { Id: not null } moved
+                ? word with { Start = moved.Start, End = moved.End, RawStart = moved.Start, RawEnd = moved.End } : word).ToArray();
         var source = project.Media.Source with { DurationSeconds = 60, Video = project.Media.Source.Video! with { FrameRate = 30 } };
         var clip = new ClipRange("clip-1", "t10", "t29", null, ClipOrigin.Manual, null, null, true);
         return new(project with

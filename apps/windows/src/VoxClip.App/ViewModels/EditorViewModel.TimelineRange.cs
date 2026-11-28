@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
 
@@ -42,6 +43,8 @@ public sealed partial class EditorViewModel
     internal const string TimelineRangeHint = "Ctrl+drag across the waveform to select words. Turn Snapping off for an exact range.";
     internal const string TimelineCutRangeReason = "Exact cuts are coming. Turn Snapping on to cut words.";
     internal const string TimelineMakeClipHelp = "Clip edges follow words";
+    internal const string TimelineAlreadyCutReason = "Everything selected is already cut.";
+    internal const string TimelinePlayRangeCutReason = "This range is all cut, so nothing plays.";
     private const string TimelineNotReady = "The timeline is not ready to edit.";
 
     private TimelineExactRange? exactRange;
@@ -54,7 +57,8 @@ public sealed partial class EditorViewModel
     /// <summary>Why the last range action was refused, shown inline in the timeline's edit bar; any selection change clears it.</summary>
     internal string? TimelineRangeMessage { get; private set; }
 
-    /// <summary>Play range: the page seeks to In and plays, stopping at Out (source seconds).</summary>
+    /// <summary>Play range: the page seeks to In and plays, stopping at Out (project clock; the page maps both onto the preview's
+    /// timeline with <see cref="TimelineRangePlayback"/>).</summary>
     internal event EventHandler<TimeRange>? TimelineRangePlayRequested;
 
     /// <summary>The take's frame rate: the grid the item nudge uses (TimelineEdits frames), 30 when unknown.</summary>
@@ -246,12 +250,14 @@ public sealed partial class EditorViewModel
     }
 
     /// <summary>The words <paramref name="range"/> runs between: each edge snaps to the nearest word start or end in the scope (and
-    /// the recording of its middle), as a drag with Snap on does.</summary>
-    private (int First, int Last)? SnapToScopeWords(TimeRange range)
+    /// the recording of its middle), as a drag with Snap on does; with <paramref name="overlapping"/>, only to the words the range
+    /// reaches into, and null when it reaches none.</summary>
+    private (int First, int Last)? SnapToScopeWords(TimeRange range, bool overlapping = false)
     {
         var region = HasSeveralRecordings ? RecordingClock?.LocalTime((range.Start + range.End) / 2)?.Key : null;
         var candidates = TimelineScopeSpans().SelectMany(span => Enumerable.Range(span.Start, span.End - span.Start + 1))
-            .Where(index => region is null || RecordingOf(index)?.Key == region).ToArray();
+            .Where(index => region is null || RecordingOf(index)?.Key == region)
+            .Where(index => !overlapping || Words[index].Start < range.End && Words[index].End > range.Start).ToArray();
         if (candidates.Length == 0) return null;
         var first = candidates.MinBy(index => Math.Abs(Words[index].Start - range.Start));
         var last = candidates.MinBy(index => Math.Abs(Words[index].End - range.End));
@@ -296,23 +302,56 @@ public sealed partial class EditorViewModel
     // MARK: Range actions (the edit bar)
 
     /// <summary>Whether Cut selection can run: words or pauses are selected that aren't all cut, and no exact range is set.</summary>
-    internal bool TimelineCanCut
+    internal bool TimelineCanCut => TimelineCutReason is null;
+
+    /// <summary>Why Cut selection (Cut range while a range is set) can't run, or null: the edit bar's tooltip and help on the disabled
+    /// button.</summary>
+    internal string? TimelineCutReason
     {
         get
         {
-            if (!CanEditTimeline || exactRange is not null || !HasSelection || state is not { } current) return false;
-            for (var index = SelectionStart; index <= SelectionEnd; index++) if (!current.CutWordIds.Contains(Words[index].Id)) return true;
-            return current.Pauses.Any(pause => pause.AfterIndex >= SelectionStart && pause.AfterIndex < SelectionEnd && !current.CutPauseIds.Contains(pause.Id));
+            if (exactRange is not null) return TimelineCutRangeReason;
+            if (!CanEditTimeline || state is not { } current) return TimelineNotReady;
+            if (!HasSelection) return TimelineRangeHint;
+            for (var index = SelectionStart; index <= SelectionEnd; index++) if (!current.CutWordIds.Contains(Words[index].Id)) return null;
+            return current.Pauses.Any(pause => pause.AfterIndex >= SelectionStart && pause.AfterIndex < SelectionEnd && !current.CutPauseIds.Contains(pause.Id))
+                ? null : TimelineAlreadyCutReason;
         }
     }
 
-    /// <summary>Why Play range can't run, or null.</summary>
-    internal string? TimelinePlayRangeReason => TimelineActionRange is null ? TimelineRangeHint : null;
+    /// <summary>Why Play range can't run, or null: nothing is selected, or nothing of the range plays in the scope's edit (all of it is
+    /// cut).</summary>
+    internal string? TimelinePlayRangeReason => TimelineActionRange is not { } range ? TimelineRangeHint
+        : TimelineRangePlays(range) ? null : TimelinePlayRangeCutReason;
+
+    /// <summary>Whether any of <paramref name="range"/> (project clock) plays in the plan the preview plays the scope with. The edit bar
+    /// asks on every redraw; the plan only changes with the edit state.</summary>
+    private bool TimelineRangePlays(TimeRange range)
+    {
+        if (state is not { } current) return false;
+        if (playRangeCache is { } cached && ReferenceEquals(cached.State, current) && cached.Range == range) return cached.Plays;
+        bool plays;
+        try { plays = TimelineRangePlayback(new RenderTimeline.Legacy(ExportRenderInput.Plan(ExportRenderInput.Media(project), current)), range) is not null; }
+        catch (VoxClipException) { plays = true; }
+        playRangeCache = (current, range, plays);
+        return plays;
+    }
+    private (EditState State, TimeRange Range, bool Plays)? playRangeCache;
+
+    /// <summary>Where Play range seeks and stops on the preview's render <paramref name="timeline"/>, both on its edited clock: In
+    /// mapped as a start and Out as an end, so a stop at a story part's end is that part's end even when the next part plays earlier
+    /// source. Null when nothing of <paramref name="range"/> (project clock) plays.</summary>
+    internal static (double Start, double Stop)? TimelineRangePlayback(RenderTimeline timeline, TimeRange range)
+    {
+        var start = timeline.MapTime(range.Start);
+        var stop = timeline.MapEndTime(range.End);
+        return stop > start ? (start, stop) : null;
+    }
 
     /// <summary>Play range: from In, stopping at Out.</summary>
     internal bool PlayTimelineRange()
     {
-        if (TimelineActionRange is not { } range) return false;
+        if (TimelinePlayRangeReason is not null || TimelineActionRange is not { } range) return false;
         EndCorrection();
         TimelineRangePlayRequested?.Invoke(this, range);
         return true;
@@ -445,11 +484,9 @@ public sealed partial class EditorViewModel
         }
     }
 
-    /// <summary>The words a clip from the exact range runs between: each edge snaps to the nearest word start or end. Null when no
-    /// word in the scope reaches into the range (a pause or music only).</summary>
-    internal (int First, int Last)? TimelineRangeClipWords =>
-        ExactRangeSource is { } range && TimelineScopeSpans().Any(span => Enumerable.Range(span.Start, span.End - span.Start + 1)
-            .Any(index => Words[index].Start < range.End && Words[index].End > range.Start)) ? SnapToScopeWords(range) : null;
+    /// <summary>The words a clip from the exact range runs between: each edge snaps to the nearest start or end of a word the range
+    /// reaches into, never to a neighbour outside it. Null when no word in the scope reaches into the range (a pause or music only).</summary>
+    internal (int First, int Last)? TimelineRangeClipWords => ExactRangeSource is { } range ? SnapToScopeWords(range, overlapping: true) : null;
 
     /// <summary>A1's word ticks between <paramref name="visibleStart"/> and <paramref name="visibleEnd"/> on the axis
     /// <paramref name="toAxis"/> maps to (issue #41): each word's start and end, the open scope's words only, and with

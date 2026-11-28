@@ -28,8 +28,10 @@ public sealed partial class EditorViewModel
     private readonly Dictionary<string, AudioEnvelope> cutEdgeLevels = new(StringComparer.Ordinal);
     /// <summary>Recordings whose video is missing or unreadable, so their levels can't load until it is found again.</summary>
     private readonly HashSet<string> cutEdgeUnreachable = new(StringComparer.Ordinal);
-    /// <summary>The open Rewrites, whose scopes keep their edges (editing §5.10 "Frozen boundaries").</summary>
+    /// <summary>The open Rewrites; those holding takes keep their scopes' edges (editing §5.10 "Frozen boundaries").</summary>
     private readonly List<RewriteSession> openRewrites = [];
+    /// <summary>The open Rewrites that held takes when they last changed, so a session gaining or losing them reads the edges again.</summary>
+    private readonly HashSet<RewriteSession> paidRewrites = [];
     private string? cutEdgePaidRoot;
     private int cutEdgeRevision;
     private (Project Project, int Revision, CutEdges.OfferSummary Offer)? cutEdgeOfferMemo;
@@ -80,6 +82,8 @@ public sealed partial class EditorViewModel
     {
         if (openRewrites.Contains(session)) return;
         openRewrites.Add(session);
+        session.Changed += RewriteSessionChanged;
+        if (session.HoldsPaidWork) paidRewrites.Add(session);
         CutEdgeInputsChanged();
     }
 
@@ -87,12 +91,21 @@ public sealed partial class EditorViewModel
     internal void RewriteClosed(RewriteSession session)
     {
         savedPaidScopesMemo = null;
+        session.Changed -= RewriteSessionChanged;
+        paidRewrites.Remove(session);
         if (openRewrites.Remove(session)) CutEdgeInputsChanged();
+    }
+
+    /// <summary>An open Rewrite's first take, or its last one going, changes what its scope's edges keep.</summary>
+    private void RewriteSessionChanged(object? sender, EventArgs args)
+    {
+        if (sender is not RewriteSession session || !openRewrites.Contains(session)) return;
+        if (session.IsOpen && session.HoldsPaidWork ? paidRewrites.Add(session) : paidRewrites.Remove(session)) CutEdgeInputsChanged();
     }
 
     /// <summary>What keeps a boundary at today's padding (editing §5.10 "Frozen boundaries"), by recording key:
     /// - every Voice Lab segment's replace range, enabled or not, in its recording's local seconds;
-    /// - the word ranges of paid or open work (<see cref="PaidCutEdgeScopes"/>) in the first recording, the one Rewrite voices, a full
+    /// - the word ranges of paid work (<see cref="PaidCutEdgeScopes"/>) in the first recording, the one Rewrite voices, a full
     ///   take as every word of it;
     /// - while any of those is held, every later recording: its words have no position in Rewrite's scoped inputs, so its cuts and
     ///   edges count in every scope (<see cref="ProjectVoiceTakeIdentity.RewriteInputs"/>).</summary>
@@ -130,9 +143,9 @@ public sealed partial class EditorViewModel
     }
 
     /// <summary>The word ranges (positions in <c>project.Transcript</c>, as <see cref="ProjectVoiceTakeIdentity.RewriteInputs"/> reads
-    /// them) whose inputs paid or open work is made from; null is the full take. They are a clip with a whole-clip revoice or a lip
-    /// sync, an open Rewrite (paid or not: an edge moving at its scope's edge would set its proposal aside), and a Rewrite's paid
-    /// takes saved beside the project.</summary>
+    /// them) whose inputs paid work is made from; null is the full take. They are a clip with a whole-clip revoice or a lip sync, an
+    /// open Rewrite with takes (spec §3.2 b: before any, an edge moving at its scope's edge only sets an unpaid proposal aside), and a
+    /// Rewrite's paid takes saved beside the project.</summary>
     internal IReadOnlyList<(int Lower, int Upper)?> PaidCutEdgeScopes(Project project)
     {
         IReadOnlyList<TimedWord> words = project.Transcript?.Words ?? [];
@@ -165,7 +178,7 @@ public sealed partial class EditorViewModel
             if (holding.Length == 0) scopes.Add(null);
             else foreach (var range in holding) scopes.Add(range);
         }
-        foreach (var session in openRewrites.Where(session => session.IsOpen))
+        foreach (var session in openRewrites.Where(session => session.IsOpen && session.HoldsPaidWork))
             if (Bounds(session.IdentityScope, session.IdentityClipId, out var range)) scopes.Add(range);
         foreach (var saved in SavedPaidRewriteScopes(project))
         {

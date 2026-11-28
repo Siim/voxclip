@@ -9,6 +9,7 @@ using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Project;
 using VoxClip.Core.Services.VoiceLab;
+using VoxClip.Core.Tests.Tracks.WinUi;
 using Xunit;
 
 namespace VoxClip.Ui.Tests;
@@ -241,9 +242,10 @@ public sealed class CutEdgesEditorTests
             var record = revoiced.VoiceLab.WholeClipRevoices![0] with { ClipId = "c3" };
             var whole = WithClip(Fixture());
             Assert.Null(CutW2(whole with { VoiceLab = whole.VoiceLab with { WholeClipRevoices = [record] } }));
-            // An open Rewrite on that clip, paid or not; once it closes, the edge moves again.
+            // An open Rewrite on that clip with no takes yet keeps nothing (editing §5.10 "an open Rewrite plan with takes"); one with
+            // takes is AnOpenRewriteKeepsItsScopeEdgesOnceItHasTakes. Once it closes, the edge moves too.
             RewriteSession? session = null;
-            Assert.Null(CutW2(WithClip(Fixture()), model => session = new RewriteSession(model, 2, 2, null, null, scope: RewriteScope.Clip("c3"))));
+            Assert.Equal(Sorted(Edges(("w3", 1.205))), Sorted(CutW2(WithClip(Fixture()), model => session = new RewriteSession(model, 2, 2, null, null, scope: RewriteScope.Clip("c3")))));
             var closed = Editor(WithClip(Fixture()), LateBoundary());
             new RewriteSession(closed, 2, 2, null, null, scope: RewriteScope.Clip("c3")).Dispose();
             Assert.True(closed.ApplyBatch([new EditOperation.Toggle("w2")]));
@@ -262,6 +264,29 @@ public sealed class CutEdgesEditorTests
             }
         }
         finally { Directory.Delete(root, true); }
+    }
+
+    /// <summary>An open Rewrite keeps its scope's edges once it has takes (spec §3.2 b, "an open Rewrite plan with takes"), and the
+    /// offer and the ClipBar read again when they arrive.</summary>
+    [Fact]
+    public async Task AnOpenRewriteKeepsItsScopeEdgesOnceItHasTakes()
+    {
+        var model = RewriteAutoFixTests.Editor();
+        var connector = new RewriteAutoFixTests.Connector(RewriteAutoFixTests.Reply, (_, ordinals) => RewriteAutoFixTests.Rows(ordinals, "x"));
+        using var session = RewriteAutoFixTests.Session(connector, editor: model);
+        Assert.True(await RewriteAutoFixTests.ProposeAsync(session));
+        Assert.False(session.HoldsPaidWork);
+        Assert.Empty(model.CutEdgeFreeze(model.Project));
+        var changes = 0;
+        model.CutEdgesChanged += (_, _) => changes++;
+        RewriteAutoFixTests.Configure(session, new RewriteAutoFixTests.Runner((_, _) => (RewriteAutoFixTests.Fit, RewriteAutoFixTests.Passed)));
+        await session.DiscoverWindowsAsync();
+        session.MarkBatchEstimateShown(session.PreparedBatch!);
+        await session.GenerateWindowsAsync((_, _, _, _) => Task.FromResult(true), _ => Task.FromResult<VoiceLabMonthlyCap?>(null));
+        Assert.True(session.HasPaidTakes);
+        var freeze = Assert.Single(model.CutEdgeFreeze(model.Project)).Value;
+        Assert.Equal([new ClipWordRange("w10", "w12")], freeze.PaidScopes);
+        Assert.True(changes > 0);
     }
 
     // MARK: Old cuts
@@ -370,8 +395,8 @@ public sealed class CutEdgesEditorTests
             var model = Editor(project, LateBoundary());
             model.SetCutEdgePaidRoot(root);
             var session = new RewriteSession(model, 2, 2, null, null, scope: RewriteScope.Clip("c3"));
-            // The open Rewrite keeps the edge; the offer reads the saved proposals now, before any are saved.
-            Assert.Equal((0, 1), (model.CutEdgeOffer.Count, model.CutEdgeOffer.Frozen));
+            // The open Rewrite has no takes, so the edge could move; the offer reads the saved proposals now, before any are saved.
+            Assert.Equal((1, 0), (model.CutEdgeOffer.Count, model.CutEdgeOffer.Frozen));
             var store = SavePaidProposal(root, project, RewriteScope.Clip("c3"));
             session.Dispose();
             Assert.Equal((0, 1), (model.CutEdgeOffer.Count, model.CutEdgeOffer.Frozen));
@@ -487,6 +512,40 @@ public sealed class CutEdgesEditorTests
         Assert.Contains("model?.RunCutEdgeBarAction()", timeline, StringComparison.Ordinal);
         // View models never reach the WinUI App: the page hands the levels and the Voice Lab folder in.
         Assert.DoesNotContain("App.Services", File.ReadAllText(Path.Combine(AppRoot, "ViewModels", "EditorViewModel.CutEdges.cs")), StringComparison.Ordinal);
+    }
+
+    /// <summary>A recording whose video can't be probed or decoded is marked unreadable on its own; the others still load their
+    /// waveform and levels, so their cut edges never wait on it. Only cancelling the load stops it.</summary>
+    [Fact]
+    public async Task OneUnreadableRecordingLeavesTheOthersLoading()
+    {
+        var loaded = new List<string>();
+        var unreadable = new List<string>();
+        await RecordingLoads.EachAsync(["r1", "r2", "r3", "r4"], async key =>
+        {
+            await Task.Yield();
+            if (key == "r2") throw new InvalidDataException("The probe could not read this video.");
+            if (key == "r3") throw new OperationCanceledException("A decode timed out.");
+            loaded.Add(key);
+        }, (key, _) => unreadable.Add(key), TestContext.Current.CancellationToken);
+        Assert.Equal(["r1", "r4"], loaded);
+        Assert.Equal(["r2", "r3"], unreadable);
+        using var cancel = new CancellationTokenSource();
+        var started = new List<string>();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => RecordingLoads.EachAsync(["r1", "r2"], key =>
+        {
+            started.Add(key);
+            cancel.Cancel();
+            cancel.Token.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }, (key, _) => unreadable.Add(key), cancel.Token));
+        Assert.Equal(["r1"], started);
+        Assert.Equal(["r2", "r3"], unreadable);
+        // The page loads every recording through it.
+        var page = File.ReadAllText(Path.Combine(AppRoot, "Pages", "EditorPage.xaml.cs"));
+        var load = page[page.IndexOf("private async Task LoadWaveformAsync(", StringComparison.Ordinal)..page.IndexOf("private static MediaInfo MediaFromProject(", StringComparison.Ordinal)];
+        Assert.Contains("await RecordingLoads.EachAsync(clock.Regions,", load, StringComparison.Ordinal);
+        Assert.DoesNotContain("foreach (var region in clock.Regions)", load, StringComparison.Ordinal);
     }
 }
 #endif
