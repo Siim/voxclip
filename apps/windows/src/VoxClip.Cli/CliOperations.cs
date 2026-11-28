@@ -223,7 +223,10 @@ internal static class CliOperations
         var destinations = ExportDestinations(snapshot, destination, srtPath, audioPath);
         // The exporter prepares the sidecar partial; the CLI owns publication of the complete set.
         Exporter.Validate(new(snapshot, target, aspect, quality, destination, null));
-        ValidateExportDestinations(snapshot, destinations);
+        var projectPath = Required(arguments, "--open");
+        var recordings = prepared.Project.Media.SpokenSources is { Count: > 0 }
+            ? await RecordingRendering.AvailableAsync(prepared.Project, new ProjectStore(), projectPath, ct).ConfigureAwait(false) : null;
+        ValidateExportDestinations(snapshot, destinations, recordings?.Values.Select(source => source.AbsolutePath));
         if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
         {
             var peak = Exporter.VoiceLabOutputAllocations(new(snapshot, target, aspect, quality,
@@ -283,10 +286,11 @@ internal static class CliOperations
         return paths.ToArray();
     }
 
-    internal static void ValidateExportDestinations(ComposeSnapshot snapshot, IReadOnlyList<string> destinations)
+    internal static void ValidateExportDestinations(ComposeSnapshot snapshot, IReadOnlyList<string> destinations, IEnumerable<string>? recordings = null)
     {
         var protectedPaths = new List<string> { snapshot.Media.Path };
         protectedPaths.AddRange(snapshot.SpanSources.Select(source => source.Path));
+        if (recordings is not null) protectedPaths.AddRange(recordings);
         if (snapshot.Clip?.Music is { } music) protectedPaths.Add(music.AssetPath);
         if (snapshot.VoiceLab is { } input)
         {
@@ -345,9 +349,13 @@ internal static class CliOperations
         if (range is not null)
         {
             var bounds = ParseRange(range, state.Transcript.Words.Count);
+            var start = state.Transcript.Words[bounds.Start].Id;
+            var end = state.Transcript.Words[bounds.End].Id;
+            if (state.ProjectClock?.ContainsRange(start, end) == false)
+                throw new CliUsageException("A word range must come from one recording.");
             var id = "cli-range";
             for (var suffix = 2; state.Clips.Any(item => item.Id == id); suffix++) id = "cli-range-" + suffix.ToString(CultureInfo.InvariantCulture);
-            var selected = new ClipRange(id, state.Transcript.Words[bounds.Start].Id, state.Transcript.Words[bounds.End].Id, null, ClipOrigin.Manual, null, null, true);
+            var selected = new ClipRange(id, start, end, null, ClipOrigin.Manual, null, null, true);
             state = reduce(state, new EditOperation.AddClip(selected));
             state = reduce(state, new EditOperation.SetActiveClip(selected.Id));
         }
@@ -455,11 +463,12 @@ internal static class CliOperations
         var connector = Connector(Required(arguments, "--connector"));
         var model = arguments.GetValue<string?>("--model") ?? await DefaultModelAsync(connector, ct).ConfigureAwait(false);
         var preset = Enum.Parse<ClipPreset>(Required(arguments, "--preset"), true);
+        var clock = preset == ClipPreset.BestTakes ? ProjectClock.Build(project) : null;
         var finder = await AiMergeAdapter.CreateClipFinderAsync(ct).ConfigureAwait(false);
         var dryRun = arguments.GetValue<bool>("--dry-run");
-        var result = await finder.FindClipsAsync(new(project.Transcript.Words, project.Edits.Corrections,
+        var result = await finder.FindClipsAsync(new(clock?.Words ?? project.Transcript.Words, project.Edits.Corrections,
             project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal), preset, arguments.GetValue<string?>("--instruction"), project.Transcript.Language,
-            connector, model, !arguments.GetValue<bool>("--no-snap"), dryRun),
+            connector, model, !arguments.GetValue<bool>("--no-snap"), dryRun, clock is null ? null : RecordingProposalContext.Create(clock)),
             Progress<ClipFinderProgress>(arguments, value => (value.Stage, value.Fraction)), ct).ConfigureAwait(false);
         if (dryRun)
         {

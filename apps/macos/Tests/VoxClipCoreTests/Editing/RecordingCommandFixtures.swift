@@ -139,6 +139,28 @@ import Testing
         #expect(restored.project.edits.clips.first?.playParts == clip.playParts)
     }
 
+    @Test func aVersionRoundTripRestoresAnUnmatchedClauseAfterReopening() throws {
+        let (vectors, original) = try load()
+        let row = vectors["unmatchedRoundTrip"]
+        var project = original
+        func words(_ key: String) -> [TimedWord] {
+            row[key].array.enumerated().map { index, word in
+                TimedWord(id: "w\(index + 1)", text: word.string, start: Double(index) / 5, end: Double(index) / 5 + 0.1)
+            }
+        }
+        project.transcript?.words = words("original")
+        project.media.spokenSources?[0].transcript.words = words("alternate")
+        let clip = ClipRange(id: "round-trip", startWordId: "w1", endWordId: "w7")
+        project.edits.clips = [clip]
+        let originalKey = vectors["recordingB"].string, alternateKey = vectors["recordingA"].string
+        let beat = try #require(TakeMatch.build(clock: ProjectClock.build(project)).beats.first)
+        let swapped = try apply(.useLineVersion(clipId: clip.id, beatId: beat.id, key: alternateKey), project, "Use version")
+        expectRanges(row["swapped"], try #require(swapped.project.edits.clips.first))
+        let reopened = try JSONProjectStore.decode(JSONProjectStore.encode(swapped.project))
+        let restored = try apply(.useLineVersion(clipId: clip.id, beatId: beat.id, key: originalKey), reopened, "Use version")
+        expectRanges(row["restored"], try #require(restored.project.edits.clips.first))
+    }
+
     private func load() throws -> (FixtureValue, Project) {
         let data = try FixtureLoader.data("fixtures/recordings/command-cases.json")
         let vectors = FixtureValue(try JSONDecoder().decode(JSONValue.self, from: data))

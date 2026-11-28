@@ -17,6 +17,7 @@ import VoxClipCore
         self.finished = finished
         super.init()
         player.delegate = self
+        if TestProcess.isRunning { player.volume = 0 }
     }
     var position: Double { player.currentTime }
     func play() -> Bool { player.play() }

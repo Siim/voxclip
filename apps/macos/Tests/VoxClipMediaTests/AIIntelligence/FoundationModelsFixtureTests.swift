@@ -187,6 +187,8 @@ enum FoundationModelsFixtures {
             let kind = file == "connector-requests" ? "connector-request" : "render-request"
             var selected: [Argument] = []
             for fixture in envelope.cases {
+                // The #31 recording case checks the request's recording context, not a provider's rendering.
+                if file == "clip-finder-requests", fixture.kind == "recording-request" { continue }
                 guard fixture.kind == kind else {
                     throw Failure(description: "\(file)/\(fixture.id): unknown case kind \(fixture.kind).")
                 }
