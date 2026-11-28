@@ -635,6 +635,8 @@ public sealed partial class EditorViewModel
                 var fix = plan.ClipLookChoice.Fix && run.Frames is { } frames ? FrameLightSampling.Fix(frames.Sent.Frames, looks.Measure) : null;
                 var changed = ClipControlsProject.SettingLookPreset(preset.Id, look.Choice.Amount, fix, look.ClipId, next, looks);
                 if (ClipControlsProject.Controls(look.ClipId, changed) is not { } after) return (null, null);
+                // Picture shows Claude's pick and its alternatives for the session, and keeps Use it after a hand change.
+                if (!unavailable) Picture.NoteClaudePick(look.ClipId, new(preset.Id, look.Choice.Amount, look.Choice.Reason, plan.ClipLookChoice.Alternatives, fix));
                 var applied = ClipColorState.Of(after) != ClipColorState.Of(before);
                 if (!applied && !unavailable && preset.Id == ClipLook.Original.Name()) return (null, null);
                 next = changed;

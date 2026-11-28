@@ -100,6 +100,7 @@
     <Compile Include="CaptionCardTests.cs" />
     <Compile Include="ClipStyleViewModelTests.cs" />
     <Compile Include="MusicPanelTests.cs" />
+    <Compile Include="PicturePanelTests.cs" />
     <Compile Include="EditorLayoutTests.cs" />
     <Compile Include="ColumnBoundsGateTests.cs" />
     <Compile Include="TimelineTests.cs" />
