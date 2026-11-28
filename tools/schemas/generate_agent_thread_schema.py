@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Generate the on-use v8 project gate and agent thread wire (ADR-R55)."""
+"""Generate the v8 frame's version gate and the agent thread wire (ADR-R55). The thread is optional at v8, which cut
+edges share (generate_cut_edges_schema.py)."""
 import json
 
 from generate_spoken_sources_schema import PATH, populate as populate_spoken_sources
@@ -71,13 +72,13 @@ def populate(schema):
                               'state': choice('offered', 'bought', 'declined', 'failed')}, {'assetId': nullable(text)})
     defs['agentEvent'] = obj({'kind': choice('hand', 'keep', 'undo', 'redo', 'bought'), 'undoName': text,
                               'target': text, 'at': ref('timestamp')}, {'patch': nullable(patch)})
-    schema['properties']['agentThread'] = {**ref('agentThread'), 'description': 'Present only in schema v8. Core validates patch semantics, distinct ids, and the 2 MiB thread cap.'}
+    schema['properties']['agentThread'] = {**ref('agentThread'), 'description': 'Schema v8 only, and optional there. Core validates patch semantics, distinct ids, and the 2 MiB thread cap.'}
 
     legacy_parts = {'items': {'not': {'required': ['takeReason']}}}
     without_spoken = {'properties': {'edits': {'properties': {'clips': {'items': {'properties': {'parts': legacy_parts}}}}}}}
     rule = {
         'if': {'properties': {'schemaVersion': {'const': 8}}},
-        'then': {'required': ['agentThread'], 'if': {'properties': {'media': {'required': ['spokenSources']}}},
+        'then': {'if': {'properties': {'media': {'required': ['spokenSources']}}},
                  'then': {'properties': {'media': {'required': ['additionalSources']}, 'transcript': ref('transcript')}},
                  'else': without_spoken},
         'else': {'not': {'required': ['agentThread']}},

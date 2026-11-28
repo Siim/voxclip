@@ -212,7 +212,7 @@
     },
     "agentThread": {
       "$ref": "#/$defs/agentThread",
-      "description": "Present only in schema v8. Core validates patch semantics, distinct ids, and the 2 MiB thread cap."
+      "description": "Schema v8 only, and optional there. Core validates patch semantics, distinct ids, and the 2 MiB thread cap."
     }
   },
   "allOf": [
@@ -603,14 +603,31 @@
       "if": {
         "properties": {
           "schemaVersion": {
+            "maximum": 7
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "edits": {
+            "not": {
+              "required": [
+                "cutEdges"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
             "const": 8
           }
         }
       },
       "then": {
-        "required": [
-          "agentThread"
-        ],
         "if": {
           "properties": {
             "media": {
@@ -1579,6 +1596,16 @@
               "$ref": "#/$defs/id"
             }
           ]
+        },
+        "cutEdges": {
+          "description": "Cut edges seated in the quiet, schema v8 only and omitted when empty: the later word at a kept/cut boundary (its clock id, so later recordings carry their wordIdPrefix) to the edge in that recording's local seconds, sample-rounded at the project clock rate. Word times never change.",
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/wordId"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/seconds"
+          }
         }
       }
     },
