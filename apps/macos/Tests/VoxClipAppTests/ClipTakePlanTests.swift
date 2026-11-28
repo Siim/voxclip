@@ -2650,7 +2650,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         moved.captions.position = CaptionPosition(x: 0.5, y: 0.2)
         editor.replace(moved, name: "Move captions")
         await session.reviewing?.value
-        #expect(editor.setColorPreset("warm", clipID: "c-outside"))
+        #expect(editor.chooseLook("warm", clipID: "c-outside") == .changed)
         await session.reviewing?.value
         var cue = editor.project
         cue.motionCues = [MotionCue(id: "cue", clipID: "c-outside", sourceStart: 101, sourceEnd: 102)]

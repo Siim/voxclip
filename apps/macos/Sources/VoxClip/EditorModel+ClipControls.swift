@@ -32,27 +32,6 @@ extension EditorModel {
 
     /// A look from shared/looks/clip-looks.json by ID (`ClipControlsProject.settingLookPreset`'s rule): its base,
     /// adjustments and grade, keeping the clip's Fix.
-    @discardableResult func setColorPreset(_ id: String, clipID: String? = nil) -> Bool {
-        guard project.media.source.video != nil, let preset = ClipLookLibrary.app?.look(id) else { return false }
-        return updateClipControls(clipID, name: "Change look", announcing: "Look \(preset.label)") { $0.applyLook(preset) }
-    }
-
-    @discardableResult func setColorAdjustment(_ control: ClipColorAdjustments.Control, value: Int, clipID: String? = nil) -> Bool {
-        guard project.media.source.video != nil else { return false }
-        let bounds = ClipColorAdjustments.range
-        let point = min(bounds.upperBound, max(bounds.lowerBound, value))
-        return updateClipControls(clipID, name: "Change \(control.label.lowercased())", announcing: "\(control.label) \(point)") { controls in
-            guard control != .saturation || controls.look != .bw else { return }
-            var adjustments = controls.colorAdjustments ?? .neutral
-            adjustments[control] = point
-            controls.colorAdjustments = adjustments == .neutral ? nil : adjustments
-        }
-    }
-
-    @discardableResult func resetColorAdjustments(clipID: String? = nil) -> Bool {
-        updateClipControls(clipID, name: "Reset color adjustments", announcing: "Color adjustments reset") { $0.colorAdjustments = nil }
-    }
-
     /// The clip's own frame, or nil for the project's frame.
     @discardableResult func setShape(_ shape: ClipShape?, clipID: String? = nil) -> Bool {
         updateClipControls(clipID, name: "Change clip shape", announcing: "Shape \(shape?.rawValue ?? "as the project")") { $0.shape = shape }
@@ -108,7 +87,7 @@ extension EditorModel {
         }
     }
 
-    @discardableResult private func updateClipControls(_ clipID: String?, name: String, announcing message: String,
+    @discardableResult func updateClipControls(_ clipID: String?, name: String, announcing message: String,
                                                        _ change: (inout ProjectClipControls) -> Void) -> Bool {
         guard capabilities.edit, let id = clipID ?? renderedActiveClipID,
               var controls = ClipControlsProject.controls(for: id, in: project),

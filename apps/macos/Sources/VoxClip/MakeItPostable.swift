@@ -973,6 +973,8 @@ extension EditorModel {
             let applied = after.colorState != before.colorState
             guard applied || unavailable || preset.id != ClipLook.original.rawValue else { return (nil, nil) }
             project = changed
+            // Picture's Claude line and ✦ tiles hold the pick for the session (looks spec §9.6).
+            if !unavailable { self.looks.picks[clipID] = ClipLookPick(look: look, fix: fix) }
             let fixLine = fix.map(\.summary).flatMap { $0.isEmpty ? nil : "Fix: " + $0 }
             return (applied ? .look(clipID: clipID, previous: before.colorState) : nil,
                     MakeItRow(id: operation.id, kind: .choice,

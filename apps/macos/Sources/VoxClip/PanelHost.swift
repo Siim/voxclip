@@ -201,7 +201,7 @@ extension WorkspaceShell {
         VStack(spacing: 0) {
             viewer
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
-            PanelHeader(model: model, shell: shell, job: job)
+            PanelHeader(model: model, shell: shell, job: job, lookInTitle: job == .picture && !pictureHeaderPinned)
             Group {
                 // One branch for the Director panel, whether a question is open or not: answering the question must not
                 // rebuild the panel, or the keyboard can't go back to where it was (DirectorTaskTests).
@@ -214,18 +214,7 @@ extension WorkspaceShell {
                 }
                 else if job == .voice, model.hasVoiceJob { DirectorVoiceSteps(session: model.app.voiceLabSession, model: model) }
                 else if job == .voice, let feedback = model.currentVoiceFeedback { VoiceRewriteDone(model: model, feedback: feedback) }
-                else if job == .picture {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 14) {
-                            if model.currentClipControls != nil { ClipPictureControls(model: model) }
-                            else { pictureClipPicker }
-                            Divider()
-                            illustratePhrase
-                        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .scrollBounceBehavior(.basedOnSize)
-                    .modifier(EditorPaneFocus(model: model, pane: .panel))
-                }
+                else if job == .picture { picture }
                 else if job == .music {
                     ScrollView { MusicSection(model: model).padding(.horizontal, 14).padding(.bottom, 12) }
                         .scrollBounceBehavior(.basedOnSize)
@@ -250,6 +239,44 @@ extension WorkspaceShell {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("voxclip.editor.right")
     }
+    /// The Picture panel's body is this tall at least for its Look and Amount rows to stay pinned (looks spec §3.1); in a
+    /// shorter body they scroll with it and the title row carries the look and Compare.
+    static let pictureHeaderMinimumBody: CGFloat = 300
+    private var pictureHeaderPinned: Bool {
+        height - Self.viewerHeight(width: width, height: height) - Self.headerHeight >= Self.pictureHeaderMinimumBody
+    }
+    /// Picture (looks spec §3.1): the look controls of the open clip, else the clip list, then Illustrate a phrase.
+    @ViewBuilder private var picture: some View {
+        let pinned = pictureHeaderPinned && model.lookPanel != nil
+        VStack(spacing: 0) {
+            if pinned {
+                ClipLookControls(model: model, part: .header).padding(.horizontal, 14).padding(.vertical, 10)
+                    .columnLayoutEvidence("picture.header")
+                Rectangle().fill(DesignValues.color("line.default")).frame(height: 1).accessibilityHidden(true)
+            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        if model.currentClipControls != nil { ClipLookControls(model: model, part: pinned ? .body : .full) }
+                        else { pictureClipPicker }
+                        Divider()
+                        illustratePhrase
+                    }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .onAppear { scrollToLook(proxy) }
+                .onChange(of: model.looks.scrollTarget) { scrollToLook(proxy) }
+            }
+        }
+        .modifier(EditorPaneFocus(model: model, pane: .panel))
+        .onChange(of: model.focusedPane) { if model.focusedPane != .panel, model.looks.comparing { model.setLookCompare(false) } }
+    }
+    /// The Clip section's link scrolls Picture to the clip's look, under All when Suggested doesn't hold it.
+    private func scrollToLook(_ proxy: ScrollViewProxy) {
+        guard let target = model.looks.scrollTarget, let panel = model.lookPanel else { return }
+        if !panel.looks(in: model.looks.category).contains(where: { $0.id == target }) { model.looks.category = ClipLookPanel.all }
+        DispatchQueue.main.async { proxy.scrollTo(target, anchor: .center); model.looks.scrollTarget = nil }
+    }
     @ViewBuilder private var illustratePhrase: some View {
         switch IllustrativeCutawaySession(model: model).readiness {
         case .ready(let selection):
@@ -264,7 +291,7 @@ extension WorkspaceShell {
     private var pictureClipPicker: some View {
         let clips = model.project.edits.clips.filter { !model.isSuggestion($0.id) }
         return VStack(alignment: .leading, spacing: 8) {
-            Text("Choose a clip to adjust its picture").font(VCType.body.font(.semibold))
+            Text("Open a clip to choose its look.").font(VCType.body.font(.semibold))
             if clips.isEmpty {
                 Text("Select words in the transcript and choose Make Clip from Selection to give that passage its own look.")
                     .font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.secondary"))
@@ -291,10 +318,13 @@ extension WorkspaceShell {
     let model: EditorModel
     let shell: WorkspaceShell
     let job: PanelJob
+    /// Picture in a short body: the title row carries the look's name and Compare (looks spec §3.1, mockup frame 5).
+    var lookInTitle = false
     var body: some View {
         // The tab's name follows the scope and the clips' numbering, which only these make observable.
         let scope = model.renderedActiveClipID, _ = model.projectRevision
-        let context = job == .export ? model.exportJobContext : model.scopeName(scope)
+        let look = lookInTitle ? model.lookPanel : nil
+        let context = job == .export ? model.exportJobContext : look.map { "\(model.scopeName(scope)) \u{00B7} \($0.lookValue)" } ?? model.scopeName(scope)
         HStack(spacing: 7) {
             if job != .music && job != .picture {
                 Text(job.title).font(VCType.body.font(.semibold)).foregroundStyle(DesignValues.color("text.primary"))
@@ -316,6 +346,7 @@ extension WorkspaceShell {
                     .accessibilityIdentifier("voxclip.panel.speed")
             }
             Spacer(minLength: 4)
+            if let look { ClipLookCompareButton(model: model, panel: look, iconOnly: true) }
             switcher(PanelJob.available(in: model))
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel("Panel")

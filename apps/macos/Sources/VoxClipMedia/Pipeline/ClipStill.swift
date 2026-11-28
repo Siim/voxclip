@@ -114,11 +114,24 @@ public final class ClipStillFrame: @unchecked Sendable {
     /// scaling keeps the tile the export's frame scaled down (the grade isn't linear, so scaling first would differ at
     /// edges); the colour kernels only run where the scaler reads. Grain is left out: its cells vanish at tile size.
     public func tile(controls: ProjectClipControls, center: (x: Double, y: Double)?, pixels: Int) throws -> CGImage {
+        try Self.tile(of: try stillBeforeGrade(), size: size, controls: controls, center: center, pixels: pixels)
+    }
+
+    /// One look's tile of a picture that is no frame of the clip: the looks' test card while a still is missing or can't be
+    /// read (looks spec section 7). `image` stands for `o` and is graded, cut, scaled and vignetted as `tile` does, with no
+    /// colour management, as the compositor reads frames.
+    public static func tile(of image: CGImage, controls: ProjectClipControls, center: (x: Double, y: Double)?, pixels: Int) throws -> CGImage {
+        let picture = CIImage(cgImage: image, options: [.colorSpace: NSNull()])
+        return try tile(of: picture, size: CGSize(width: image.width, height: image.height), controls: controls, center: center, pixels: pixels)
+    }
+
+    private static func tile(of picture: CIImage, size: CGSize, controls: ProjectClipControls, center: (x: Double, y: Double)?,
+                             pixels: Int) throws -> CGImage {
         let side = min(size.width, size.height), output = CGSize(width: pixels, height: pixels)
         let square = CompositionFrameGeometry.centered(CGRect(x: 0, y: 0, width: side, height: side), in: CGRect(origin: .zero, size: size),
                                                        x: center?.x ?? 0.5, y: center?.y ?? 0.5)
         let recipe = ClipGradeRecipe(controls: controls)
-        let graded = try ClipPicture.grade(try stillBeforeGrade(), recipe: recipe)
+        let graded = try ClipPicture.grade(picture, recipe: recipe)
         let scaled = CompositionFrameGeometry.fill(graded, crop: square, output: output)
         let finished = try ClipPicture.finish(scaled, recipe: recipe, width: pixels, height: pixels, frameIndex: 0, hole: nil, grain: false)
         return try Self.image(finished, size: output)

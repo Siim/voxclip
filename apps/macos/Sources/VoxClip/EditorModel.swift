@@ -127,6 +127,8 @@ struct EditorRenderSnapshot {
     let makeIt = MakeItController()
     /// "✦ Claude does it all" on a newly opened video: the automatic run, its card and Export all (ClaudeMode.swift).
     let claudeMode = ClaudeModeState()
+    /// The Picture panel's chosen category, Claude's picks, Auto's measurements, tiles and viewer previews (EditorModel+Looks.swift).
+    let looks = ClipLookState()
     /// The next plan's note to Claude (a question's other answer), sent once.
     @ObservationIgnored var makeItNote: String?
     /// The window shows the Make it postable job, a panel job, or a clip's inline rename.
@@ -927,6 +929,7 @@ struct EditorRenderSnapshot {
         resetTimelineEditor()
         motionCueEditing = nil
         musicPanel.reset()
+        looks.reset()
         app.voiceLabSession.leaveVoiceControls(owner: self)
         contextDemoSession?.close(); contextDemoSession = nil
         voiceChange?.cancel(); if voiceChange?.close() == true { voiceChange = nil }
@@ -947,6 +950,7 @@ struct EditorRenderSnapshot {
         resetTimelineEditor()
         motionCueEditing = nil
         musicPanel.reset()
+        looks.reset()
         app.voiceLabSession.leaveVoiceControls(owner: self)
         contextDemoSession?.close(); contextDemoSession = nil
         voiceChange?.cancel(); if voiceChange?.close() == true { voiceChange = nil }

@@ -150,6 +150,13 @@ final class LeasedPlayerItem: AVPlayerItem {
             continuation.yield(.time(edited: time, source: request.timeline.sourceTime(time)))
         }
     }
+    /// The frame the viewer shows, for Picture's tiles and previews (looks spec 2026-11-28, section 7): captured through the
+    /// current item's own composition at the player's time, without presenting, seeking or reloading anything. Nil with
+    /// no item.
+    public func stillFrame() async throws -> ClipStillFrame? {
+        guard let item = player.currentItem, let composition = item.videoComposition else { return nil }
+        return try await ClipStillFrame.capture(item.asset, videoComposition: composition, renderedSeconds: player.currentTime().seconds)
+    }
     public func play() { guard player.currentItem != nil else { return }; player.play(); isPlaying = true; continuation.yield(.playing(true)) }
     public func pause() { player.pause(); isPlaying = false; continuation.yield(.playing(false)) }
     public func close() {

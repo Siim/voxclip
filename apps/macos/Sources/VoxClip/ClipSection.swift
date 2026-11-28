@@ -67,8 +67,9 @@ import VoxClipCore
         var parts: [String] = []
         if controls.speed != 1 { parts.append(ProjectClipControls.speedLabel(controls.speed)) }
         if let shape = controls.shape { parts.append(shape.rawValue) }
-        if controls.look != .original || controls.colorAdjustments != nil || controls.colorGrade.map({ $0.lookValues != .neutral }) == true {
-            parts.append(ClipPictureControls.label(for: controls))
+        if !ClipLookPanel.lookPartNeutral(controls) {
+            // "Warm Print 70%" (looks spec §3.6); Custom without the looks file.
+            parts.append(ClipLookLibrary.app.map { ClipLookPanel(library: $0, controls: controls).summary } ?? "Custom")
         }
         if controls.muteSource { parts.append("Source muted") } else if controls.gainDb != 0 { parts.append(MusicSection.gainLabel(controls.gainDb)) }
         if controls.fadeInSeconds > 0 || controls.fadeOutSeconds > 0 { parts.append("Fades") }
@@ -96,7 +97,7 @@ import VoxClipCore
                 // The chosen shape again goes back to the project's frame.
                 model.setShape(controls.shape == shape ? nil : shape)
             }
-            ClipPictureControls(model: model)
+            ClipLookControls(model: model, part: .compact)
             CaptionPropertyRow("Volume", marker: "clip.volume") {
                 if controls.muteSource {
                     // Muted, the level has nothing to act on: say so, with the way back.
