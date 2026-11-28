@@ -30,6 +30,9 @@ enum RecordingExportCheck {
                 let edited = timing.edited(time)
                 let progress = (edited - span.output.start.seconds) / span.output.duration.seconds
                 let local = span.localSource.start.seconds + progress * span.localSource.duration.seconds
+                // Authored pan and zoom is part of the exported picture, so each candidate gets it too (FrameCompositor).
+                let motion = MotionCue.transform(atSourceTime: timeline.sourceTime(edited), clipID: render.motionClipID,
+                                                 cues: render.motionCues)
                 var distances: [String: Double] = [:]
                 for recording in render.recordings {
                     let duration = Double(recording.region.durationSamples) / render.timeline.sampleRate
@@ -38,7 +41,11 @@ enum RecordingExportCheck {
                     let picture = ClipPicture.orient(CIImage(cgImage: image), controls: render.clipControls)
                     let size = CGSize(width: render.output.size.width, height: render.output.size.height)
                     let crop = FrameCompositor.aspectCrop(source: picture.extent, output: size, controls: render.clipControls, part: span.partReframe)
-                    let fitted = CompositionFrameGeometry.fill(picture, crop: crop, output: size)
+                    var fitted = CompositionFrameGeometry.fill(picture, crop: crop, output: size)
+                    if motion != .identity {
+                        fitted = CompositionFrameGeometry.fill(fitted, crop: CompositionFrameGeometry.crop(in: CGRect(origin: .zero, size: size),
+                            scale: motion.scale, anchorX: motion.anchorX, anchorY: motion.anchorY), output: size)
+                    }
                     if let fingerprint = fingerprint(fitted, context: context) {
                         distances[recording.key] = zip(actual, fingerprint).reduce(0) { $0 + Double(abs(Int($1.0) - Int($1.1))) } / 256
                     }
