@@ -191,7 +191,8 @@ public sealed class FrameComposer : IFrameComposer
     /// left out of the frame; a missing disclosure, context-demo frame or other failure still fails the frame, marked with its reason. An
     /// export (<paramref name="forPreview"/> false) fails exactly as before.</summary>
     internal unsafe void Compose(PixelBuffer decoded, PixelBuffer output, ComposeSnapshot snapshot, double editedTime, bool forPreview,
-        PreviewFrameFailures? failures, CancellationToken ct, bool pictureOnly = false, bool renderedVoicePicture = false, int? rotationOverride = null)
+        PreviewFrameFailures? failures, CancellationToken ct, bool pictureOnly = false, bool renderedVoicePicture = false, int? rotationOverride = null,
+        FrameStill still = default)
     {
         ct.ThrowIfCancellationRequested();
         Validate(decoded); Validate(output);
@@ -248,8 +249,8 @@ public sealed class FrameComposer : IFrameComposer
             catch (Exception exception) { PreviewFrameFailures.Failed(failures, forPreview, PreviewFailureReason.DemoFrame, exception); throw; }
             if (!pictureOnly)
             {
-                FinishClipFrame(output, snapshot, editedTime, decoded.Width, decoded.Height, new(left, top, widthCrop, heightCrop), ct, forPreview, failures);
-                DrawOverlays(output, snapshot, editedTime, forPreview, failures, ct);
+                FinishClipFrame(output, snapshot, editedTime, decoded.Width, decoded.Height, new(left, top, widthCrop, heightCrop), ct, forPreview, failures, still);
+                if (!still.BeforeGrade) DrawOverlays(output, snapshot, editedTime, forPreview, failures, ct);
             }
         }
         finally
@@ -298,9 +299,10 @@ public sealed class FrameComposer : IFrameComposer
     /// clip's motion cue crops the finished picture (in output coordinates, so a flipped or turned clip zooms where it is seen); then
     /// the companion footage; then the vignette and the rendered frame's grain on the output frame; then titles, lower thirds,
     /// stickers and the progress bar in the output frame, unzoomed and clean. In preview, a title or lower third that can't be drawn is reported to
-    /// <paramref name="failures"/> as <c>title</c>; it is left out of the frame either way.</summary>
+    /// <paramref name="failures"/> as <c>title</c>; it is left out of the frame either way. A Picture <paramref name="still"/> stops
+    /// after the illustration or renders another colour state.</summary>
     internal void FinishClipFrame(PixelBuffer output, ComposeSnapshot snapshot, double editedTime, int pictureWidth, int pictureHeight, RectD crop,
-        CancellationToken ct, bool forPreview = false, PreviewFrameFailures? failures = null)
+        CancellationToken ct, bool forPreview = false, PreviewFrameFailures? failures = null, FrameStill still = default)
     {
         var clip = snapshot.Clip;
         if (clip is null && snapshot.Footage.Count == 0) return;
@@ -308,12 +310,14 @@ public sealed class FrameComposer : IFrameComposer
         var sourceTime = timeline.SourceTime(editedTime);
         var frames = clip?.Effects is { } input ? effectFrames.GetValue(input, key => new EffectFrames(key, sharedRoot)) : null;
         frames?.DrawIllustration(output, sourceTime);
+        if (still.BeforeGrade) return;
+        var colour = still.Colour ?? clip?.Controls;
         var timedLook = clip?.Effects?.Effects.LastOrDefault(effect => effect.Kind == "colourLook" && effect.Start <= sourceTime && sourceTime < effect.End);
-        var baseLook = clip?.Controls?.Look ?? ClipLook.Original;
+        var baseLook = colour?.Look ?? ClipLook.Original;
         var look = timedLook?.Look switch { "warm" => ClipLook.Warm, "muted" => ClipLook.Muted, "bw" => ClipLook.Bw,
             "original" => ClipLook.Original, _ => baseLook };
-        var adjustments = clip?.Controls?.ColorAdjustments;
-        var grade = clip?.Controls?.ColorGrade;
+        var adjustments = colour?.ColorAdjustments;
+        var grade = colour?.ColorGrade;
         void Grade(PixelBuffer frame, ClipLook value) => ClipPicture.Grade(frame, new ClipGradeRecipe(value, adjustments, grade), ct);
         if (look != baseLook && timedLook is { } effect && (effect.FadeInSeconds.HasValue || effect.FadeOutSeconds.HasValue))
             DrawBlended(output, effect.ExplicitFadeOpacityAt(sourceTime), frame => Grade(frame, look), frame => Grade(frame, baseLook));
