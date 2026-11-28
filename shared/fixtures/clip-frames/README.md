@@ -20,8 +20,9 @@ replay every case.
 `decision-cases.json` (`voxclip-frame-decision-cases/1`, ADR-R48 and ai.md §19) holds the pure frame decisions on fabricated
 observations: eye states, clear looks, the opening frame (the relative rule against the baseline), the cover and its C1–C3
 candidates, the 9:16 and 1:1 face-follow crop, screens, blur spans and their B1… candidates, the frame sheet's summary
-text, the sampling times, the Mac's two-decimal rule (the shortest decimal rounded half to even, not printf's), and an
-`analysis-v2.json` sample. Inputs and answers are in the Mac's JSON shape. Regenerate with
+text with each measured frame's light line (thresholds from `shared/looks/clip-looks.json`'s `measure.light`), the
+sampling times, the Mac's two-decimal rule (the shortest decimal rounded half to even, not printf's), and an
+`analysis-v3.json` sample (`voxclip-frames/3`, with each observation's `light`). Inputs and answers are in the Mac's JSON shape. Regenerate with
 `python3 tools/fixtures/clip-frames/generate_frame_decisions.py` (check_drift.py runs it, exact); `tools/schemas/validate.py`
 checks it against `shared/schemas/frame-decision-cases.schema.json`. Swift and C# `FrameDecisionVectorTests` replay every
 case, comparing numbers within 1e-12.

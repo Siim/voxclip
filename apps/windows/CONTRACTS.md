@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-11-28 — Claude picks one of the 24 looks (issue #40, T8, track/looks-planner)
+
+- Twin of the Mac planner look: plan v5 `Look(Id, Reason) { Amount, Fix, Alternatives }` (`ToJson`/`FromJson`, v4 reads whole), prompt v14 checked against `ClipLookLibrary`, `ClipAutopilotValidator.Look` replaying `plan-look-cases.json`, `FrameObservation.Light` in analysis cache v3, and the frames summary's light line.
+- `EditorViewModel.MakeIt` applies the look via `ClipControlsProject.SettingLookPreset` with the Fix from `FrameLightSampling.Fix` on the sent sheet frames; `MakeItInverse.Look` holds a `ClipColorState`, so Undo restores look, `ColorAdjustments` and `ColorGrade` (`UndoAfterClaudesLookRestoresTheWholeColourState`).
+- Change chips match the Mac except "All looks in Picture ›", which shows only when `MakeItServices.PictureTab` is true (false until the Picture tab lands; it raises `MakeItShowPictureRequested`). The original look's chip reads "As filmed".
+
 ### 2026-11-24 — Saved patch Rewrite proposals and Music parity (track/c19b-win-proposal-music)
 
 - Paid patch audio is journaled before timing and QA, and that write checkpoints the fitted proposal for its project and scope. A matching reopen needs no proposal call; Take Run still checks consent and prices only the word checks for adoptable audio. Use and explicit discard clear the proposal, not its assets. See `doc/spec/voice-lab.md` §3.5.

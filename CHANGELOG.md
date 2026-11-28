@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Make it postable now picks any of the 24 looks at an amount, using light measured on the clip's frames (a dim face never gets Moody or Teal & Amber), can fix the light first, offers Claude's alternatives, related looks and amounts under Change, and its Undo puts back the clip's whole color on Mac and Windows.
 - Mac and Windows now open and keep projects that use the new looks, their Amount and the new color adjustments (saved as project version 8, which older builds can't open), and Make it postable calls the original look As filmed on both.
 - Cutting one word out of fluent speech now ends the cut in the quiet between words, so you no longer hear part of the cut word or lose the start of the next one; word times, captions and paid voice stay as they are.
 - On Mac, older cuts can move into the quiet with one click: the timeline's edit bar offers Fix cut edges (also Edit ▸ Fix Cut Edges), and a selected cut can go back to its word edge or into the quiet again.

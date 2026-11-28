@@ -68,9 +68,11 @@ To make a new clip, use `newClip` instead of `clipId`. For example, this story p
   "newClip":{"kind":"story","title":"Start with the result"},
   "parts":[{"startWord":140,"endWord":164},{"startWord":23,"endWord":51}],
   "reason":"Lead with the result, then explain how we got there.",
-  "look":{"id":"warm"},"captionStyle":"vox-bold"
+  "look":{"id":"warmPrint","amount":70},"captionStyle":"vox-bold"
 }]}
 ```
+
+`look.id` is any look ID of [`shared/looks/clip-looks.json`](../shared/looks/clip-looks.json) (the Picture pickers' 24 looks; `original` is As filmed), and `amount` (0–100, 100 when absent) blends it. A look this VoxClip doesn't have is refused at review with "Choose one of VoxClip's looks."
 
 Use inclusive transcript indices from the current project. List nonoverlapping parts in play order: one for a `stretch`, two to twelve for a `story` or `showreel`. `read_clips` returns `kind` and `parts` in that order. Cuts change the source's shared cut list, so overlapping clips also reflect them. Effects need kept spoken-word anchors and use the complete [clip-plan entry schema](../shared/schemas/clip-plan-effect.schema.json), including `bRoll`, `screenshot`, `videoStack`, `illustration`, `soundEffect`, `colourLook` and `speedForPart`. Footage uses a `sourceKey` from `read_clips`, with a source start in seconds.
 
