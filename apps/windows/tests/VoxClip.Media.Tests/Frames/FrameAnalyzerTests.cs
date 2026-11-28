@@ -113,6 +113,35 @@ public sealed class FrameAnalyzerTests
         Assert.Null(FrameLightSampling.Sample([1, 2, 3], 160, null));
     }
 
+    /// <summary>Claude's Fix (looks spec §9.6) is Auto's measurement on up to <c>auto.frames</c> sheet frames spread evenly over the clip,
+    /// each at <c>auto.frameSize</c>; with no readable frame there is no measurement. Twin of the Mac <c>FrameLightSampling.fix</c>.</summary>
+    [Fact]
+    public void ClaudesFixIsMeasuredOnEvenlySpreadSheetFrames()
+    {
+        var measure = ClipLookLibrary.Load(FixtureLoader.SharedRoot).Measure;
+        var size = FfmpegFrameDecoder.Fit(1280, 720, 1280);
+        var pixels = new byte[size.Width * size.Height * 4];
+        // Blue 130, green 120, red 114 (BGRA): a slightly dark neutral grey with a cool cast, so the Fix brightens and balances it.
+        for (var index = 0; index < pixels.Length; index += 4) (pixels[index], pixels[index + 1], pixels[index + 2], pixels[index + 3]) = (130, 120, 114, 255);
+        var jpeg = FrameJpeg.Encode(new PixelBuffer(pixels, size.Width, size.Height, size.Width * 4), FrameSheet.FrameEdge);
+        var face = new ClipEffectRect(0.35, 0.2, 0.3, 0.45);
+        FrameSheetFrame Frame(int index, byte[] bytes) =>
+            new(index + 1, new FrameObservation(index) { FaceCount = 1, Face = new FrameFace(face) }, bytes, 320, 180);
+        var sample = Assert.IsType<ClipFrameSample>(FrameLightSampling.Sample(jpeg, measure.Auto.FrameSize, face));
+        var fix = Assert.IsType<ClipColorFix>(FrameLightSampling.Fix([Frame(0, jpeg), Frame(1, jpeg)], measure));
+        Assert.Equal(ClipColorFix.Measure([sample, sample], measure.Auto), fix);
+        Assert.True(fix.Exposure > 0 && fix.Temperature != 0, $"{fix}");
+        Assert.Null(FrameLightSampling.Fix([Frame(0, [1, 2, 3])], measure));
+        Assert.Null(FrameLightSampling.Fix([], measure));
+        // Twelve frames read eight, at 0, 1, 3, 4, 6, 7, 9 and 11: only the four left out are readable here, so nothing is measured.
+        Assert.Equal(8, measure.Auto.Frames);
+        int[] skipped = [2, 5, 8, 10];
+        var twelve = Enumerable.Range(0, 12).Select(index => Frame(index, skipped.Contains(index) ? jpeg : [1, 2, 3])).ToArray();
+        Assert.Null(FrameLightSampling.Fix(twelve, measure));
+        twelve[11] = Frame(11, jpeg);
+        Assert.Equal(ClipColorFix.Measure([sample], measure.Auto), FrameLightSampling.Fix(twelve, measure));
+    }
+
     /// <summary>A version-1 file is ignored and left in place; a linked entry is never written through.</summary>
     [Fact]
     public async Task AnOlderVersionsFileIsIgnoredAndALinkedEntryIsNeverWrittenThrough()
