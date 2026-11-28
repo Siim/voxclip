@@ -169,6 +169,7 @@ import VoxClipMedia
               combinedBlock(app, findClip: true, count: savedCount) == nil, let provider = provider(app),
               let destination = savedRecordings.first?.url?.deletingLastPathComponent() else { return }
         let route = CardPlanConnector.Route(app: app, provider: provider)
+        if budget == nil { budget = MakeItBudget(cap: Decimal(app.settings.clipsAutopilot.capUSD), fixed: true) }
         notice = nil; stage = .making
         task = Task { [weak self] in
             guard let self else { return }
@@ -349,7 +350,7 @@ import VoxClipMedia
         return labels.joined(separator: " + ") + " · " + date.formatted(.dateTime.day().month(.abbreviated).locale(Locale(identifier: "en_GB")))
     }
 
-    private func combinedProject(_ project: Project, from recordings: [Recording], primary: Project) throws -> Project {
+    private func combinedProject(_ project: Project, from recordings: [Recording], primary: Project) async throws -> Project {
         let others = recordings.compactMap { $0.model?.project }.filter { $0.media.source.contentKey != primary.media.source.contentKey }
         var combined = project
         combined.media = ProjectMedia(source: primary.media.source, additionalSources: others.map(\.media.source))
@@ -357,7 +358,11 @@ import VoxClipMedia
         if primary.transcript != nil {
             for other in others {
                 guard let transcript = other.transcript else { continue }
-                combined = try RecordingEdits.apply(.addSpokenSource(key: other.media.source.contentKey, transcript: transcript), project: combined).get().project
+                let gain = try? await RecordingLoudness.match(primary: URL(fileURLWithPath: primary.media.source.absolutePath),
+                    project: primary, recording: URL(fileURLWithPath: other.media.source.absolutePath), transcript: transcript)
+                try Task.checkCancellation()
+                combined = try RecordingEdits.apply(.addSpokenSource(key: other.media.source.contentKey, transcript: transcript, gainDb: gain),
+                                                    project: combined).get().project
             }
         }
         return combined
@@ -376,7 +381,7 @@ import VoxClipMedia
             let seed = try ContextDemoProject.upgradeToV4(Project(id: UUID().uuidString.lowercased(), title: title,
                 createdAt: date, modifiedAt: date, savedBy: first.savedBy, media: ProjectMedia(source: first.media.source),
                 captions: first.captions, export: first.export))
-            let project = try combinedProject(seed, from: recordings, primary: first)
+            let project = try await combinedProject(seed, from: recordings, primary: first)
             var url = destination.appendingPathComponent(title).appendingPathExtension("voxclip")
             var suffix = 2
             while FileManager.default.fileExists(atPath: url.path) {
@@ -396,12 +401,12 @@ import VoxClipMedia
             let frames = await combinedFrames(recordings)
             guard !Task.isCancelled else { return }
             editor.cardPlanConnector = CardPlanConnector(app: app, provider: provider, route: route, confirmation: editor.sendConfirmation,
-                                                        frames: frames, verb: "Make one clip")
+                                                        frames: frames, verb: "Make one clip", budget: budget)
             stage = .making
             editor.findClips(preset: .bestTakes, instruction: "One clip from the best take of each line.")
             await editor.findTask?.value
             if let clip = editor.suggestedClips.first {
-                let final = try rebasedProposal(editor.project, clip: clip, recordings: recordings)
+                let final = try await rebasedProposal(editor.project, clip: clip, recordings: recordings)
                 if final != editor.project {
                     try await JSONProjectStore().save(final, to: url)
                     editor.document.replaceProject(final)
@@ -429,7 +434,7 @@ import VoxClipMedia
         return editor
     }
 
-    private func rebasedProposal(_ project: Project, clip: ClipRange, recordings: [Recording]) throws -> Project {
+    private func rebasedProposal(_ project: Project, clip: ClipRange, recordings: [Recording]) async throws -> Project {
         let old = ProjectClock.build(project)
         let byWord = Dictionary(uniqueKeysWithValues: old.words.enumerated().map { ($0.element.id, $0.offset) })
         let matches = TakeMatch.build(clock: old)
@@ -456,7 +461,7 @@ import VoxClipMedia
         guard primary.media.source.contentKey != project.media.source.contentKey else { return result }
         let edits = result.edits, ai = result.ai
         result.edits = ProjectEdits(); result.ai = ProjectAI()
-        result = try combinedProject(result, from: recordings, primary: primary)
+        result = try await combinedProject(result, from: recordings, primary: primary)
         let clock = ProjectClock.build(result)
         let prefixes = Dictionary(uniqueKeysWithValues: clock.regions.map { ($0.key, $0.prefix) })
         let indices = Dictionary(uniqueKeysWithValues: clock.words.enumerated().map { ($0.element.id, $0.offset) })
@@ -620,10 +625,12 @@ struct CardPlanConnector: LLMConnector {
     private let connector: any LLMConnector
     private let frames: [LLMImage]
     private let verb: String
+    private let budget: MakeItBudget?
 
-    @MainActor init(app: AppModel, provider: ProviderChoice, route: Route, confirmation: ConnectorConfirmation, frames: [LLMImage] = [], verb: String = "Make clips") {
+    @MainActor init(app: AppModel, provider: ProviderChoice, route: Route, confirmation: ConnectorConfirmation,
+                    frames: [LLMImage] = [], verb: String = "Make clips", budget: MakeItBudget? = nil) {
         self.app = app; self.provider = provider; self.route = route; self.confirmation = confirmation
-        self.frames = frames; self.verb = verb
+        self.frames = frames; self.verb = verb; self.budget = budget
         self.connector = app.connector(provider.id)
     }
 
@@ -639,7 +646,45 @@ struct CardPlanConnector: LLMConnector {
         if !frames.isEmpty, await connector.supportsImages() { request.images += frames }
         guard try await approved() else { throw CancellationError() }
         try Task.checkCancellation()
-        return try await connector.send(request, model: model)
+        guard let budget, case .confirm = await app.llmSendKind(id) else {
+            return try await connector.send(request, model: model)
+        }
+        let pricedConnector: ConnectorID = id == .claudeCode ? .anthropic : (id == .codex ? .openai : id)
+        let shared = await app.shared
+        let prices = shared.flatMap { try? ClipAutopilotImagePrices(shared: $0) }
+        guard let rate = prices?.usd(tokens: 1_000_000, connector: pricedConnector, model: model) else {
+            throw LLMError.unavailable(reason: "VoxClip can't estimate this AI request against the card's AI cap.")
+        }
+        let schemaBytes = (try? JSONEncoder().encode(request.schema).count) ?? 0
+        let textBytes = request.system.utf8.count + request.instruction.utf8.count + (request.cachedBlock?.utf8.count ?? 0)
+        let imageTokens = request.images.reduce(0) { total, image in
+            total + image.label.utf8.count + FrameSheet.imageTokens(width: image.width, height: image.height)
+        }
+        let maxInput = textBytes + schemaBytes + imageTokens + 2_048
+        let maxOutput = request.maxOutputTokens
+        func cost(input: Int, output: Int) -> Decimal {
+            (Decimal(input) * 5 / 4 + Decimal(output) * 10) * rate / 1_000_000
+        }
+        let estimate = cost(input: maxInput, output: maxOutput)
+        guard await budget.reservePlanner(estimate) else {
+            throw LLMError.unavailable(reason: "This request would exceed the card's AI cap. Your recordings are saved.")
+        }
+        do {
+            try Task.checkCancellation()
+        } catch {
+            await budget.finishPlanner(reserved: estimate, charged: 0)
+            throw error
+        }
+        do {
+            let result = try await connector.send(request, model: model)
+            let used = result.usage
+            let input = used?.input.map { $0 + (used?.cacheRead ?? 0) + (used?.cacheWrite ?? 0) } ?? maxInput
+            await budget.finishPlanner(reserved: estimate, charged: cost(input: input, output: used?.output ?? maxOutput))
+            return result
+        } catch {
+            await budget.finishPlanner(reserved: estimate, charged: estimate)
+            throw error
+        }
     }
 
     @MainActor private func approved() async throws -> Bool {

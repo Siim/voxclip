@@ -5,6 +5,15 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - Mark an exact timeline range with Snapping off (Ctrl+drag on Windows), step the playhead by frame with , and ., scrub exactly, and play, title, trim an item to or make a clip from the range (#41).
+- On Mac, the Pan and zoom panel follows Undo and timeline edits to its cue, says why Apply is unavailable, and shows the edited keyframe in the paused viewer; the preview shows pan and zoom under Reduce Motion too, as the export does.
+- On Mac, Put Back shows leading and consecutive skipped lines and restores each in recording order.
+- On Mac, alternate versions and uninserted lines play in place without changing the clip.
+- On Mac, the timeline can open a line's other versions even when the transcript shows a single recording.
+- On Mac, added spoken recordings match the primary's speech level, with an undoable Don't match level action.
+- On Mac, Make one clip checks each metered planning request against the card's AI cap before sending.
+- On Mac, clips that mix recordings keep playing paid voice patches from the primary recording.
+- On Mac, the export check skips cutaways when checking the camera at a recording seam.
+- On Mac, a freeze holds across ordinary cuts in a recording, then stops at a recording change.
 - The CLI can export and check a clip from another recording even if the unused original is missing.
 - CLI exports on Mac and Windows protect every spoken recording in a project, even those outside the selected clip.
 - On Windows, seek and preview cuts across recordings, recover left-out lines in order, and turn off automatic recording level matching.

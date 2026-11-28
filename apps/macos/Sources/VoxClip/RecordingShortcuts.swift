@@ -20,7 +20,8 @@ struct RecordingClipLine: Identifiable, Equatable {
 
 struct RecordingOmittedLine: Identifiable, Equatable {
     let take: TakeMatch.Take
-    let after: String
+    let after: String?
+    let before: String?
     var id: String { take.startWordId }
     var label: String { take.flags.contains("restart") ? "restart" : "false start" }
 }
@@ -91,14 +92,18 @@ extension EditorModel {
     }
 
     var recordingOmittedLines: [RecordingOmittedLine] {
-        guard let clip = activeClip, clip.id.hasPrefix("recording-clip"), let clock = recordingClock else { return [] }
-        let parts = clip.playParts
-        let keys = Set(parts.compactMap { clock.region(of: $0.startWordId)?.key })
+        guard let clip = activeClip, clip.id.hasPrefix("recording-clip"), let clock = recordingClock,
+              let bounds = clip.playPartIndices(in: words) else { return [] }
+        let parts = Array(zip(clip.playParts, bounds))
+        let keys = Set(parts.compactMap { clock.region(of: $0.0.startWordId)?.key })
         return keys.flatMap(recordingTakes).compactMap { take in
-            guard take.flags.contains("restart") || take.flags.contains("falseStart"), let first = index(take.startWordId),
-                  !parts.contains(where: { part in index(part.startWordId).map { $0 <= first } == true && index(part.endWordId).map { $0 >= first } == true }),
-                  let before = parts.first(where: { index($0.endWordId) == first - 1 }) else { return nil }
-            return .init(take: take, after: before.endWordId)
+            guard take.flags.contains("restart") || take.flags.contains("falseStart"),
+                  let first = index(take.startWordId), let last = index(take.endWordId), first <= last,
+                  !bounds.contains(where: { $0.overlaps(first...last) }) else { return nil }
+            let siblings = parts.filter { clock.region(of: $0.0.startWordId)?.key == take.key }
+            let preceding = siblings.filter { $0.1.upperBound < first }.max { $0.1.upperBound < $1.1.upperBound }
+            let following = siblings.filter { $0.1.lowerBound > last }.min { $0.1.lowerBound < $1.1.lowerBound }
+            return .init(take: take, after: preceding?.0.endWordId, before: following?.0.startWordId)
         }.sorted { (index($0.id) ?? 0) < (index($1.id) ?? 0) }
     }
 
@@ -134,10 +139,31 @@ extension EditorModel {
     }
 
     func putBackRecordingLine(_ line: RecordingOmittedLine) {
-        guard let clip = activeClip, !recordingIsMissing(line.take.key) else { return }
-        applyRecordingEdit(.insertLine(clipId: clip.id, key: line.take.key,
-                                      startWordId: line.take.startWordId, endWordId: line.take.endWordId, afterWordId: line.after),
-                           message: "\(line.label.capitalized) put back in \(scopeName(clip.id)).")
+        guard capabilities.edit, let clip = activeClip, !recordingIsMissing(line.take.key) else { return }
+        let message = "\(line.label.capitalized) put back in \(scopeName(clip.id))."
+        let insert = RecordingEdit.insertLine(clipId: clip.id, key: line.take.key, startWordId: line.take.startWordId,
+                                              endWordId: line.take.endWordId, afterWordId: line.after)
+        let parts = clip.playParts
+        guard line.after == nil, let nextIndex = parts.firstIndex(where: { $0.startWordId == line.before }) else {
+            applyRecordingEdit(insert, message: message)
+            return
+        }
+        let next = parts[nextIndex]
+        if let last = index(line.take.endWordId), last + 1 == index(next.startWordId) {
+            applyRecordingEdit(.trimPart(clipId: clip.id, partId: next.id, startWordId: line.take.startWordId,
+                                         endWordId: next.endWordId), undoName: "Add part", message: message)
+            return
+        }
+        switch RecordingEdits.apply(insert, project: project) {
+        case .success(let inserted):
+            guard let details = inserted.details, details.madePartIds.count == 1, let partID = details.madePartIds.first else { return }
+            let previous = nextIndex == 0 ? nil : parts[nextIndex - 1].id
+            applyRecordingEdit(.movePart(clipId: details.clipId, partId: partID, afterPartId: previous),
+                               preparing: inserted.project, undoName: "Add part", message: inserted.announcement ?? message)
+        case .failure(let refusal):
+            storyPartError = refusal.message
+            announce(refusal.message)
+        }
     }
 
     func recordingLineEdit(_ line: RecordingClipLine, key: String) -> RecordingEdit? {
@@ -151,6 +177,9 @@ extension EditorModel {
     }
 
     func showRecordingLineVersions(_ line: RecordingClipLine) {
+        if transcriptRecordingScope != .playOrder {
+            chooseRecordingTranscript(.playOrder, scrollTo: line.end, announceChange: false)
+        }
         recordingOpenLineID = line.id
         recordingSelectedVersionKey = line.alternatives.first?.key
         announce(recordingVersionsAccessibility(line))

@@ -155,7 +155,7 @@ extension EditorModel {
         }
     }
 
-    @discardableResult func applyRecordingEdit(_ edit: RecordingEdit, preparing base: Project? = nil, message: String? = nil,
+    @discardableResult func applyRecordingEdit(_ edit: RecordingEdit, preparing base: Project? = nil, undoName: String? = nil, message: String? = nil,
                                                feedback: ((RecordingEditOutcome) -> (toast: String, announcement: String))? = nil) -> Bool {
         guard capabilities.edit else { return false }
         storyPartError = nil
@@ -163,7 +163,7 @@ extension EditorModel {
         case .success(let outcome):
             guard let step = outcome.undoStep else { return false }
             let copy = step.after.edits.activeClipId != project.edits.activeClipId
-            replace(step.after, name: step.name, restoresRecordingScope: copy)
+            replace(step.after, name: undoName ?? step.name, restoresRecordingScope: copy)
             let custom = feedback?(outcome)
             let announcement: String?
             if copy, case .swapTake = edit, let title = activeClip?.title {

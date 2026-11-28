@@ -90,6 +90,44 @@ import Testing
         #expect(NSMaxRange(previous.range) <= solo.1.location && NSMaxRange(solo.1) <= punchline.range.location)
     }
 
+    @Test func putBackRestoresConsecutiveLeadingRestartsInRecordingOrder() throws {
+        let words = ["One", "more", "time.", "Let", "me", "start", "again.", "We", "can", "ship", "it."]
+            .enumerated().map { index, word in
+                let start = Double(index) * 0.2
+                return TimedWord(id: "lead\(index)", text: word, start: start, end: start + 0.15)
+            }
+        let model = try recordingShortcutModel(primaryWords: words)
+        defer { model.close() }
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        model.undoManager = undo
+        let (text, _, coordinator) = try pane(model)
+        defer { withExtendedLifetime(coordinator) {} }
+        let firstKept = try #require(text.map.span(id: "lead7"))
+        let storage = try #require(text.textStorage)
+        var leadingRows: [String] = []
+        storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: firstKept.range.location)) { value, _, _ in
+            if let attachment = value as? RecordingInlineAttachment, case .omitted(let line) = attachment.control {
+                leadingRows.append(line.id)
+            }
+        }
+        #expect(leadingRows == ["lead0", "lead3"])
+        let original = model.project
+        let undoSteps = model.undoSteps
+        let first = try #require(model.recordingOmittedLines.first)
+        undo.beginUndoGrouping(); model.putBackRecordingLine(first); undo.endUndoGrouping()
+        #expect(model.activeClip?.playParts.map(\.startWordId) == ["lead0", "lead7"])
+        let firstRestored = model.project
+        let second = try #require(model.recordingOmittedLines.first)
+        undo.beginUndoGrouping(); model.putBackRecordingLine(second); undo.endUndoGrouping()
+        #expect(model.activeClip?.playParts.map(\.startWordId) == ["lead0"])
+        #expect(model.activeClip?.playParts.last?.endWordId == "lead10")
+        #expect(model.recordingOmittedLines.isEmpty)
+        #expect(undo.undoActionName == "Add part" && model.undoSteps == undoSteps + 2)
+        undo.undo(); #expect(model.project == firstRestored)
+        undo.undo(); #expect(model.project == original)
+    }
+
     @Test func recordingFoldKeysActInTheTranscriptAndNotInTextFields() throws {
         let model = try recordingShortcutModel(thirdVersion: true)
         defer { model.close() }
@@ -143,12 +181,13 @@ import Testing
         #expect(model.activeClip?.playParts.first?.startWordId == "r2.w1" && model.recordingOpenLineID == nil)
     }
 
-    private func recordingShortcutModel(thirdVersion: Bool = false) throws -> EditorModel {
+    private func recordingShortcutModel(thirdVersion: Bool = false, primaryWords: [TimedWord]? = nil) throws -> EditorModel {
         _ = NSApplication.shared
         let fixture = try SharedResources.locate().root.appendingPathComponent("fixtures/recordings/reference-recordings.voxclip")
         var project = try JSONProjectStore.decode(Data(contentsOf: fixture))
         project.edits.clips = []
         project.edits.activeClipId = nil
+        if let primaryWords { project.transcript?.words = primaryWords }
         if thirdVersion {
             var media = try #require(project.media.additionalSources.first)
             media.absolutePath = "/synthetic/DJI_0006.MOV"

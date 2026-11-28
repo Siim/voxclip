@@ -60,10 +60,27 @@ private actor CardConnectorSpy: LLMConnector {
         let partLabels = after.edits.clips.first?.playParts.compactMap { clock.region(of: $0.startWordId)?.label }
         #expect(partLabels == ["0010", "0007", "0007", "0010", "0007"])
         #expect(importer.budget?.cap == 1 && importer.budget?.spent == 0)
+        #expect((importer.budget?.plannerSpent ?? 0) > 0)
         #expect(after.voiceLab.segments.isEmpty && after.voiceLab.videoAssets?.isEmpty == true)
         result.keep(clip.id)
         let kept = try await JSONProjectStore().load(from: url)
         #expect(kept.edits.clips.first?.selected == true)
+    }
+
+    @Test(.timeLimit(.minutes(1))) func zeroCardCapSavesProjectsWithoutSendingAMeteredPlan() async throws {
+        let (app, importer, spy) = try await openThreeRecordings(connector: true)
+        defer { cleanUp(app, importer) }
+        #expect(app.set(ClipsMode.capKey, .number(0)))
+        importer.start(app, mode: .bestVersions)
+        try await waitUntil { importer.combinedEditor?.sendConfirmation.isPresented == true || !importer.running }
+        importer.combinedEditor?.sendConfirmation.approve()
+        try await waitUntil { !importer.running }
+        try await verifySavedProjects(importer)
+        let url = try #require(importer.combinedURL)
+        let saved = try await JSONProjectStore().load(from: url)
+        #expect(saved.edits.clips.isEmpty)
+        #expect(await spy.requests == 0)
+        #expect(importer.notice?.contains("card's AI cap") == true)
     }
 
     @Test(.timeLimit(.minutes(1))) func stopAtInlineApprovalKeepsEveryProjectWithoutSending() async throws {

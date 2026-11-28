@@ -72,10 +72,62 @@ import Testing
         #expect(editor.activeClip?.playParts.count == 1 && editor.recordingOmittedLines.isEmpty)
     }
 
-    private func openRecordingReference() async throws -> (WorkspaceShell, EditorModel) {
+    @Test func auditionsPlayAnAlternateAndAnUninsertedLineWithoutEditing() async throws {
+        let (_, editor) = try await openRecordingReference(withMedia: true)
+        defer { editor.close() }
+        let primary = try #require(editor.recordingRegions.first)
+        let undo = try #require(editor.undoManager)
+        undo.beginUndoGrouping(); editor.startFromRecording(primary); undo.endUndoGrouping()
+        let before = editor.project
+        let opening = try #require(editor.recordingLineWithVersions(at: "w1"))
+        let alternate = try #require(opening.alternatives.first)
+        editor.playRecordingLineVersion(opening, key: alternate.key)
+        try #require(editor.recordingAuditionTask != nil)
+        await editor.recordingAuditionTask?.value
+        #expect(editor.preview.isPlaying && editor.recordingAuditionEnd != nil)
+        editor.stopRecordingAudition(restore: false)
+
+        let solo = try #require(editor.otherRecordingLines.first { $0.startWordId == "r2.w18" })
+        editor.playRecordingLineThere(solo)
+        try #require(editor.recordingAuditionTask != nil)
+        await editor.recordingAuditionTask?.value
+        #expect(editor.preview.isPlaying && editor.recordingAuditionEnd != nil)
+        #expect(editor.project == before)
+    }
+
+    @Test func timelineVersionsRevealPlayOrderFromARecordingChip() async throws {
+        let (_, editor) = try await openRecordingReference()
+        defer { editor.close() }
+        let primary = try #require(editor.recordingRegions.first)
+        let undo = try #require(editor.undoManager)
+        undo.beginUndoGrouping(); editor.startFromRecording(primary); undo.endUndoGrouping()
+        let word = try #require(editor.words.first { $0.id == "w1" })
+        editor.chooseRecordingTranscript(.recording(primary.key))
+        editor.sourceTime = (word.start + word.end) / 2
+        let canvas = TimelineCanvasView(model: editor)
+        let line = try #require(AppDelegate.recordingLine(for: editor, responder: canvas))
+        editor.showRecordingLineVersions(line)
+        #expect(editor.transcriptRecordingScope == .playOrder)
+        #expect(editor.recordingOpenLineID == line.id)
+    }
+
+    private func openRecordingReference(withMedia: Bool = false) async throws -> (WorkspaceShell, EditorModel) {
         let (shell, editor) = try await open(projectID: UUID().uuidString.lowercased())
-        let url = try SharedResources.locate().root.appendingPathComponent("fixtures/recordings/reference-recordings.voxclip")
+        let fixtures = try SharedResources.locate().root.appendingPathComponent("fixtures")
+        let url = fixtures.appendingPathComponent("recordings/reference-recordings.voxclip")
         var project = try JSONProjectStore.decode(Data(contentsOf: url))
+        if withMedia {
+            let primary = fixtures.appendingPathComponent("media/recording-0007.mp4")
+            let other = fixtures.appendingPathComponent("media/recording-0010.mp4")
+            project.media.source.absolutePath = primary.path
+            project.media.source.contentKey = try JSONProjectStore.contentKey(for: primary)
+            project.media.additionalSources[0].absolutePath = other.path
+            project.media.additionalSources[0].contentKey = try JSONProjectStore.contentKey(for: other)
+            let resources = try other.resourceValues(forKeys: [.fileSizeKey])
+            let size = try #require(resources.fileSize)
+            project.media.additionalSources[0].sizeBytes = Int64(size)
+            project.media.spokenSources?[0].sourceKey = project.media.additionalSources[0].contentKey
+        }
         project.id = editor.project.id
         project.edits.clips = []
         project.edits.activeClipId = nil
@@ -157,14 +209,22 @@ import Testing
     }
 
     @Test func addingCachedRecordingNeedsOneUndoAndNeverStartsTranscription() async throws {
-        let (_, editor) = try await open(projectID: UUID().uuidString.lowercased())
-        defer { editor.close() }
         let root = try SharedResources.locate().root
+        let primary = root.appendingPathComponent("fixtures/media/recording-0007.mp4")
         let movie = root.appendingPathComponent("fixtures/media/recording-0010.mp4")
         let key = try JSONProjectStore.contentKey(for: movie)
-        let fixture = root.appendingPathComponent("fixtures/recordings/two-recordings.voxclip")
-        let project = try JSONProjectStore.decode(Data(contentsOf: fixture))
+        let fixture = root.appendingPathComponent("fixtures/recordings/reference-recordings.voxclip")
+        var project = try JSONProjectStore.decode(Data(contentsOf: fixture))
         let transcript = try #require(project.media.spokenSources?.first?.transcript)
+        project.media.source.absolutePath = primary.path
+        project.media.source.contentKey = try JSONProjectStore.contentKey(for: primary)
+        let resources = try primary.resourceValues(forKeys: [.fileSizeKey])
+        project.media.source.sizeBytes = Int64(try #require(resources.fileSize))
+        project.schemaVersion = 6
+        project.media.spokenSources = nil
+        project.media.additionalSources = []
+        let (_, editor) = try await open(projectID: UUID().uuidString.lowercased(), project: project)
+        defer { editor.close() }
         RecordingTranscriptCache.write(transcript, key: key, cache: editor.app.locations.cache)
         let undo = try #require(editor.undoManager)
         let before = try ProjectJSON.encode(editor.project)
@@ -177,17 +237,28 @@ import Testing
         #expect(editor.project.media.spokenSources?.first?.transcript == transcript)
         #expect(undo.undoActionName == "Add recording" && editor.undoSteps == 1)
         let after = try ProjectJSON.encode(editor.project)
+        let gain = try #require(editor.project.media.spokenSources?.first?.gainDb)
+        #expect(gain != 0)
         undo.undo(); #expect(try ProjectJSON.encode(editor.project) == before)
         #expect(RecordingTranscriptCache.read(key, cache: editor.app.locations.cache, recent: []) == transcript)
         undo.redo(); #expect(try ProjectJSON.encode(editor.project) == after)
+        let region = try #require(editor.recordingRegions.last)
+        undo.beginUndoGrouping(); editor.resetRecordingLevel(region); undo.endUndoGrouping()
+        #expect(editor.project.media.spokenSources?.first?.gainDb == 0)
+        undo.undo(); #expect(try ProjectJSON.encode(editor.project) == after)
     }
 
-    private func open(demo: Bool = true, story: Bool = false, projectID: String? = nil) async throws -> (WorkspaceShell, EditorModel) {
+    private func open(demo: Bool = true, story: Bool = false, projectID: String? = nil, project initialProject: Project? = nil) async throws -> (WorkspaceShell, EditorModel) {
         _ = NSApplication.shared
-        let shared = try SharedResources.locate()
-        let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
         let shell = WorkspaceShell(app: AppModel(settingsStore: RegressionSettingsStore()))
-        var project = try story ? DebugCreativeProposals.suggestedStory(from: base) : DebugExplorer.fiveQuestions(from: base)
+        var project: Project
+        if let initialProject {
+            project = initialProject
+        } else {
+            let shared = try SharedResources.locate()
+            let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+            project = try story ? DebugCreativeProposals.suggestedStory(from: base) : DebugExplorer.fiveQuestions(from: base)
+        }
         if let projectID { project.id = projectID }
         await shell.attachForTesting(VoxClipDocument(project: project, demo: demo), selection: .fullTake)
         let editor = try #require(shell.editor)

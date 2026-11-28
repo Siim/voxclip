@@ -316,8 +316,10 @@ import VoxClipCore
             return line
         }
         if TimelineItemShortcut.focusedCanvas(responder) != nil,
-           let word = editor.words.first(where: { $0.start <= editor.sourceTime && editor.sourceTime <= $0.end }),
-           let line = editor.recordingLineWithVersions(at: word.id) { return line }
+           let line = editor.recordingClipLines.first(where: { line in
+               guard !line.alternatives.isEmpty, let first = editor.index(line.start), let last = editor.index(line.end) else { return false }
+               return editor.words[first].start <= editor.sourceTime && editor.sourceTime <= editor.words[last].end
+           }) { return line }
         return nil
     }
 
