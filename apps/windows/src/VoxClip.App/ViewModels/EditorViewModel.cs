@@ -858,7 +858,8 @@ public sealed partial class EditorViewModel : ObservableObject
         if (state is null) return;
         var clipIds = state.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
         project = project with { ModifiedAt = now(), Edits = new(state.PauseThresholdSeconds, state.PauseKeepSeconds,
-            state.CutWordIds.ToArray(), state.CutPauseIds.ToArray(), new Dictionary<string, string>(state.Corrections), state.Clips.ToArray(), state.ActiveClipId),
+            state.CutWordIds.ToArray(), state.CutPauseIds.ToArray(), new Dictionary<string, string>(state.Corrections), state.Clips.ToArray(), state.ActiveClipId)
+            { CutEdges = state.CutEdges.Count > 0 ? new Dictionary<string, double>(state.CutEdges, StringComparer.Ordinal) : null },
             MotionCues = project.MotionCues.Where(cue => clipIds.Contains(cue.ClipID)).ToArray(),
             Music = VoxClip.Core.Domain.Music.MusicProject.Pruned(project.Music, clipIds),
             ClipEffects = VoxClip.Core.Domain.Effects.ClipEffects.Pruned(project.ClipEffects, clipIds),
