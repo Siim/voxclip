@@ -154,7 +154,7 @@ import Testing
     @Test func thePlannersLooksAreTheRenderersLooks() {
         #expect(ClipAutopilotPlan.LookID.self == ClipLook.self)
         #expect(ClipLook.allCases.map(\.rawValue) == ["original", "muted", "warm", "bw"])
-        #expect(ClipLook.allCases.map(\.label) == ["Original", "Muted", "Warm", "B&W"])
+        #expect(ClipLook.allCases.map(\.label) == ["As filmed", "Muted", "Warm", "B&W"])
     }
 
     @Test func aRenderOfTheClipCarriesItsControlsAndTheFullTakeNone() throws {

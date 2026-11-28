@@ -660,7 +660,7 @@ private struct RefusingAssetHTTP: MusicHTTP {
         let look = try #require(run.rows.first { $0.id == "look" })
         #expect(look.kind == .choice && look.text == "Claude chose the warm look" && look.detail == "Friendly")
         #expect(look.change == .look && look.undoable && look.play == max(0, clipStart - 0.5))
-        #expect(look.options == ["original", "muted", "black and white"])
+        #expect(look.options == ["as filmed", "muted", "black and white"])
         let speed = try #require(run.rows.first { $0.id == "speed" })
         #expect(speed.text == "Claude chose 1.1× speed" && speed.change == .speed && speed.undoable && speed.play == look.play)
         #expect(speed.options == ["0.75×", "1×", "1.25×", "1.5×", "2×"])

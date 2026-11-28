@@ -168,13 +168,17 @@ import VoxClipCore
         .bw: [[128, 128, 128], [62, 62, 62], [174, 174, 174], [9, 9, 9], [255, 255, 255], [51, 51, 51], [146, 146, 146], [211, 211, 211]],
     ]
 
-    @Test func newPresetsChangeDifferentPartsOfThePicture() {
-        func pixels(_ preset: ClipColorPreset) -> [[Int]] {
-            Self.pixels(ClipPicture.grade(Self.frame(), controls: .init(clipId: "c", look: preset.baseLook,
-                                                                       colorAdjustments: preset.adjustments)))
+    /// The four Mac presets, now read from shared/looks/clip-looks.json, render as they did as an enum.
+    @Test func newPresetsChangeDifferentPartsOfThePicture() throws {
+        let looks = try ClipLookLibrary.load(shared: SharedResources(root: FixtureLoader.sharedRoot()))
+        func pixels(_ id: String) throws -> [[Int]] {
+            var controls = ProjectClipControls(clipId: "c")
+            controls.applyLook(try #require(looks.look(id)))
+            #expect(controls.colorGrade == nil, "\(id)")
+            return Self.pixels(ClipPicture.grade(Self.frame(), controls: controls))
         }
-        let original = pixels(.original), pop = pixels(.cleanPop), soft = pixels(.softLight)
-        let cool = pixels(.coolFilm), vintage = pixels(.vintageFade)
+        let original = try pixels("original"), pop = try pixels("cleanPop"), soft = try pixels("softLight")
+        let cool = try pixels("coolFilm"), vintage = try pixels("vintageFade")
         #expect(pop[1][0] - pop[1][2] > original[1][0] - original[1][2])
         #expect(soft[0][1] >= original[0][1] + 9)
         #expect(cool[0][2] >= cool[0][0] + 12)

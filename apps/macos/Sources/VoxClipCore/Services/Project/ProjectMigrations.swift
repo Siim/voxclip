@@ -2,15 +2,19 @@ import Foundation
 
 enum ProjectMigrations {
     static let spokenSourcesVersion = 7
-    /// The v8 frame (editing §10.1): cut edges (§5.10) and the agent thread (ADR-R55) share it.
+    /// The v8 frame (editing §10.1): cut edges (§5.10), the agent thread (ADR-R55) and clip colour grades (looks spec §8.4)
+    /// share it.
     static let frameVersion = 8
     static let agentThreadVersion = frameVersion
+    static let colorGradeVersion = frameVersion
     static let currentVersion = frameVersion
 
-    /// The version the fields present need: 8 with cut edges or an agent thread, 7 with spoken recordings, otherwise
-    /// none (1); story parts and timeline edit fields promote on their own.
+    /// The version the fields present need: 8 with cut edges, an agent thread or a clip's colour grade, 7 with spoken
+    /// recordings, otherwise none (1); story parts and timeline edit fields promote on their own.
     static func requiredVersion(_ project: Project) -> Int {
-        if project.agentThread != nil || !project.edits.cutEdges.isEmpty { return frameVersion }
+        if project.agentThread != nil || !project.edits.cutEdges.isEmpty || project.clipControls.contains(where: { $0.colorGrade != nil }) {
+            return frameVersion
+        }
         return project.media.spokenSources != nil ? spokenSourcesVersion : 1
     }
 

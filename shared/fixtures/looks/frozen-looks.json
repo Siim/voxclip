@@ -1,0 +1,14 @@
+{
+  "format": "voxclip-frozen-looks/1",
+  "release": "none yet: the eight looks projects already use",
+  "looks": [
+    {"id": "original", "label": "As filmed", "base": "original", "adjustments": {}, "grade": {}},
+    {"id": "muted", "label": "Muted", "base": "muted", "adjustments": {}, "grade": {}},
+    {"id": "softLight", "label": "Soft Light", "base": "original", "adjustments": {"brightness": 26, "contrast": -16, "saturation": -8}, "grade": {}},
+    {"id": "cleanPop", "label": "Clean Pop", "base": "original", "adjustments": {"brightness": 8, "contrast": 22, "saturation": 18}, "grade": {}},
+    {"id": "warm", "label": "Warm", "base": "warm", "adjustments": {}, "grade": {}},
+    {"id": "vintageFade", "label": "Vintage Fade", "base": "original", "adjustments": {"brightness": 8, "contrast": -36, "saturation": -32, "warmth": 30}, "grade": {}},
+    {"id": "coolFilm", "label": "Cool Film", "base": "original", "adjustments": {"contrast": 23, "saturation": -22, "warmth": -30}, "grade": {}},
+    {"id": "bw", "label": "B&W", "base": "bw", "adjustments": {}, "grade": {}}
+  ]
+}

@@ -67,7 +67,9 @@ import VoxClipCore
         var parts: [String] = []
         if controls.speed != 1 { parts.append(ProjectClipControls.speedLabel(controls.speed)) }
         if let shape = controls.shape { parts.append(shape.rawValue) }
-        if controls.look != .original || controls.colorAdjustments != nil { parts.append(ClipPictureControls.label(for: controls)) }
+        if controls.look != .original || controls.colorAdjustments != nil || controls.colorGrade.map({ $0.lookValues != .neutral }) == true {
+            parts.append(ClipPictureControls.label(for: controls))
+        }
         if controls.muteSource { parts.append("Source muted") } else if controls.gainDb != 0 { parts.append(MusicSection.gainLabel(controls.gainDb)) }
         if controls.fadeInSeconds > 0 || controls.fadeOutSeconds > 0 { parts.append("Fades") }
         if controls.flipHorizontal { parts.append("Flipped") }

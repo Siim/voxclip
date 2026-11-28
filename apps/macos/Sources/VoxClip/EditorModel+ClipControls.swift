@@ -30,12 +30,11 @@ extension EditorModel {
         updateClipControls(clipID, name: "Change look", announcing: "Look \(look.label)") { $0.look = look }
     }
 
-    @discardableResult func setColorPreset(_ preset: ClipColorPreset, clipID: String? = nil) -> Bool {
-        guard project.media.source.video != nil else { return false }
-        return updateClipControls(clipID, name: "Change look", announcing: "Look \(preset.label)") { controls in
-            controls.look = preset.baseLook
-            controls.colorAdjustments = preset.adjustments
-        }
+    /// A look from shared/looks/clip-looks.json by ID (`ClipControlsProject.settingLookPreset`'s rule): its base,
+    /// adjustments and grade, keeping the clip's Fix.
+    @discardableResult func setColorPreset(_ id: String, clipID: String? = nil) -> Bool {
+        guard project.media.source.video != nil, let preset = ClipLookLibrary.app?.look(id) else { return false }
+        return updateClipControls(clipID, name: "Change look", announcing: "Look \(preset.label)") { $0.applyLook(preset) }
     }
 
     @discardableResult func setColorAdjustment(_ control: ClipColorAdjustments.Control, value: Int, clipID: String? = nil) -> Bool {

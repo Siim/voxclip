@@ -16,8 +16,13 @@ import VoxClipCore
     }
 
     static func label(for controls: ProjectClipControls) -> String {
-        ClipColorPreset.matching(controls)?.label ?? "Custom"
+        ClipLookLibrary.app?.name(for: controls) ?? "Custom"
     }
+}
+
+extension ClipLookLibrary {
+    /// The app's looks, shared/looks/clip-looks.json; nil when the shared files are missing, which launch reports.
+    static let app: ClipLookLibrary? = (try? SharedResources.locate()).flatMap { try? ClipLookLibrary.load(shared: $0) }
 }
 
 @MainActor private struct ClipPictureGradeControls: View {
@@ -26,12 +31,15 @@ import VoxClipCore
     @State private var fineTuneOverride: Bool?
 
     var body: some View {
-        let preset = ClipColorPreset.matching(controls)
+        // Until the Picture panel's tiles, the chips are the eight classic looks the renderer draws today.
+        let looks = (ClipLookLibrary.app?.visible ?? []).filter(\.classic)
+        let applied: String? = if case .applied(let look) = ClipLookLibrary.app?.match(controls) { look.id } else { nil }
+        let preset = looks.contains { $0.id == applied } ? applied : nil
         let expanded = fineTuneOverride ?? (preset == nil)
         VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
             CaptionPropertyRow("Look", marker: "clip.look") {
                 if preset == nil {
-                    Text("Custom").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                    Text(ClipPictureControls.label(for: controls)).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
                         .accessibilityIdentifier("voxclip.clip.color.custom")
                 }
             }
@@ -40,7 +48,7 @@ import VoxClipCore
                     .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            ClipSection.chips(ClipColorPreset.allCases.map { ($0, $0.label) }, selected: preset,
+            ClipSection.chips(looks.map { ($0.id, $0.label) }, selected: preset,
                               identifier: "look", name: "Look") { model.setColorPreset($0, clipID: controls.clipId) }
             disclosure(expanded: expanded)
             if expanded {

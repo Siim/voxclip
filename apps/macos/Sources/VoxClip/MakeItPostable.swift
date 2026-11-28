@@ -1496,7 +1496,7 @@ extension EditorModel {
     }
 
     static func lookName(_ id: ClipLook) -> String {
-        switch id { case .original: "original"; case .muted: "muted"; case .warm: "warm"; case .bw: "black and white" }
+        switch id { case .original: "as filmed"; case .muted: "muted"; case .warm: "warm"; case .bw: "black and white" }
     }
 
     /// Under the headline: Claude's finished length and anything the plan flags, or a clip longer than the style allows.

@@ -12,10 +12,10 @@ public enum ClipLook: String, Codable, Sendable, CaseIterable {
     /// Black and white with a gentle contrast curve.
     case bw
 
-    /// The name the Clip section shows.
+    /// The name the Clip section shows; the same as the look's label in clip-looks.json.
     public var label: String {
         switch self {
-        case .original: "Original"
+        case .original: "As filmed"
         case .muted: "Muted"
         case .warm: "Warm"
         case .bw: "B&W"
@@ -62,6 +62,8 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
     public var shape: ClipShape?
     public var look: ClipLook
     public var colorAdjustments: ClipColorAdjustments?
+    /// The Fix, the newer look controls, Amount and a preset's toning (looks spec §8.1); nil when neutral. Schema v8 only.
+    public var colorGrade: ClipColorGrade?
     /// Source audio level, −24…+12 dB.
     public var gainDb: Double
     public var fadeInSeconds: Double
@@ -90,17 +92,18 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
     public init(clipId: String, speed: Double = 1, shape: ClipShape? = nil, look: ClipLook = .original, gainDb: Double = 0,
                 fadeInSeconds: Double = 0, fadeOutSeconds: Double = 0, muteSource: Bool = false, flipHorizontal: Bool = false,
                 rotationDegrees: Int = 0, reframe: ReframeSettings? = nil, coverSeconds: Double? = nil,
-                colorAdjustments: ClipColorAdjustments? = nil, coverTitle: String? = nil) {
+                colorAdjustments: ClipColorAdjustments? = nil, coverTitle: String? = nil, colorGrade: ClipColorGrade? = nil) {
         self.clipId = clipId; self.speed = speed; self.shape = shape; self.look = look; self.gainDb = gainDb
         self.fadeInSeconds = fadeInSeconds; self.fadeOutSeconds = fadeOutSeconds; self.muteSource = muteSource
         self.flipHorizontal = flipHorizontal; self.rotationDegrees = rotationDegrees; self.reframe = reframe; self.coverSeconds = coverSeconds
         self.colorAdjustments = colorAdjustments == .neutral ? nil : colorAdjustments
         self.coverTitle = coverTitle
+        self.colorGrade = colorGrade?.isNeutral == true ? nil : colorGrade
     }
 
     private enum CodingKeys: String, CodingKey {
         case clipId, speed, shape, look, gainDb, fadeInSeconds, fadeOutSeconds, muteSource, flipHorizontal, rotationDegrees, reframe, coverSeconds
-        case colorAdjustments, coverTitle
+        case colorAdjustments, coverTitle, colorGrade
     }
 
     public init(from decoder: any Decoder) throws {
@@ -119,6 +122,7 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
         coverSeconds = try values.decodeIfPresent(Double.self, forKey: .coverSeconds)
         coverTitle = try values.decodeIfPresent(String.self, forKey: .coverTitle)
         colorAdjustments = try values.decodeIfPresent(ClipColorAdjustments.self, forKey: .colorAdjustments)
+        colorGrade = try values.decodeIfPresent(ClipColorGrade.self, forKey: .colorGrade)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -137,6 +141,7 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
         try values.encodeIfPresent(coverSeconds, forKey: .coverSeconds)
         try values.encodeIfPresent(coverTitle, forKey: .coverTitle)
         try values.encodeIfPresent(colorAdjustments, forKey: .colorAdjustments)
+        try values.encodeIfPresent(colorGrade, forKey: .colorGrade)
     }
 
     /// The crop centre for an output of `aspect` (width over height): the face's for a portrait or square frame, nil for a
@@ -192,7 +197,7 @@ extension Comparable {
 }
 
 public enum ClipControlsProjectError: Error, Sendable, Equatable, LocalizedError {
-    case unsupportedVersion, invalidEntry(String), unknownClip, duplicateClip, defaultEntry
+    case unsupportedVersion, invalidEntry(String), unknownClip, duplicateClip, defaultEntry, unknownLook
 
     public var errorDescription: String? {
         switch self {
@@ -201,6 +206,7 @@ public enum ClipControlsProjectError: Error, Sendable, Equatable, LocalizedError
         case .unknownClip: "Clip controls refer to a clip that is not in the project."
         case .duplicateClip: "A clip has more than one set of clip controls."
         case .defaultEntry: "Clip controls at their defaults are not stored."
+        case .unknownLook: "That look isn't available in this version of VoxClip."
         }
     }
 }
@@ -214,6 +220,10 @@ public enum ClipControlsProject {
     public static func validate(_ project: Project) throws {
         guard !project.clipControls.isEmpty else { return }
         guard project.schemaVersion >= 4 else { throw ClipControlsProjectError.unsupportedVersion }
+        // A colour grade needs the v8 frame (looks spec §8.4); `setting` and the writer promote to it.
+        guard project.schemaVersion >= ProjectMigrations.colorGradeVersion || !project.clipControls.contains(where: { $0.colorGrade != nil }) else {
+            throw ClipControlsProjectError.unsupportedVersion
+        }
         guard project.clipControls.count <= ProjectClipControls.maximumEntries else { throw ClipControlsProjectError.invalidEntry("too many entries") }
         let clips = Set(project.edits.clips.map(\.id))
         var seen = Set<String>()
@@ -227,6 +237,7 @@ public enum ClipControlsProject {
     public static func validate(_ entry: ProjectClipControls) throws {
         func require(_ condition: Bool, _ reason: String) throws { if !condition { throw ClipControlsProjectError.invalidEntry(reason) } }
         if let adjustments = entry.colorAdjustments { try require(adjustments.isValid, "color adjustments") }
+        if let grade = entry.colorGrade { try require(grade.isValid, "color grade") }
         try require(entry.clipId.range(of: identifier, options: .regularExpression) != nil, "clip id")
         try require(entry.speed.isFinite && ProjectClipControls.speedRange.contains(entry.speed), "speed")
         try require(entry.gainDb.isFinite && ProjectClipControls.gainRange.contains(entry.gainDb), "gain")
@@ -249,7 +260,7 @@ public enum ClipControlsProject {
         }
         let keys: Set<String> = ["clipId", "speed", "shape", "look", "gainDb", "fadeInSeconds", "fadeOutSeconds", "muteSource",
                                  "flipHorizontal", "rotationDegrees"]
-        let optional: Set<String> = ["reframe", "coverSeconds", "coverTitle", "colorAdjustments"]
+        let optional: Set<String> = ["reframe", "coverSeconds", "coverTitle", "colorAdjustments", "colorGrade"]
         for entry in entries {
             guard case .object(let object) = entry, Set(object.keys).subtracting(optional) == keys else {
                 throw ClipControlsProjectError.invalidEntry("unknown or missing field")
@@ -278,6 +289,9 @@ public enum ClipControlsProject {
                     throw ClipControlsProjectError.invalidEntry("color adjustments")
                 }
             }
+            if let grade = object["colorGrade"], ClipColorGrade.read(grade, look: false) == nil {
+                throw ClipControlsProjectError.invalidEntry("color grade")
+            }
             func number(_ key: String) -> Bool { if case .number(let value) = object[key] { return value.isFinite } else { return false } }
             func bool(_ key: String) -> Bool { if case .bool = object[key] { return true } else { return false } }
             func string(_ key: String, nullable: Bool = false) -> Bool {
@@ -299,9 +313,12 @@ public enum ClipControlsProject {
     }
 
     /// Stores `controls` for its clip, removing the entry when it is back at the defaults; the first stored entry promotes
-    /// the project to v4.
+    /// the project to v4, and the first colour grade to v8 (`ProjectMigrations.requiredVersion`). A neutral grade is not
+    /// stored.
     public static func setting(_ controls: ProjectClipControls, in project: Project) throws -> Project {
         guard project.edits.clips.contains(where: { $0.id == controls.clipId }) else { throw ClipControlsProjectError.unknownClip }
+        var controls = controls
+        if controls.colorGrade?.isNeutral == true { controls.colorGrade = nil }
         var result = project
         result.clipControls.removeAll { $0.clipId == controls.clipId }
         if !controls.isDefault {
@@ -309,8 +326,22 @@ public enum ClipControlsProject {
             result = try ContextDemoProject.upgradeToV4(result)
             result.clipControls.append(controls)
         }
+        result = try ProjectMigrations.framed(result)
         try validate(result)
         return result
+    }
+
+    /// `project` with one clip's colour set to a look from the library (looks spec §9.6): its base, adjustments and
+    /// grade, expanded, with `preset` and `amount` (0…100), as one change. `fix` replaces the clip's Fix (Auto's
+    /// measurement); nil keeps it. The clip's other controls are kept, as `settingLook` keeps them. As filmed has no look
+    /// to blend, so it stores no preset and a full amount; with no Fix it stores no grade at all, and neither do the
+    /// classic looks at 100%.
+    public static func settingLookPreset(id: String, amount: Int = 100, fix: ClipColorFix? = nil, clipId: String, in project: Project,
+                                         looks: ClipLookLibrary) throws -> Project {
+        guard let preset = looks.look(id) else { throw ClipControlsProjectError.unknownLook }
+        guard var controls = controls(for: clipId, in: project) else { throw ClipControlsProjectError.unknownClip }
+        controls.applyLook(preset, amount: amount, fix: fix)
+        return try setting(controls, in: project)
     }
 
     /// `project` with one clip's speed set to `rate` (normalised, as the Clip section's slider is) and its other controls
@@ -484,6 +515,19 @@ public enum ClipAudioMix {
 }
 
 extension ProjectClipControls {
+    /// `settingLookPreset`'s rule on one clip's controls: the look's base, adjustments and expanded grade with `preset` and
+    /// `amount` (clamped to 0…100), keeping the Fix unless `fix` replaces it. As filmed stores no preset and a full amount.
+    public mutating func applyLook(_ preset: ClipLookPreset, amount: Int = 100, fix: ClipColorFix? = nil) {
+        let neutralLook = preset.base == .original && preset.adjustments == nil && preset.grade == .neutral
+        var grade = preset.grade
+        grade.fix = fix ?? colorGrade?.fix ?? .neutral
+        grade.amount = neutralLook ? 100 : amount.clamped(to: ClipColorGrade.amountRange)
+        grade.preset = neutralLook ? nil : preset.id
+        look = preset.base
+        colorAdjustments = preset.adjustments
+        colorGrade = grade.isNeutral ? nil : grade
+    }
+
     /// Where a framing anchor (x right, y down, 0…1 of the source) lands after the flip and the quarter turns.
     public func mapAnchor(x: Double, y: Double) -> (x: Double, y: Double) {
         var point = (x: flipHorizontal ? 1 - x : x, y: y)
