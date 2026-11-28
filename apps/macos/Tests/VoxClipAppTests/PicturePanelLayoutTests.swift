@@ -42,7 +42,9 @@ import Testing
     }
 
     private nonisolated static func still() async throws -> ClipStillFrame {
-        let source = try SharedResources.locate().root.appendingPathComponent("fixtures/media/bars-1080p.mp4")
+        // Review captures can show a real-looking clip instead of the bars (VOXCLIP_REVIEW_STILL_MEDIA, a 16:9 video).
+        let review = ProcessInfo.processInfo.environment["VOXCLIP_REVIEW_STILL_MEDIA"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+        let source = try review ?? SharedResources.locate().root.appendingPathComponent("fixtures/media/bars-1080p.mp4")
         let plan = EditPlan(sampleRate: 48000, totalSamples: 96000, kept: [MediaInterval(startSample: 0, endSample: 96000)])
         let request = RenderRequest(sourceURL: source, plan: plan, output: OutputSpec(size: PixelSize(width: 640, height: 360), fps: 30, videoBitrate: 4_000_000))
         return try await ClipStillFrame.capture(try await CompositionBuilder().build(request), renderedSeconds: 1)
