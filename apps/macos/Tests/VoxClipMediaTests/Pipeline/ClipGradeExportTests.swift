@@ -7,6 +7,13 @@ import Testing
 @testable import VoxClipCore
 @testable import VoxClipMedia
 
+/// Where the synthetic clip is written; removed when the test process exits.
+private let gradeClipRoot: URL = {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-grade-clip-\(UUID().uuidString)", isDirectory: true)
+    atexit { try? FileManager.default.removeItem(at: gradeClipRoot) }
+    return root
+}()
+
 /// The clip grade at the export seam and in stills (looks spec 2026-11-28, sections 11.2 and 11.3). The clip is synthetic:
 /// shared/looks/test-card.png over a gradient that moves every frame, 2 s at 30 fps, never footage. It carries Warm Print at
 /// 70% with the reference task's edits, a Fix, a vignette and grain; frames are read where the exporter reads them, before
@@ -45,9 +52,8 @@ import Testing
     static func clip() async throws -> URL { try await clipTask.value }
 
     private static func makeClip() async throws -> URL {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-grade-clip-" + UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent("test-card.mov")
+        try FileManager.default.createDirectory(at: gradeClipRoot, withIntermediateDirectories: true)
+        let url = gradeClipRoot.appendingPathComponent("test-card.mov")
         let cardURL = try FixtureLoader.sharedRoot().appendingPathComponent("looks/test-card.png")
         let card = try #require(CGImageSourceCreateWithURL(cardURL as CFURL, nil).flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) })
         let (width, height) = (640, 360)
