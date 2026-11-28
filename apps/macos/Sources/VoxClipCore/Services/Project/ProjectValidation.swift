@@ -111,7 +111,7 @@ enum ProjectValidation {
                 try fail("story clip needs schemaVersion 5", at: path)
             }
             let fields = try object(clip, required: "id startWordId endWordId title origin aiResultId aiClipIndex selected",
-                                    optional: "leadInSeconds" + (isV5 ? " parts kind" : "") + (isV7 ? " displacedVersions" : ""), at: path)
+                                    optional: "leadInSeconds" + (isV5 ? " parts kind" : "") + (hasSpokenSources ? " displacedVersions" : ""), at: path)
             if let saved = fields["displacedVersions"] {
                 for (index, range) in try array(saved, at: "\(path)/displacedVersions").enumerated() {
                     let rangePath = "\(path)/displacedVersions/\(index)"

@@ -75,7 +75,8 @@ def populate(schema):
     schema['properties']['agentThread'] = {**ref('agentThread'), 'description': 'Schema v8 only, and optional there. Core validates patch semantics, distinct ids, and the 2 MiB thread cap.'}
 
     legacy_parts = {'items': {'not': {'required': ['takeReason']}}}
-    without_spoken = {'properties': {'edits': {'properties': {'clips': {'items': {'properties': {'parts': legacy_parts}}}}}}}
+    without_spoken = {'properties': {'edits': {'properties': {'clips': {'items': {
+        'not': {'required': ['displacedVersions']}, 'properties': {'parts': legacy_parts}}}}}}}
     rule = {
         'if': {'properties': {'schemaVersion': {'const': 8}}},
         'then': {'if': {'properties': {'media': {'required': ['spokenSources']}}},
