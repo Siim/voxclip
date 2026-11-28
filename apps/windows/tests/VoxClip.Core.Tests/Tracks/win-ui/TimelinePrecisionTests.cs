@@ -35,6 +35,20 @@ public sealed class TimelinePrecisionTests
     }
 
     [Fact]
+    public void AHeldKeyStepsOnFromTheLastTargetUntilThePlayheadLeavesIt()
+    {
+        (double From, double To) last = (12, 12 + Frame);
+        // The seek has not landed: the playhead still reads where the step began.
+        Assert.Equal(12 + Frame, TimelinePrecision.StepOrigin(12, 30, last), 9);
+        // It landed on a decoded frame time a little before the grid: the next step still starts from the target.
+        Assert.Equal(12 + Frame, TimelinePrecision.StepOrigin(12 + Frame - 1e-4, 30, last), 9);
+        Assert.Equal(12 + 2 * Frame, TimelinePrecision.FrameStep(TimelinePrecision.StepOrigin(12 + Frame - 1e-4, 30, last), 30, 1), 9);
+        // A click elsewhere starts from the playhead.
+        Assert.Equal(20, TimelinePrecision.StepOrigin(20, 30, last));
+        Assert.Equal(20, TimelinePrecision.StepOrigin(20, 30, null));
+    }
+
+    [Fact]
     public void ShiftCommaAndPeriodJumpToWordBoundariesAndSkipFoldedWordsOnEdited()
     {
         var model = Model();

@@ -22,6 +22,15 @@ internal static class TimelinePrecision
         var next = direction < 0 ? Math.Ceiling(frame - 1e-6) - 1 : Math.Floor(frame + 1e-6) + 1;
         return next / fps;
     }
+
+    /// <summary>Where the next step starts: the last step's target while the playhead still reads where that step began (its seek
+    /// has not landed) or within half a frame of the target (the preview reported a decoded frame time a little off the grid),
+    /// so a held key keeps stepping. Otherwise the playhead.</summary>
+    internal static double StepOrigin(double playhead, double fps, (double From, double To)? last)
+    {
+        if (!double.IsFinite(fps) || fps <= 0) fps = 30;
+        return last is { } step && (Math.Abs(playhead - step.From) < 1e-9 || Math.Abs(playhead - step.To) < 0.5 / fps) ? step.To : playhead;
+    }
 }
 
 // Exact positions on the timeline (issue #41, step 1): the playhead steps by frame and by word boundary, and an exact range can

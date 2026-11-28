@@ -614,14 +614,26 @@ public sealed partial class TimelineView
     {
         if (model is null || renderingBlocked || model.IsReadOnly) return;
         var direction = shortcut is TimelineShortcut.LaterFrame or TimelineShortcut.LaterWord ? 1 : -1;
+        var fps = model.TimelineFrameRate;
         if (shortcut is TimelineShortcut.EarlierFrame or TimelineShortcut.LaterFrame)
         {
             var origin = Edited && ClipBounds() is { } bounds ? ToDisplay(bounds.Start) : 0;
-            var next = TimelinePrecision.FrameStep(ToDisplay(model.SourceTime) - origin, model.TimelineFrameRate, direction) + origin;
-            Seek(FromDisplay(Math.Clamp(next, 0, AxisDuration)));
+            var from = ToDisplay(model.SourceTime);
+            var next = TimelinePrecision.FrameStep(TimelinePrecision.StepOrigin(from, fps, frameStep) - origin, fps, direction) + origin;
+            next = Math.Clamp(next, 0, AxisDuration);
+            frameStep = (from, next); wordStep = null;
+            Seek(FromDisplay(next));
         }
-        else if (model.TimelineWordBoundary(model.SourceTime, direction, ToDisplay, Edited) is { } boundary) Seek(boundary);
+        else
+        {
+            var from = model.SourceTime;
+            if (model.TimelineWordBoundary(TimelinePrecision.StepOrigin(from, fps, wordStep), direction, ToDisplay, Edited) is not { } boundary) return;
+            wordStep = (from, boundary); frameStep = null;
+            Seek(boundary);
+        }
     }
+    /// <summary>The last frame or word step, where it began and where it went, so a held key steps on (display and source time).</summary>
+    private (double From, double To)? frameStep, wordStep;
 
     internal void ZoomItems(TimelineShortcut shortcut)
     {
