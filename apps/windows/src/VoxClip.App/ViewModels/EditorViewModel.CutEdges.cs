@@ -90,7 +90,8 @@ public sealed partial class EditorViewModel
 
     /// <summary>What keeps a boundary at today's padding (editing §5.10 "Frozen boundaries"), by recording key:
     /// - every Voice Lab segment's replace range, enabled or not, in its recording's local seconds;
-    /// - the word ranges of paid or open work (<see cref="PaidCutEdgeScopes"/>) in the first recording, the one Rewrite voices;
+    /// - the word ranges of paid or open work (<see cref="PaidCutEdgeScopes"/>) in the first recording, the one Rewrite voices, a full
+    ///   take as every word of it;
     /// - while any of those is held, every later recording: its words have no position in Rewrite's scoped inputs, so its cuts and
     ///   edges count in every scope (<see cref="ProjectVoiceTakeIdentity.RewriteInputs"/>).</summary>
     internal IReadOnlyDictionary<string, CutEdges.Freeze> CutEdgeFreeze(Project project)
@@ -111,7 +112,7 @@ public sealed partial class EditorViewModel
         var primary = recordings[0];
         var scopes = PaidCutEdgeScopes(project);
         foreach (var scope in scopes)
-            if (scope is { } range && range.Upper < primary.Words.Count)
+            if (primary.Words.Count > 0 && (scope ?? (0, primary.Words.Count - 1)) is var range && range.Upper < primary.Words.Count)
                 Add(paid, primary.Key, new ClipWordRange(primary.Words[range.Lower].Id, primary.Words[range.Upper].Id));
         if (scopes.Count > 0)
             foreach (var recording in recordings.Skip(1)) Add(voice, recording.Key, new TimeRange(-double.MaxValue, double.MaxValue));

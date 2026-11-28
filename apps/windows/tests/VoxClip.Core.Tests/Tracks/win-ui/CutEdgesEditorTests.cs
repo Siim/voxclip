@@ -311,6 +311,54 @@ public sealed class CutEdgesEditorTests
         Assert.Equal(new CutEdgeBarRow("Moved 1 cut edge into the quiet · 1 kept beside voice patches"), model.CutEdgeBarRow);
     }
 
+    /// <summary>Saves a Rewrite proposal with one paid take beside <paramref name="project"/> for <paramref name="scope"/>, with the inputs
+    /// digest it is restored by.</summary>
+    private static SavedRewriteProposalStore SavePaidProposal(string root, Project project, RewriteScope scope)
+    {
+        var change = new SavedRewriteChange(new(VoiceLabDiffHunkKind.Voice, ["w3"], ["New"], [], [], [], 0, 1, null), null, false, [], [], "pending");
+        var store = new SavedRewriteProposalStore(root, project.Id, scope, null);
+        store.Save(new(store.Inputs(project), "", [change], [], [], null, 1, 0, []), DateTimeOffset.UtcNow);
+        Assert.NotNull(store.Load(project, DateTimeOffset.UtcNow));
+        return store;
+    }
+
+    /// <summary>An old cut inside paid work (both words of the edge in a clip with paid takes saved, or anywhere under a full-take
+    /// proposal): Fix cut edges and the selected cut's action leave it alone, so the saved proposal still restores.</summary>
+    [Fact]
+    public void OldCutsInsidePaidWorkKeepTheirEdges()
+    {
+        var root = Directory.CreateTempSubdirectory("voxclip-cut-edges-").FullName;
+        try
+        {
+            var project = Fixture("w2");
+            project = project with { Edits = project.Edits with { Clips = [new ClipRange("c23", "w2", "w3", null, ClipOrigin.Manual, null, null, true)] } };
+            var store = SavePaidProposal(root, project, RewriteScope.Clip("c23"));
+            var model = Editor(project, LateBoundary());
+            model.SetCutEdgePaidRoot(root);
+            Assert.Equal((0, 1), (model.CutEdgeOffer.Count, model.CutEdgeOffer.Frozen));
+            Assert.False(model.CanFixCutEdges);
+            Assert.Null(model.CutEdgeBarRow);
+            Assert.False(model.FixCutEdges());
+            model.Select(1);
+            Assert.Equal(new CutEdgeBarRow("Cut edge: word edge", "Use quiet point", "Kept beside a voice patch"), model.CutEdgeBarRow);
+            Assert.False(model.RunCutEdgeBarAction());
+            Assert.False(model.CanUndo);
+            Assert.Null(model.Project.Edits.CutEdges);
+            Assert.NotNull(store.Load(model.Project, DateTimeOffset.UtcNow));
+            store.Remove();
+            // A full-take proposal holds every edge of the first recording.
+            var plain = Fixture("w2");
+            var full = SavePaidProposal(root, plain, RewriteScope.FullTake);
+            var whole = Editor(plain, BothSeams());
+            whole.SetCutEdgePaidRoot(root);
+            Assert.Equal((0, 2), (whole.CutEdgeOffer.Count, whole.CutEdgeOffer.Frozen));
+            Assert.False(whole.FixCutEdges());
+            Assert.Null(whole.Project.Edits.CutEdges);
+            Assert.NotNull(full.Load(whole.Project, DateTimeOffset.UtcNow));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Fact]
     public void FixCutEdgesSaysWhyItCannotRun()
     {
