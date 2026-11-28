@@ -181,12 +181,10 @@ internal sealed class PicturePanel : Grid
             args.Handled = true;
         }), true);
         compare.AddHandler(KeyUpEvent, new KeyEventHandler((_, args) => { if (args.Key == VirtualKey.Space) { _ = Hold(false); args.Handled = true; } }), true);
-        compare.Click += (_, _) =>
-        {
-            if (compareByPointer) { compareByPointer = false; Render(); return; }
-            Model.ToggleCompare();
-            Ui.Announce(compare, Model.CompareStatus, "Picture.Compare");
-        };
+        // Narrator's Toggle and Enter switch it on until switched off; after a hold, the button's own toggle is put back.
+        compare.Checked += (_, _) => _ = CompareToggledAsync(true);
+        compare.Unchecked += (_, _) => _ = CompareToggledAsync(false);
+        compare.Click += (_, _) => compareByPointer = false;
         body.Children.Add(Stacked(look, compareWhy));
 
         var row = new Grid { ColumnSpacing = 8 };
@@ -219,6 +217,8 @@ internal sealed class PicturePanel : Grid
     private void BuildChips()
     {
         AutomationProperties.SetName(chips, "Look categories");
+        // One tab stop for the categories; ←/→ move between them.
+        chips.TabFocusNavigation = KeyboardNavigationMode.Once;
         AutomationProperties.SetAutomationId(chips, "Picture.Categories");
         body.Children.Add(chips);
         body.Children.Add(previewNote);
@@ -479,14 +479,33 @@ internal sealed class PicturePanel : Grid
         var key = model.Category + "|" + string.Join(",", list.Select(tile => tile.Look.Id + tile.Status)) + "|" + Ui.HighContrast + "|" + model.Playing + "|" + model.HoverReason;
         if (key == tilesKey) { UpdateThumbnails(); return; }
         tilesKey = key;
-        tiles.Items.Clear();
-        foreach (var tile in list) tiles.Items.Add(Tile(tile, model));
+        // The same looks keep their items, so keyboard focus stays on the tile just applied.
+        if (!tiles.Items.OfType<GridViewItem>().Select(item => item.Tag as string).SequenceEqual(list.Select(tile => tile.Look.Id)))
+        {
+            tiles.Items.Clear();
+            foreach (var tile in list) tiles.Items.Add(NewTile(tile.Look.Id, model));
+        }
+        for (var index = 0; index < list.Count; index++) if (tiles.Items[index] is GridViewItem item) Fill(item, list[index], model);
         SizeTiles();
         UpdateThumbnails();
         _ = RefreshThumbnailsAsync();
     }
 
-    private GridViewItem Tile(PictureTile tile, PicturePanelModel model)
+    private GridViewItem NewTile(string id, PicturePanelModel model)
+    {
+        var item = new GridViewItem { Tag = id, Padding = new(0), Margin = new(0, 0, TileGap, TileGap), MinWidth = TileMinimum, MinHeight = TileMinimum };
+        AutomationProperties.SetAutomationId(item, "Picture.Tile." + id);
+        item.PointerEntered += (_, args) =>
+        {
+            if (args.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse) return;
+            hovered = id; hover.Stop(); hover.Start();
+        };
+        // Arrows move focus and preview on the paused viewer; Enter or Space is the grid's item click.
+        item.GotFocus += (_, _) => { if (item.FocusState == FocusState.Keyboard) model.PreviewLook(id); };
+        return item;
+    }
+
+    private void Fill(GridViewItem item, PictureTile tile, PicturePanelModel model)
     {
         var highContrast = Ui.HighContrast;
         var picture = new Image { Stretch = Stretch.UniformToFill, Tag = tile.Look.Id };
@@ -511,21 +530,11 @@ internal sealed class PicturePanel : Grid
         var stack = new StackPanel { Spacing = 2, Tag = tile.Look.Id };
         stack.Children.Add(frame);
         stack.Children.Add(label);
-        var item = new GridViewItem { Content = stack, Tag = tile.Look.Id, Padding = new(0), Margin = new(0, 0, TileGap, TileGap), MinWidth = TileMinimum, MinHeight = TileMinimum };
+        item.Content = stack;
         AutomationProperties.SetName(item, tile.Name);
         AutomationProperties.SetItemStatus(item, tile.Status);
         AutomationProperties.SetHelpText(item, tile.Help);
-        AutomationProperties.SetAutomationId(item, "Picture.Tile." + tile.Look.Id);
         ToolTipService.SetToolTip(item, model.Playing ? PicturePanelModel.PauseToPreview : tile.Look.Label + ": " + tile.Help);
-        var id = tile.Look.Id;
-        item.PointerEntered += (_, args) =>
-        {
-            if (args.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse) return;
-            hovered = id; hover.Stop(); hover.Start();
-        };
-        // Arrows move focus and preview on the paused viewer; Enter or Space is the grid's item click.
-        item.GotFocus += (_, _) => { if (item.FocusState == FocusState.Keyboard) model.PreviewLook(id); };
-        return item;
     }
 
     /// <summary>High contrast's selection colour for the applied ring (looks spec §3.9).</summary>
@@ -656,6 +665,15 @@ internal sealed class PicturePanel : Grid
         }
         catch (Exception exception) when (exception is not OutOfMemoryException) { UiError.WriteFailure(exception, "Compare"); }
         if (!down) Render();
+    }
+
+    private async Task CompareToggledAsync(bool on)
+    {
+        if (syncing) return;
+        if (compareByPointer) { DispatcherQueue.TryEnqueue(Render); return; }
+        if (on != Model.Comparing) await Hold(on);
+        Render();
+        Ui.Announce(compare, Model.CompareStatus, "Picture.Compare");
     }
 
     private void EndCompareForFocus()
