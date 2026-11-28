@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Tests.Tracks.WinEditing;
 using VoxClip.Core.Domain.Frames;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
@@ -39,11 +40,11 @@ public sealed class FrameDecisionVectorTests
         string[] sections = ["eyes", "looks", "openings", "covers", "crops", "screens", "blurSpans", "summaries", "imageTokens", "samplings", "openingTimes", "decimals"];
         Assert.Equal(new[] { "schema", "description", "constants", "caseCount", "counts", "transcripts" }.Concat(sections).Append("analysis"), root.Select(pair => pair.Key));
         Assert.Equal("voxclip-frame-decision-cases/1", root["schema"]!.GetValue<string>());
-        Assert.Equal(136, root["caseCount"]!.GetValue<int>());
+        Assert.Equal(137, root["caseCount"]!.GetValue<int>());
         Assert.Equal(sections, root["counts"]!.AsObject().Select(pair => pair.Key));
-        Assert.Equal(new[] { 11, 11, 22, 11, 11, 12, 7, 6, 6, 9, 6, 24 }, sections.Select(key => root[key]!.AsArray().Count));
+        Assert.Equal(new[] { 11, 11, 22, 11, 11, 12, 7, 7, 6, 9, 6, 24 }, sections.Select(key => root[key]!.AsArray().Count));
         Assert.All(sections, key => Assert.Equal(root[key]!.AsArray().Count, root["counts"]![key]!.GetValue<int>()));
-        Assert.Equal(136, sections.Sum(key => root[key]!.AsArray().Count));
+        Assert.Equal(137, sections.Sum(key => root[key]!.AsArray().Count));
         Assert.Equal(new[] { "thirty-sentences", "run-on", "mixed", "empty" }, root["transcripts"]!.AsObject().Select(pair => pair.Key));
     }
 
@@ -168,14 +169,17 @@ public sealed class FrameDecisionVectorTests
         }
     }
 
+    /// <summary>Each frame's light line (looks spec §9.3) follows the thresholds of shared/looks/clip-looks.json, as the plan request
+    /// does.</summary>
     [Fact]
     public void SummariesReplay()
     {
+        var light = ClipLookLibraryTests.Library().Measure.Light;
         foreach (var row in Rows("summaries"))
         {
             var sheet = new FrameSheet(Frames(row["frames"]).Select((frame, index) => new FrameSheetFrame(index + 1, frame, [1, 2, 3], 320, 180)));
-            Assert.Equal(row["expect"]!["summary"]!.GetValue<string>(), sheet.Summary(Baseline(row)));
-            Assert.True(row["expect"]!["summaryTokens"]!.GetValue<int>() == sheet.EstimatedSummaryTokens(Baseline(row)), Id(row));
+            Assert.Equal(row["expect"]!["summary"]!.GetValue<string>(), sheet.Summary(Baseline(row), light));
+            Assert.True(row["expect"]!["summaryTokens"]!.GetValue<int>() == sheet.EstimatedSummaryTokens(Baseline(row), light), Id(row));
             Assert.True(sheet.Frames.Count <= FrameSheet.MaximumFrames, Id(row));
         }
         foreach (var row in Rows("imageTokens"))
@@ -215,7 +219,7 @@ public sealed class FrameDecisionVectorTests
         Assert.Equal("0.033", FrameAnalysisFile.Pass(1.0 / 30));
     }
 
-    /// <summary>The Mac's analysis-v2.json reads into C# and writes back with the same keys and values; so does a clip's analysis.</summary>
+    /// <summary>The Mac's analysis-v3.json reads into C# and writes back with the same keys and values; so does a clip's analysis.</summary>
     [Fact]
     public void AnAnalysisFileRoundTripsWithTheMacsKeysAndValues()
     {
@@ -227,7 +231,7 @@ public sealed class FrameDecisionVectorTests
         var frames = FrameAnalysisFile.Read(text);
         Assert.Equal(sample["file"]!["frames"]!.AsObject().Count, frames.Count);
         var written = JsonNode.Parse(FrameAnalysisFile.Write(frames));
-        AssertJson(sample["file"], written, "analysis-v2.json");
+        AssertJson(sample["file"], written, "analysis-v3.json");
         Assert.Equal(FrameAnalysisFile.Write(frames), FrameAnalysisFile.Write(FrameAnalysisFile.Read(FrameAnalysisFile.Write(frames))));
         // The stored eyes are kept as read, as the Mac's decoder keeps them.
         Assert.Equal(FrameEyes.Closed, frames["0.250:4750"].Face!.Eyes);

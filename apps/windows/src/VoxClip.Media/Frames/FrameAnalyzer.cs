@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.ExceptionServices;
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Frames;
 using VoxClip.Media.Ffmpeg;
 
@@ -51,8 +52,10 @@ public sealed class FrameAnalyzer
 
     /// <summary>An analyzer that measures faces with <paramref name="faces"/> and text and screens with a new
     /// <paramref name="laneScreens"/> scan per lane (each needs its own <see cref="QuadFinder"/>, which is not thread-safe:
-    /// <see cref="ScreensWith"/>). Null <paramref name="faces"/> is faces unavailable: <see cref="FrameFacesUnavailableException"/>.</summary>
-    public FrameAnalyzer(IFrameFaces? faces, Func<FrameScreenScan> laneScreens, IFrameDecoding decoder, FrameAnalysisCache? cache)
+    /// <see cref="ScreensWith"/>), and each sentence frame's light with <paramref name="light"/>'s thresholds (looks spec §9.3; null
+    /// measures none). Null <paramref name="faces"/> is faces unavailable: <see cref="FrameFacesUnavailableException"/>.</summary>
+    public FrameAnalyzer(IFrameFaces? faces, Func<FrameScreenScan> laneScreens, IFrameDecoding decoder, FrameAnalysisCache? cache,
+        ClipColorMeasure? light = null)
     {
         ArgumentNullException.ThrowIfNull(laneScreens);
         ArgumentNullException.ThrowIfNull(decoder);
@@ -60,7 +63,11 @@ public sealed class FrameAnalyzer
         this.laneScreens = laneScreens;
         this.decoder = decoder;
         this.cache = cache;
+        Light = light;
     }
+
+    /// <summary>The thresholds each sentence frame's light is measured with; null measures none.</summary>
+    public ClipColorMeasure? Light { get; }
 
     /// <summary>A new scan per lane on <paramref name="text"/> (the App's <c>WindowsFrameText</c>, which serialises itself), each with
     /// its own <see cref="QuadFinder"/>.</summary>
@@ -219,6 +226,9 @@ public sealed class FrameAnalyzer
                     var text = screens.ScanAsync(frame.Pixels, opening, ct).GetAwaiter().GetResult();
                     var found = faces.FacesAsync(frame.Pixels, [.. text.Screens.Select(screen => screen.Rect)], ct).GetAwaiter().GetResult();
                     var observation = text.ApplyTo(found.ApplyTo(new FrameObservation(frame.Time)));
+                    if (!opening && Light is { } light
+                        && FrameLightSampling.Sample(frame.Pixels, light.Auto.FrameSize, observation.Face?.Rect) is { } sample)
+                        observation = observation with { Light = FrameLight.Measure(sample, light) };
                     var jpeg = opening ? null : FrameJpeg.Encode(frame.Pixels, FrameSheet.FrameEdge);
                     results.Add(new(time, observation, jpeg));
                 }

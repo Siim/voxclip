@@ -17,6 +17,9 @@ public sealed record FrameObservation(double Time)
     public IReadOnlyList<ClipEffectRect> TextRects { get; init; } = [];
     /// <summary>Screen-like rectangles with dense text, and dense text clusters: the basis of blur suggestions.</summary>
     public IReadOnlyList<FrameScreen> Screens { get; init; } = [];
+    /// <summary>The frame's light (looks spec §9.3, analysis version 3), measured on a small picture of it; null when the analyzer had
+    /// no thresholds to measure with.</summary>
+    public FrameLight? Light { get; init; }
 
     /// <summary>A clear look at the speaker: a face with open eyes, good capture quality and, when measured, facing the camera
     /// (<see cref="FrameFace.FacesCamera"/>, judged against the recording's <paramref name="pitchBaseline"/>). The opening frame
@@ -242,8 +245,8 @@ public sealed record FrameAnalysis(string ContentKey, IReadOnlyList<FrameObserva
     FrameAnalysisTimings Timings)
 {
     /// <summary>2: faces with continuous yaw and pitch (2026-11-08); a version-1 cache holds the Mac's coarse revision-2 pose and
-    /// is never read.</summary>
-    public const int CurrentVersion = 2;
+    /// is never read. 3: each frame's light (looks spec §9.3, 2026-11-28); a version-2 cache has none and is never read.</summary>
+    public const int CurrentVersion = 3;
 
     /// <summary>The version the analysis was made with.</summary>
     public int Version { get; init; } = CurrentVersion;

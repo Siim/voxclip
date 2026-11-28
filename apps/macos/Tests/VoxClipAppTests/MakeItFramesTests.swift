@@ -18,18 +18,21 @@ private final class TimedVision: FrameObserving {
 /// A decoder stand-in: a small grey frame at each time asked for; `failing` reads nothing (a source without video).
 private final class GreyDecoder: FrameDecoding {
     let failing: Bool
-    init(failing: Bool = false) { self.failing = failing }
-    func reader(source: URL, maximumEdge: Int, tolerance: Double) -> any FrameReading { GreyReader(failing: failing) }
+    /// The frame's sRGB colour; mid grey unless a test gives it a cast.
+    let color: [Double]
+    init(failing: Bool = false, color: [Double] = []) { self.failing = failing; self.color = color }
+    func reader(source: URL, maximumEdge: Int, tolerance: Double) -> any FrameReading { GreyReader(failing: failing, color: color) }
 }
 
 private struct GreyReader: FrameReading {
     let failing: Bool
+    let color: [Double]
     func image(at time: Double) async throws -> (image: CGImage, time: Double) {
         if failing { throw VoxClipError.decodeFailed("no video track") }
         guard let space = CGColorSpace(name: CGColorSpace.sRGB),
               let context = CGContext(data: nil, width: 640, height: 360, bitsPerComponent: 8, bytesPerRow: 0, space: space,
                                       bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { throw VoxClipError.decodeFailed("context") }
-        context.setFillColor(CGColor(gray: 0.5, alpha: 1))
+        context.setFillColor(color.count == 3 ? CGColor(srgbRed: color[0], green: color[1], blue: color[2], alpha: 1) : CGColor(gray: 0.5, alpha: 1))
         context.fill(CGRect(x: 0, y: 0, width: 640, height: 360))
         guard let image = context.makeImage() else { throw VoxClipError.decodeFailed("image") }
         return (image, time)
@@ -80,7 +83,8 @@ final class SentFrames: Sendable {
     }
 
     func fixture(plan: ClipAutopilotPlan = Self.plan(), ai: MakeItFrameAI? = MakeItFrameAI(name: "Claude", images: true, billing: .plan("Claude")),
-                 failing: Bool = false, lines: Lines = Lines(), transcript: ((inout [TimedWord]) -> Void)? = nil) throws -> Fixture {
+                 failing: Bool = false, color: [Double] = [], lines: Lines = Lines(),
+                 transcript: ((inout [TimedWord]) -> Void)? = nil) throws -> Fixture {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-make-it-frames-" + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -95,7 +99,7 @@ final class SentFrames: Sendable {
         let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
         let sent = SentFrames()
         let fixture = Fixture(root: root, editor: editor, undo: undo, sent: sent)
-        let analyzer = FrameAnalyzer(vision: TimedVision(Self.look), decoder: GreyDecoder(failing: failing), cache: FrameAnalysisCache(locations: locations))
+        let analyzer = FrameAnalyzer(vision: TimedVision(Self.look), decoder: GreyDecoder(failing: failing, color: color), cache: FrameAnalysisCache(locations: locations))
         let words = project.transcript?.words ?? []
         let source = URL(fileURLWithPath: project.media.source.absolutePath), key = project.media.source.contentKey
         editor.makeIt.services = MakeItServices(
@@ -149,6 +153,63 @@ final class SentFrames: Sendable {
                 == "Claude read the clip's words and 1 small frame (one per sentence, 320 px) on your Claude plan. Faces were measured on this Mac.")
         #expect(editor.makeItFrameStrip(run).count == 1)
         #expect(fixture.undo.undoActionName == "Make it postable", "the picture rows are in the run's one step")
+    }
+
+    /// Looks spec §5.9 and §9.6: when Claude asks for the Fix, Make it measures it on the clip's own sheet frames (Auto's
+    /// rule) and applies it with the look in the run's step; the row says what the Fix did, and Undo puts the colour back.
+    @Test func claudesFixIsMeasuredOnTheSheetFramesAndUndoesWithTheLook() async throws {
+        var plan = Self.plan()
+        plan.look = .init(id: "warmPrint", amount: 70, fix: true, reason: "Soft light for a memory")
+        // A warm room: near-neutral greys with more red than blue.
+        let fixture = try fixture(plan: plan, color: [0.54, 0.5, 0.475])
+        defer { close(fixture) }
+        let editor = fixture.editor
+        let before = ClipControlsProject.controls(for: "clip-main", in: editor.project)?.colorState ?? ClipColorState()
+        let run = try await run(fixture)
+        let grade = try #require(ClipControlsProject.controls(for: "clip-main", in: editor.project)?.colorGrade)
+        #expect(grade.preset == "warmPrint" && grade.amount == 70)
+        #expect((-30 ... -12).contains(grade.fix.temperature) && grade.fix.tint == 0, "\(grade.fix)")
+        let row = try #require(run.rows.first { $0.id == "look" })
+        #expect(row.text == "Claude chose Warm Print at 70%")
+        #expect(row.detail == "Soft light for a memory · Fix: " + grade.fix.summary && grade.fix.summary.contains("temperature \u{2212}"))
+        step(fixture.undo) { editor.makeItUndo("look", in: run) }
+        #expect((ClipControlsProject.controls(for: "clip-main", in: editor.project)?.colorState ?? ClipColorState()) == before)
+    }
+
+    /// Looks spec §9.6 and §11.6, the regression with a measured Fix: a clip already graded by hand (a base look,
+    /// fine-tuning, a grade at 80% and its own Fix) gets Claude's Warm Print at 70% with the Fix measured on its sheet
+    /// frames, which replaces the old Fix; the row's Undo puts back the whole colour state byte for byte, and nothing else.
+    @Test func claudesMeasuredFixReplacesAGradedClipsFixAndUndoRestoresItByteForByte() async throws {
+        var plan = Self.plan()
+        plan.look = .init(id: "warmPrint", amount: 70, fix: true, alternatives: ["goldenHour"], reason: "Soft light for a memory")
+        let fixture = try fixture(plan: plan, color: [0.54, 0.5, 0.475])
+        defer { close(fixture) }
+        let editor = fixture.editor
+        var before = ClipControlsProject.controls(for: "clip-main", in: editor.project) ?? ProjectClipControls(clipId: "clip-main")
+        before.look = .muted
+        before.colorAdjustments = ClipColorAdjustments(brightness: 12, contrast: -8, saturation: 0, warmth: 20)
+        before.colorGrade = ClipColorGrade(amount: 80, exposure: 15, temperature: 10, tint: 5, highlights: -20, vibrance: 30, fade: 10)
+        let tuned = try ClipControlsProject.setting(before, in: editor.project)
+        step(fixture.undo) { editor.replace(tuned, name: "Fine-tune") }
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        let savedGrade = try encoder.encode(before.colorGrade), savedAdjustments = try encoder.encode(before.colorAdjustments)
+        let run = try await run(fixture)
+        let grade = try #require(ClipControlsProject.controls(for: "clip-main", in: editor.project)?.colorGrade)
+        #expect(grade.preset == "warmPrint" && grade.amount == 70)
+        #expect(grade.fix != before.colorGrade?.fix && (-30 ... -12).contains(grade.fix.temperature), "\(grade.fix)")
+        let row = try #require(run.rows.first { $0.id == "look" })
+        #expect(row.text == "Claude chose Warm Print at 70%" && row.undoable)
+        #expect(row.detail == "Soft light for a memory · Fix: " + grade.fix.summary)
+        let ran = editor.project
+        step(fixture.undo) { editor.makeItUndo("look", in: run) }
+        var expected = ran
+        let index = try #require(expected.clipControls.firstIndex { $0.clipId == "clip-main" })
+        expected.clipControls[index].colorState = before.colorState
+        expected.modifiedAt = editor.project.modifiedAt
+        #expect(try ProjectJSON.encode(editor.project) == ProjectJSON.encode(expected), "the look, fine-tuning, grade and Fix go back, nothing else")
+        let restored = try #require(ClipControlsProject.controls(for: "clip-main", in: editor.project))
+        #expect(restored.look == .muted)
+        #expect(try encoder.encode(restored.colorGrade) == savedGrade && encoder.encode(restored.colorAdjustments) == savedAdjustments)
     }
 
     @Test(arguments: ["frames-opening", "frames-face", "frames-blur-B1", "frames-cover"])

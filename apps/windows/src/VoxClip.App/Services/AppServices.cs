@@ -20,6 +20,7 @@ using VoxClip.Media.Pipeline;
 using VoxClip.Media.Speech;
 using Microsoft.UI.Dispatching;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Domain.Clips;
 
 namespace VoxClip.App.Services;
 
@@ -63,6 +64,8 @@ internal sealed class AppServices : IAsyncDisposable
     /// <summary>Caption cards for media with no frame (design §5.4); null when the caption resources are missing.</summary>
     internal CaptionCards? Cards { get; private set; }
     internal string? SharedRoot { get; private set; }
+    /// <summary>shared/looks/clip-looks.json (looks spec §4.1); null when it is missing or broken, which the startup notice reports.</summary>
+    internal ClipLookLibrary? Looks { get; private set; }
     internal string StartupNotice { get; private set; } = "";
     internal bool IsBusy => BusyOperations > 0;
     private int busyOperations;
@@ -236,6 +239,8 @@ internal sealed class AppServices : IAsyncDisposable
         try { SharedRoot = SharedResources.ResolveRoot(); SharePostText.Preflight(); }
         catch (Exception exception) { StartupNotice = UiError.Message(exception, "Startup"); }
         if (SharedRoot is not null) Cards = new(SharedRoot);
+        try { Looks = SharedRoot is null ? null : ClipLookLibrary.Load(SharedRoot); }
+        catch (Exception exception) { StartupNotice = UiError.Message(exception, "Looks"); }
         try { settingsWrites.Initialize(await SettingsStore.LoadAsync(ct)); }
         catch (Exception exception) { StartupNotice = UiError.Message(exception, "Settings"); }
         // The cache size limit is kept in the background, first 30 s after launch (architecture §8.2).

@@ -192,29 +192,18 @@ public struct ClipLightFacts: Sendable, Equatable {
     public let meanChroma: Double
     public let notes: [Note]
 
-    public init(_ frame: ClipFrameSample, measure: ClipColorMeasure) {
-        let pixels = frame.pixels, face = frame.facePixels
-        let lumas = pixels.map(ClipGradeRecipe.luma), faceLumas = face.map(ClipGradeRecipe.luma)
-        let ordered = lumas.sorted()
-        medianLuma = ClipColorMeasure.median(lumas)
-        p95Luma = ordered[max(0, Int((0.95 * Double(ordered.count)).rounded(.up)) - 1)]
-        faceMeanLuma = face.isEmpty ? nil : ClipColorMeasure.sum(faceLumas) / Double(face.count)
-        faceMedianLuma = face.isEmpty ? nil : ClipColorMeasure.median(faceLumas)
-        faceClippedShare = face.isEmpty ? nil
-            : Double(face.filter { $0.max()! >= measure.light.clippedChannel }.count) / Double(face.count)
-        neutralMeans = ClipColorMeasure.neutralMeans(pixels, measure.auto)
-        meanChroma = ClipColorMeasure.sum(pixels.map(ClipColorMeasure.chroma)) / Double(pixels.count)
-        let light = measure.light
-        var notes: [Note] = []
-        if let faceMedianLuma, faceMedianLuma < light.dimFaceLuma { notes.append(.dimFace) }
-        if let faceClippedShare, faceClippedShare > light.clippedShare { notes.append(.clipped(percent: ClipColorMeasure.points(faceClippedShare * 100))) }
-        if let neutralMeans {
-            let (r, g, b) = (neutralMeans[0], neutralMeans[1], neutralMeans[2])
-            if r - b > light.warmCool { notes.append(.warmCast) } else if b - r > light.warmCool { notes.append(.coolCast) }
-            if g - (r + b) / 2 > light.greenMagenta { notes.append(.greenCast) } else if (r + b) / 2 - g > light.greenMagenta { notes.append(.magentaCast) }
-        }
-        if meanChroma < light.lowColor { notes.append(.lowColor) } else if meanChroma > light.highColor { notes.append(.highColor) }
-        self.notes = notes
+    public init(_ frame: ClipFrameSample, measure: ClipColorMeasure) { self.init(FrameLight(frame, measure: measure), light: measure.light) }
+
+    /// The facts of a frame's measured light, with its notes from `light`'s thresholds.
+    public init(_ facts: FrameLight, light: ClipColorMeasure.Light) {
+        medianLuma = facts.medianLuma
+        p95Luma = facts.p95Luma
+        faceMeanLuma = facts.faceMeanLuma
+        faceMedianLuma = facts.faceMedianLuma
+        faceClippedShare = facts.faceClippedShare
+        neutralMeans = facts.neutralMeans
+        meanChroma = facts.meanChroma
+        notes = facts.notes(light)
     }
 
     /// The planner's line: "light: " and the notes, or "light: even".

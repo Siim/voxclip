@@ -1,3 +1,4 @@
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Frames;
 using VoxClip.Core.Services.LLM;
@@ -17,11 +18,13 @@ public sealed record ClipAutopilotFrames(string Summary, IReadOnlyList<LlmImage>
 
     /// <summary>The frames of <paramref name="sheet"/> for a clip that plays <paramref name="clipStart"/>…<paramref name="clipEnd"/>
     /// (source seconds), with the images when <paramref name="images"/>; facing is judged against <paramref name="pitchBaseline"/>, the
-    /// recording's typical pitch. Twin of the Mac <c>init(sheet:clipStart:clipEnd:images:pitchBaseline:)</c>.</summary>
-    public static ClipAutopilotFrames FromSheet(FrameSheet sheet, double clipStart, double clipEnd, bool images, double? pitchBaseline)
+    /// recording's typical pitch; each measured frame's light line uses <paramref name="light"/>'s thresholds (looks spec §9.3). Twin of
+    /// the Mac <c>init(sheet:clipStart:clipEnd:images:pitchBaseline:light:)</c>.</summary>
+    public static ClipAutopilotFrames FromSheet(FrameSheet sheet, double clipStart, double clipEnd, bool images, double? pitchBaseline,
+        ClipLightMeasure? light = null)
     {
         ArgumentNullException.ThrowIfNull(sheet);
-        return new(sheet.Summary(pitchBaseline), images ? sheet.Images : [],
+        return new(sheet.Summary(pitchBaseline, light), images ? sheet.Images : [],
             ClipFrameCandidates.Blur(sheet.Frames.Select(frame => frame.Observation), clipStart, clipEnd),
             ClipFrameCandidates.Cover(sheet.Frames, pitchBaseline), images ? sheet.EstimatedImageTokens : 0) { Frames = sheet.Frames };
     }

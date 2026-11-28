@@ -224,12 +224,14 @@
       "additionalProperties": false,
       "properties": {
         "id": {
-          "enum": [
-            "original",
-            "muted",
-            "warm",
-            "bw"
-          ]
+          "type": "string",
+          "pattern": "^[A-Za-z0-9]{1,40}$",
+          "description": "A look ID from shared/looks/clip-looks.json, such as warm or warmPrint."
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
         },
         "reason": {
           "type": "string",

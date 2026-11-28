@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-11-28 — Claude picks one of the 24 looks (issue #40, T8, track/looks-planner)
+
+- Twin of the Mac planner look: plan v5 `Look(Id, Reason) { Amount, Fix, Alternatives }` (`ToJson`/`FromJson`, v4 reads whole), prompt v14 checked against `ClipLookLibrary`, `ClipAutopilotValidator.Look` replaying `plan-look-cases.json`, `FrameObservation.Light` in analysis cache v3, and the frames summary's light line.
+- `EditorViewModel.MakeIt` applies the look via `ClipControlsProject.SettingLookPreset` with the Fix from `FrameLightSampling.Fix` on the sent sheet frames; `MakeItInverse.Look` holds a `ClipColorState`, so Undo restores look, `ColorAdjustments` and `ColorGrade` (`UndoAfterClaudesLookRestoresTheWholeColourState`).
+- Change chips match the Mac except "All looks in Picture ›", which shows only when `MakeItServices.PictureTab` is true (false until the Picture tab lands; it raises `MakeItShowPictureRequested`). The original look's chip reads "As filmed".
+
 ### 2026-11-28 — The looks' grade in preview and export, and Picture's stills (track/looks-win-render, looks spec T5)
 
 - Media `ClipPicture.Grade(frame, ClipGradeRecipe, ct)` replaces the look-and-adjustments overload: the Fix folds into the nine per-byte tables, stage T and Amount's mix over the Fix's output run four pixels at a time with `Vector128`. `ClipPicture.Finish` is the vignette and grain (`ClipGrainField`, the shared integer field) on the output frame. `FrameComposer.FinishClipFrame` grades with the clip's whole grade, then finishes after the motion crop and footage with `RenderedFrameIndex` (⌊rendered time × fps + 0.5⌋), leaving grain out of a context demo. See design.md §6.9 and the looks spec §5–§7.

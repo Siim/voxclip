@@ -4,7 +4,8 @@
 Writes shared/fixtures/clip-frames/decision-cases.json (schema voxclip-frame-decision-cases/1), a new file of its own so no
 existing replay's keys or counts change. It holds the pure decisions "Claude sees the picture" makes from fabricated
 observations: eye states, clear looks, the opening frame, the cover, the face-follow crop, screens, blur spans and their
-candidates, the frame sheet's text summary and the sampling times, plus an analysis-v2.json sample for the JSON round trip.
+candidates, the frame sheet's text summary (with each frame's light line, looks spec 2026-11-28 section 9.3, from the
+thresholds in shared/looks/clip-looks.json) and the sampling times, plus an analysis-v3.json sample for the JSON round trip.
 Every input observation and every expected decision is written in the Mac's JSON shape (Swift's synthesized Codable: a nil
 optional is left out), so both Cores decode the inputs and encode their answers through their real code. Swift
 FrameDecisionVectorTests and C# FrameDecisionVectorTests replay every case.
@@ -22,6 +23,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 DESTINATION = ROOT / 'shared/fixtures/clip-frames/decision-cases.json'
+# The light line's thresholds (looks spec section 9.3); the replays pass the same file's numbers.
+LIGHT = json.loads((ROOT / 'shared/looks/clip-looks.json').read_text(encoding='utf-8'))['measure']['light']
 
 CLOSED_BELOW = 0.20
 GOOD_QUALITY = 0.4
@@ -179,13 +182,53 @@ def screen(box, boxes, coverage, framed):
     return {'rect': box, 'textBoxes': boxes, 'textCoverage': coverage, 'framed': framed}
 
 
-def observation(time, face_value=None, face_count=None, texts=(), screens=()):
+def observation(time, face_value=None, face_count=None, texts=(), screens=(), light_value=None):
     value = {'time': time, 'faceCount': face_count if face_count is not None else (1 if face_value else 0)}
     if face_value is not None:
         value['face'] = face_value
     value['textRects'] = list(texts)
     value['screens'] = list(screens)
+    if light_value is not None:
+        value['light'] = light_value
     return value
+
+
+def light(median, p95, chroma, means=None, face_mean=None, face_median=None, clipped=None):
+    """A frame's measured light (FrameLight), a nil optional left out."""
+    value = {'medianLuma': median, 'p95Luma': p95, 'meanChroma': chroma}
+    for key, item in (('neutralMeans', means), ('faceMeanLuma', face_mean), ('faceMedianLuma', face_median), ('faceClippedShare', clipped)):
+        if item is not None:
+            value[key] = item
+    return value
+
+
+def points(value):
+    """Swift's (abs(v) + 0.5).rounded(.down) with the sign: a whole percent, half away from zero."""
+    return int(math.floor(abs(value) + 0.5)) * (1 if value >= 0 else -1)
+
+
+def light_line(value):
+    """The planner's light line (looks spec section 9.3): "light: " and the notes in this order, or "light: even"."""
+    notes = []
+    if value.get('faceMedianLuma') is not None and value['faceMedianLuma'] < LIGHT['dimFaceLuma']:
+        notes.append('face a little dark')
+    if value.get('faceClippedShare') is not None and value['faceClippedShare'] > LIGHT['clippedShare']:
+        notes.append(f'highlights clipped {points(value["faceClippedShare"] * 100)}%')
+    if value.get('neutralMeans') is not None:
+        r, g, b = value['neutralMeans']
+        if r - b > LIGHT['warmCool']:
+            notes.append('warm-yellow cast')
+        elif b - r > LIGHT['warmCool']:
+            notes.append('cool-blue cast')
+        if g - (r + b) / 2 > LIGHT['greenMagenta']:
+            notes.append('green cast')
+        elif (r + b) / 2 - g > LIGHT['greenMagenta']:
+            notes.append('magenta cast')
+    if value['meanChroma'] < LIGHT['lowColor']:
+        notes.append('low color')
+    elif value['meanChroma'] > LIGHT['highColor']:
+        notes.append('high color')
+    return 'light: ' + (' · '.join(notes) if notes else 'even')
 
 
 def faces_camera(face_value, baseline):
@@ -489,6 +532,8 @@ def summary_line(index, frame, baseline):
         parts.append(f'{"screen" if item["framed"] else "dense text"} with {item["textBoxes"]} text boxes at {rect_text(item["rect"])}')
     if not frame['screens'] and frame['textRects']:
         parts.append(f'{len(frame["textRects"])} text boxes')
+    if 'light' in frame:
+        parts.append(light_line(frame['light']))
     return f'F{index} {two(frame["time"])} s: ' + ', '.join(parts)
 
 
@@ -783,12 +828,21 @@ def summary_cases():
         observation(4.5, face(CENTRED, 0.444, None, None)),
     ]
     camera = [seen(1.0, CENTRED, 0.6, 0.3, pitch=0.45), seen(2.0, CENTRED, 0.6, 0.3, pitch=0.9)]
+    lit = [
+        observation(1.0, face(CENTRED, 0.6, 0.3, 0.3), light_value=light(0.25, 0.5, 0.0625, [0.5, 0.4375, 0.4375], 0.28125, 0.25, 0.0625)),
+        observation(2.0, face(CENTRED, 0.6, 0.3, 0.3), light_value=light(0.5, 0.75, 0.125, [0.5, 0.5, 0.5], 0.5, 0.5, 0.0)),
+        observation(3.0, light_value=light(0.375, 0.875, 0.25, [0.375, 0.4375, 0.4375])),
+        observation(4.0, light_value=light(0.375, 0.875, 0.25, [0.4375, 0.375, 0.4375])),
+        observation(5.0, face(CENTRED, 0.6, 0.3, 0.3), light_value=light(0.5, 0.5, 0.15, None, 0.5, 0.5, 0.03)),
+        observation(6.0, face(CENTRED, 0.6, 0.3, 0.3)),
+    ]
     many = [seen(i * 1.5, CENTRED, 0.5, 0.3) for i in range(26)]
     cases = [
         ('the-plan-request-summary', plan, None),
         ('largest-face-rounding-and-unmeasured-parts', mixed, None),
         ('facing-against-the-baseline', camera, 0.45),
         ('facing-judged-from-zero', camera, None),
+        ('each-frame-s-light-line', lit, None),
         ('at-most-24-frames', many, None),
         ('an-empty-sheet', [], None),
     ]
@@ -855,10 +909,11 @@ def opening_time_cases():
 
 
 def analysis_sample():
-    """An analysis-v2.json as FrameAnalysisCache writes it, and a FrameAnalysis as analyze-frames reports it."""
+    """An analysis-v3.json as FrameAnalysisCache writes it, and a FrameAnalysis as analyze-frames reports it."""
     frames = {
         '0.250:1250': observation(1.25, face(rect(0.40, 0.20, 0.20, 0.36), 0.55, 0.31, 0.29, -0.04, 0.12), 1,
-                                  [rect(0.62, 0.35, 0.15, 0.03)]),
+                                  [rect(0.62, 0.35, 0.15, 0.03)],
+                                  light_value=light(0.4375, 0.8125, 0.09375, [0.5, 0.46875, 0.4375], 0.46875, 0.453125, 0.015625)),
         '0.250:4750': observation(4.75, face(rect(0.41, 0.21, 0.2, 0.35), 0.48, 0.1, 0.12, 0.02, 0.15), 2),
         '0.250:8250': observation(8.25, face(rect(0.39, 0.19, 0.21, 0.36), 0.62, 0.3, 0.3, 0.0, 0.1), 1,
                                   [rect(0.62, 0.35 + i * 0.06, 0.15, 0.03) for i in range(3)],
@@ -866,16 +921,16 @@ def analysis_sample():
         '0.033:600': observation(0.6, face(rect(0.4, 0.2, 0.2, 0.36))),
         '0.033:700': observation(0.7, face(rect(0.4, 0.2, 0.2, 0.36), 0.5, None, None, 0.1)),
         '0.033:800': observation(0.8, face(rect(0.4, 0.2, 0.2, 0.36), None, None, None, None, -0.2)),
-        '0.250:15250': observation(15.25),
+        '0.250:15250': observation(15.25, light_value=light(0.125, 0.25, 0.03125)),
     }
     analysis = {
         'contentKey': 'sha256-0123456789abcdef',
         'opening': [frames['0.033:600'], frames['0.033:700'], frames['0.033:800']],
         'sentences': [frames['0.250:1250'], frames['0.250:4750'], frames['0.250:8250'], frames['0.250:15250']],
         'timings': {'analyzedFrames': 6, 'cachedFrames': 1, 'openingSeconds': 0.125, 'sentenceSeconds': 1.5},
-        'version': 2,
+        'version': 3,
     }
-    return {'fileName': 'analysis-v2.json', 'file': {'frames': frames, 'schema': 'voxclip-frames/2'}, 'frameAnalysis': analysis,
+    return {'fileName': 'analysis-v3.json', 'file': {'frames': frames, 'schema': 'voxclip-frames/3'}, 'frameAnalysis': analysis,
             'pitchBaseline': pitch_baseline(analysis['sentences'] + analysis['opening'])}
 
 

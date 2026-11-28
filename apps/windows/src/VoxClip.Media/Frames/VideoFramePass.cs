@@ -3,6 +3,7 @@ using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Frames;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.Clips;
 
 namespace VoxClip.Media.Frames;
 
@@ -20,6 +21,9 @@ public sealed class VideoFramePass
     private sealed record Found(IReadOnlyDictionary<long, FrameObservation> Frames, IReadOnlyDictionary<long, byte[]> Jpegs);
 
     private readonly FrameAnalyzer analyzer;
+
+    /// <summary>The thresholds its sentence frames' light is measured with (looks spec §9.3); null when it measures none.</summary>
+    public ClipColorMeasure? Light => analyzer.Light;
     private readonly string source;
     private readonly string contentKey;
     private readonly IReadOnlyList<FrameSample> samples;

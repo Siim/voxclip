@@ -34,6 +34,45 @@ struct FrameAnalyzerTests {
         #expect(second.sheet.images == first.sheet.images)
     }
 
+    /// Looks spec §9.3: each sentence frame's light is measured on a small picture of it with the shared thresholds and
+    /// cached with the frame; the opening scan, and an analyzer without thresholds, measure none.
+    @Test func sentenceFramesCarryTheirMeasuredLight() async throws {
+        let folder = try FrameTestFolder()
+        let cache = FrameAnalysisCache(locations: folder.locations)
+        let shared = try SharedResources(root: FixtureLoader.sharedRoot())
+        let measure = try ClipLookLibrary.load(shared: shared).measure
+        let decoder = SyntheticDecoder()
+        let analyzer = FrameAnalyzer(vision: CountingVision(), decoder: decoder, cache: cache, light: measure)
+        let clip = try #require(Self.clip())
+        let first = try await analyzer.analyze(source: folder.url, contentKey: Self.key, clip: clip)
+        #expect(!first.analysis.sentences.isEmpty && first.analysis.opening.allSatisfy { $0.light == nil })
+        for frame in first.analysis.sentences {
+            let light = try #require(frame.light)
+            // The stand-in's frame is one mid grey: every luma the same, no colour, a neutral grey-world mean.
+            #expect((0.3...0.7).contains(light.medianLuma) && light.p95Luma == light.medianLuma && light.faceMedianLuma == light.medianLuma)
+            #expect(light.faceClippedShare == 0 && light.meanChroma == 0 && Set(light.neutralMeans ?? []).count == 1)
+            #expect(light.line(measure.light) == "light: low color")
+        }
+        // The light comes back from the cache without decoding again.
+        let decoded = decoder.count
+        let second = try await analyzer.analyze(source: folder.url, contentKey: Self.key, clip: clip)
+        #expect(decoder.count == decoded && second.analysis.sentences == first.analysis.sentences)
+        let bare = FrameAnalyzer(vision: CountingVision(), decoder: SyntheticDecoder(), cache: nil)
+        #expect(try await bare.analyze(source: folder.url, contentKey: Self.key, clip: clip).analysis.sentences.allSatisfy { $0.light == nil })
+    }
+
+    /// The Fix Make it applies is measured on the sheet's own JPEGs (looks spec §5.9): a small picture of each with its face box.
+    @Test func aSheetFrameSamplesAtTheMeasureSize() throws {
+        let jpeg = try FrameJPEG.encode(try Self.phoneScreen(), edge: FrameSheet.frameEdge)
+        let face = ClipEffect.Rect(x: 0.1, y: 0.2, width: 0.3, height: 0.4)
+        let sample = try #require(FrameLightSampling.sample(jpeg: jpeg, edge: 160, face: face))
+        #expect(sample.width == 160 && sample.height == 90 && sample.rgb.count == 160 * 90 * 3 && sample.face == face)
+        // The grey background reads as grey: the picture is upright and unmanaged sRGB bytes.
+        let corner = Array(sample.rgb[0..<3])
+        #expect(corner.allSatisfy { (100...180).contains($0) } && Set(corner).count == 1, "\(corner)")
+        #expect(FrameLightSampling.sample(jpeg: Data([1, 2, 3]), edge: 160, face: nil) == nil)
+    }
+
     @Test func clearingTheCacheDropsTheAnalysis() async throws {
         let folder = try FrameTestFolder()
         let store = CacheStore(locations: folder.locations)
@@ -56,7 +95,7 @@ struct FrameAnalyzerTests {
     /// Version 1 held Vision's coarse revision-2 pose (yaw 0 or ±π/4, no pitch): its file is ignored, never read, and left
     /// for the cache's own eviction (ADR-R48, 2026-11-08).
     @Test func aVersionOneCacheIsIgnoredAndLeftInPlace() async throws {
-        #expect(FrameAnalysis.version == 2 && FrameAnalysisCache.fileName == "analysis-v2.json")
+        #expect(FrameAnalysis.version == 3 && FrameAnalysisCache.fileName == "analysis-v3.json")
         let folder = try FrameTestFolder()
         let store = CacheStore(locations: folder.locations)
         let cache = FrameAnalysisCache(store: store)

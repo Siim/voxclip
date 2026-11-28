@@ -222,7 +222,7 @@ import Testing
     }
 
     @Test func thePlannersLooksAreTheRenderersLooks() {
-        #expect(ClipAutopilotPlan.LookID.self == ClipLook.self)
+        #expect(ClipLook.allCases.map { ClipAutopilotPlan.LookPresetID($0) } == [.original, .muted, .warm, .bw])
         #expect(ClipLook.allCases.map(\.rawValue) == ["original", "muted", "warm", "bw"])
         #expect(ClipLook.allCases.map(\.label) == ["As filmed", "Muted", "Warm", "B&W"])
     }

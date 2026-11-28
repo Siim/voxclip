@@ -14,6 +14,8 @@ public actor VideoFramePass {
     }
 
     let analyzer: FrameAnalyzer
+    /// The thresholds its sentence frames' light is measured with (looks spec §9.3); nil when it measures none.
+    public nonisolated var light: ClipColorMeasure? { analyzer.light }
     let source: URL
     let contentKey: String
     let projectClock: ProjectClock?

@@ -46,16 +46,47 @@ public static class FrameJson
         ["framed"] = screen.Framed, ["rect"] = Write(screen.Rect), ["textBoxes"] = screen.TextBoxes, ["textCoverage"] = screen.TextCoverage,
     };
 
-    /// <summary>An observation; without a face, <c>face</c> is left out.</summary>
+    /// <summary>An observation; without a face, <c>face</c> is left out, and so is an unmeasured <c>light</c>.</summary>
     public static JsonObject Write(FrameObservation frame)
     {
         var value = new JsonObject();
         if (frame.Face is { } face) value["face"] = Write(face);
         value["faceCount"] = frame.FaceCount;
+        if (frame.Light is { } light) value["light"] = Write(light);
         value["screens"] = new JsonArray([.. frame.Screens.Select(screen => (JsonNode)Write(screen))]);
         value["textRects"] = new JsonArray([.. frame.TextRects.Select(rect => (JsonNode)Write(rect))]);
         value["time"] = frame.Time;
         return value;
+    }
+
+    /// <summary>A frame's light, keys sorted, a null optional left out (the Mac's synthesized Codable).</summary>
+    public static JsonObject Write(FrameLight light)
+    {
+        var value = new JsonObject();
+        if (light.FaceClippedShare is { } clipped) value["faceClippedShare"] = clipped;
+        if (light.FaceMeanLuma is { } mean) value["faceMeanLuma"] = mean;
+        if (light.FaceMedianLuma is { } median) value["faceMedianLuma"] = median;
+        value["meanChroma"] = light.MeanChroma;
+        value["medianLuma"] = light.MedianLuma;
+        if (light.NeutralMeans is { } means) value["neutralMeans"] = new JsonArray([.. means.Select(item => (JsonNode)item)]);
+        value["p95Luma"] = light.P95Luma;
+        return value;
+    }
+
+    /// <summary>A frame's light, or null when it is not one.</summary>
+    public static FrameLight? ReadLight(JsonNode? node)
+    {
+        if (node is not JsonObject value || Number(value, "medianLuma") is not { } median || Number(value, "p95Luma") is not { } p95
+            || Number(value, "meanChroma") is not { } chroma) return null;
+        if (!Optional(value, "faceMeanLuma", out var faceMean) || !Optional(value, "faceMedianLuma", out var faceMedian)
+            || !Optional(value, "faceClippedShare", out var clipped)) return null;
+        IReadOnlyList<double>? means = null;
+        if (value["neutralMeans"] is { } meansNode)
+        {
+            if (meansNode is not JsonArray items || items.Count != 3 || items.Any(item => item is not JsonValue number || AsDouble(number) is null)) return null;
+            means = [.. items.Select(item => AsDouble((JsonValue)item!)!.Value)];
+        }
+        return new FrameLight(median, p95, chroma) { FaceMeanLuma = faceMean, FaceMedianLuma = faceMedian, FaceClippedShare = clipped, NeutralMeans = means };
     }
 
     /// <summary>A clip's analysis, as <c>voxclip-cli analyze-frames</c> reports it.</summary>
@@ -253,7 +284,9 @@ public static class FrameJson
         FrameFace? face = null;
         if (value["face"] is { } faceNode && (face = ReadFace(faceNode)) is null) return null;
         if (ReadRects(value["textRects"]) is not { } texts || ReadList(value["screens"], ReadScreen) is not { } screens) return null;
-        return new FrameObservation(time) { FaceCount = faceCount, Face = face, TextRects = texts, Screens = screens };
+        FrameLight? light = null;
+        if (value["light"] is { } lightNode && (light = ReadLight(lightNode)) is null) return null;
+        return new FrameObservation(time) { FaceCount = faceCount, Face = face, TextRects = texts, Screens = screens, Light = light };
     }
 
     /// <summary>A clip's analysis, or null when it is not one.</summary>
@@ -329,15 +362,15 @@ public static class FrameJson
     }
 }
 
-/// <summary>The frame analyzer's cache file, <c>Cache/&lt;contentKey&gt;/frames/analysis-v2.json</c> (architecture §8.2, ADR-R48),
-/// in the Mac's shape: <c>{"frames": {"&lt;pass&gt;:&lt;millisecond&gt;": observation}, "schema": "voxclip-frames/2"}</c>. A pass is
+/// <summary>The frame analyzer's cache file, <c>Cache/&lt;contentKey&gt;/frames/analysis-v3.json</c> (architecture §8.2, ADR-R48),
+/// in the Mac's shape: <c>{"frames": {"&lt;pass&gt;:&lt;millisecond&gt;": observation}, "schema": "voxclip-frames/3"}</c>. A pass is
 /// a decode tolerance with three decimals (<c>"0.250"</c>).</summary>
 public static class FrameAnalysisFile
 {
     /// <summary>The file's schema id; a file of another version is never read.</summary>
-    public const string SchemaId = "voxclip-frames/2";
+    public const string SchemaId = "voxclip-frames/3";
     /// <summary>The file's name in the cache entry's <c>frames</c> folder.</summary>
-    public const string FileName = "analysis-v2.json";
+    public const string FileName = "analysis-v3.json";
 
     /// <summary>The cached observations by key; empty when the text is not this version's file or any observation is unreadable, as
     /// on the Mac.</summary>

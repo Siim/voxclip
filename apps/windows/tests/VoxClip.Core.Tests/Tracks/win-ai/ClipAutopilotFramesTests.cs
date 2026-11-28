@@ -38,7 +38,7 @@ public sealed class ClipAutopilotFramesTests
     {
         var prompt = ClipAutopilotPrompt.Load(Root);
         var fixture = Frames();
-        Assert.Equal(13, prompt.PromptVersion);
+        Assert.Equal(14, prompt.PromptVersion);
         Assert.Equal("voxclip-autopilot-frames/1", fixture["schema"]!.GetValue<string>());
         Assert.Equal(prompt.Sha256, fixture["sources"]!["shared/prompts/clip-autopilot.json"]!.GetValue<string>());
         Assert.Contains("frames.blur", prompt.System, StringComparison.Ordinal);
@@ -116,7 +116,7 @@ public sealed class ClipAutopilotFramesTests
         reply["frames"] = new JsonObject { ["blur"] = new JsonArray(), ["cover"] = new JsonObject { ["id"] = "C1", ["reason"] = "" } };
         var plan = ClipAutopilotValidator.Plan(reply, Context(Transcript(V2(), 75), new(0, 29)))!;
         Assert.Null(plan.Frames);
-        Assert.Equal(4, plan.Version);
+        Assert.Equal(ClipAutopilotPlan.CurrentVersion, plan.Version);
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public sealed class ClipAutopilotFramesTests
         var read = ClipAutopilotPlan.FromJson(json);
         Assert.Equal(plan.Frames, read.Frames);
         Assert.Equal(json.ToJsonString(), read.ToJson().ToJsonString());
-        json["version"] = 5;
+        json["version"] = 6;
         Assert.Throws<VoxClipException>(() => ClipAutopilotPlan.FromJson(json));
         json["version"] = 3;
         json.Remove("frames");

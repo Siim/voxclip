@@ -83,7 +83,7 @@ public struct HarnessTimeline: Codable, Sendable, Equatable {
             _ = try ClipPlanMusicShape.read(music)
         }
         if let font = fields["font"] { _ = try requireObject(font, keys: ["family", "weight"]) }
-        for (key, allowed) in [("look", Set(["id", "reason"])), ("speed", Set(["rate", "reason"]))] {
+        for (key, allowed) in [("look", Set(["id", "amount", "reason"])), ("speed", Set(["rate", "reason"]))] {
             if let item = fields[key] {
                 var object = try requireObject(item, keys: allowed)
                 if object["reason"] == nil { object["reason"] = .string("") }
@@ -116,6 +116,7 @@ public struct HarnessTimeline: Codable, Sendable, Equatable {
               proposal.font.map({ line($0.family, max: 80) && (100...900).contains($0.weight) }) != false,
               proposal.wordsPerCaption.map({ (1...12).contains($0) }) != false,
               proposal.speed.map({ ProjectClipControls.speedRange.contains($0.rate) }) != false,
+              proposal.look.map({ ClipColorGrade.isPresetID($0.id.rawValue) && (0...100).contains($0.amount) }) != false,
               proposal.music.map({ ($0.trackId == nil) != ($0.brief == nil) && $0.trackId?.isEmpty != true && $0.brief.map { line($0, max: 500) } != false }) != false,
               proposal.target.new.map({ entry in
                   line(entry.title, max: 120) && (entry.kind == .stretch ? proposal.parts?.count == 1 : (proposal.parts?.count ?? 0) >= 2)
@@ -287,7 +288,9 @@ public struct HarnessProposal: Codable, Sendable, Equatable, Identifiable {
         let operations = try ClipAutopilotMapping.operations(for: proposal, clipID: clipID, project: project, fonts: fonts, stickers: stickers)
         let clipStyle = operations.contains(where: { $0.decision == .captions })
             ? try (project.clipStyle ?? ClipStyleCatalog.load(shared: shared).initial(saved: nil)) : nil
-        let result = try ClipAutopilotMapping.apply(operations, to: project, clipCaptions: clipStyle.map { (clipID, $0) })
+        // A look is any look of shared/looks/clip-looks.json at its amount (looks spec §8.5), checked against the file here.
+        let looks = proposal.look == nil ? nil : try ClipLookLibrary.load(shared: shared)
+        let result = try ClipAutopilotMapping.apply(operations, to: project, clipCaptions: clipStyle.map { (clipID, $0) }, looks: looks)
         guard result.project.edits.clips.contains(where: { $0.id == clipID }) else {
             throw HarnessError.invalid("The proposed clip duplicates an existing clip or doesn't have valid parts.")
         }

@@ -76,7 +76,8 @@ extension EditorModel {
               let words = clock?.words ?? project.transcript?.words, words.contains(where: { $0.kind == .word }) else { return nil }
         let log = app.log
         let recordings = clock == nil ? [] : RenderCallerInputs.recordingFiles(project: project, primary: sourceURL, projectURL: document.fileURL)
-        return VideoFramePass(analyzer: FrameAnalyzer(cache: FrameAnalysisCache(locations: app.locations)), source: sourceURL,
+        return VideoFramePass(analyzer: FrameAnalyzer(cache: FrameAnalysisCache(locations: app.locations), light: ClipLookLibrary.app?.measure),
+                              source: sourceURL,
                               contentKey: project.media.source.contentKey, words: words, projectClock: clock, recordings: recordings) { line in
             Task { await log.write(LogEntry(level: .info, category: "frames", message: line)) }
         }
@@ -157,7 +158,7 @@ extension EditorModel {
         await pass.startOpening(for: clip)
         var frames = ClipAutopilotFrames(sheet: found.sheet, clipStart: clips.map(\.start).min() ?? clip.start,
                                          clipEnd: clips.map(\.end).max() ?? clip.end, images: ai.images,
-                                         pitchBaseline: await pass.pitchBaseline())
+                                         pitchBaseline: await pass.pitchBaseline(), light: ClipLookLibrary.app?.measure.light)
         var usd: Decimal?
         if frames.sendsImages, case .key(let connector, let model) = ai.billing {
             let price = app.shared.flatMap { try? ClipAutopilotImagePrices(shared: $0) }?

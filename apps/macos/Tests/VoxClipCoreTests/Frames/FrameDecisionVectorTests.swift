@@ -60,10 +60,10 @@ import Testing
         #expect(Set(object.keys) == Set(["schema", "description", "constants", "caseCount", "counts", "transcripts", "analysis"] + Self.sections))
         let vectors = try Self.vectors()
         #expect(vectors[ai: "schema"].aiString == "voxclip-frame-decision-cases/1")
-        #expect(vectors[ai: "caseCount"].aiInt == 136)
+        #expect(vectors[ai: "caseCount"].aiInt == 137)
         let counts = Self.sections.map { vectors[ai: $0].aiArray.count }
-        #expect(counts == [11, 11, 22, 11, 11, 12, 7, 6, 6, 9, 6, 24])
-        #expect(counts.reduce(0, +) == 136)
+        #expect(counts == [11, 11, 22, 11, 11, 12, 7, 7, 6, 9, 6, 24])
+        #expect(counts.reduce(0, +) == 137)
         #expect(Self.sections.allSatisfy { vectors[ai: "counts"][ai: $0].aiInt == vectors[ai: $0].aiArray.count })
         #expect(vectors[ai: "counts"].aiObject.map { Set($0.keys) } == Set(Self.sections))
         #expect(vectors[ai: "transcripts"].aiObject.map { Set($0.keys) } == ["thirty-sentences", "run-on", "mixed", "empty"])
@@ -166,14 +166,17 @@ import Testing
         }
     }
 
+    /// Each frame's light line (looks spec §9.3) follows the thresholds of shared/looks/clip-looks.json, as the plan request does.
     @Test func summariesReplay() throws {
+        let light = try ClipLookLibraryTests.library().measure.light
         for row in try Self.rows("summaries") {
             let frames: [FrameObservation] = try Self.decode(row[ai: "frames"])
             let sheet = FrameSheet(frames: frames.enumerated().map {
                 FrameSheetFrame(index: $0.offset + 1, observation: $0.element, jpeg: Data([1, 2, 3]), width: 320, height: 180)
             })
-            #expect(sheet.summary(pitchBaseline: Self.baseline(row)) == row[ai: "expect"][ai: "summary"].aiString, "\(row[ai: "id"])")
-            #expect(sheet.estimatedSummaryTokens(pitchBaseline: Self.baseline(row)) == row[ai: "expect"][ai: "summaryTokens"].aiInt, "\(row[ai: "id"])")
+            #expect(sheet.summary(pitchBaseline: Self.baseline(row), light: light) == row[ai: "expect"][ai: "summary"].aiString, "\(row[ai: "id"])")
+            #expect(sheet.estimatedSummaryTokens(pitchBaseline: Self.baseline(row), light: light) == row[ai: "expect"][ai: "summaryTokens"].aiInt,
+                    "\(row[ai: "id"])")
         }
         for row in try Self.rows("imageTokens") {
             #expect(FrameSheet.imageTokens(width: row[ai: "width"].aiInt ?? 0, height: row[ai: "height"].aiInt ?? 0) == row[ai: "expect"].aiInt)
@@ -208,7 +211,7 @@ import Testing
         #expect(FrameAnalysisCache.pass(tolerance: 0.25) == "0.250")
     }
 
-    /// The fixture's analysis-v2.json is the Mac's: the cache reads it, and writes the same keys and values back.
+    /// The fixture's analysis-v3.json is the Mac's: the cache reads it, and writes the same keys and values back.
     @Test func theAnalysisSampleIsTheMacsFile() async throws {
         let sample = try Self.vectors()[ai: "analysis"]
         #expect(sample[ai: "fileName"].aiString == FrameAnalysisCache.fileName)

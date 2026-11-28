@@ -100,6 +100,12 @@ public sealed record MakeItServices(
     internal PlanAssetServices? Assets { get; init; }
     /// <summary>The shared root for the planner's prompt, fonts and prices.</summary>
     public string? SharedRoot { get; init; }
+    /// <summary>The looks (shared/looks/clip-looks.json): the look row's names and Change chips, the frames' light lines and the Fix
+    /// Claude asks for. Null names the four base looks only and measures nothing.</summary>
+    public ClipLookLibrary? Looks { get; init; }
+    /// <summary>The editor has a Picture tab, so the look row ends with "All looks in Picture ›" (looks spec §9.6); off until the Picture
+    /// tab ships (ticket T7), so the row never offers a chip that goes nowhere.</summary>
+    public bool PictureTab { get; init; }
     /// <summary>The Voice Lab price catalog for the cap; null prices nothing.</summary>
     public Core.Domain.VoiceLab.VoiceLabPriceCatalog? Prices { get; init; }
     /// <summary>The tone catalogue and the creator's saved tones; null sends no tone line.</summary>
@@ -191,8 +197,9 @@ public abstract record MakeItInverse
     public sealed record Share(string ClipId, string? Previous) : MakeItInverse;
     /// <summary>The Voice Lab segments the voice step added, turned off.</summary>
     public sealed record Voice(IReadOnlyList<string> Segments) : MakeItInverse;
-    /// <summary>The clip's look before; the other controls stay.</summary>
-    public sealed record Look(string ClipId, ClipLook Previous) : MakeItInverse;
+    /// <summary>The clip's whole colour state before (look, fine-tuning and grade, Fix included); the other controls stay (looks spec
+    /// §9.6).</summary>
+    public sealed record Look(string ClipId, ClipColorState Previous) : MakeItInverse;
     /// <summary>The clip's speed before; the other controls stay.</summary>
     public sealed record Speed(string ClipId, double Previous) : MakeItInverse;
     /// <summary>An effect the run added (the hook's title card): removed, or put back as it was when the run replaced one.</summary>
@@ -378,17 +385,51 @@ public sealed class MakeItController
     public static string SpeedLabel(double rate) =>
         Math.Round(rate, 2).ToString("0.##", CultureInfo.InvariantCulture) + "×";
 
-    /// <summary>"warm", "black and white"; the original look is "as filmed", its one name on both platforms.</summary>
-    public static string LookName(ClipLook look) => look switch
-    {
-        ClipLook.Muted => "muted",
-        ClipLook.Warm => "warm",
-        ClipLook.Bw => "black and white",
-        _ => "as filmed"
-    };
+    /// <summary>The look row's last chip: it opens the Picture tab, where every look is.</summary>
+    public const string AllLooks = "All looks in Picture ›";
+    /// <summary>The amounts the look row offers.</summary>
+    public static IReadOnlyList<int> LookAmounts { get; } = [50, 70, 85, 100];
 
-    /// <summary>The look row's other choices.</summary>
-    public static IReadOnlyList<string> LookOptions(ClipLook except) => Enum.GetValues<ClipLook>().Where(look => look != except).Select(LookName).ToArray();
+    /// <summary>"Warm Print at 70%", or the label alone at the whole look and for As filmed (its one name on both platforms). Twin of the
+    /// Mac <c>makeItLookName</c>.</summary>
+    public static string LookName(ClipLookPreset look, int amount) =>
+        amount >= 100 || look.Id == ClipLook.Original.Name() ? look.Label : $"{look.Label} at {amount.ToString(CultureInfo.InvariantCulture)}%";
+
+    /// <summary>The look row's Change chips (looks spec §9.6) for the look the clip shows now: Claude's alternatives (✦), up to three
+    /// other looks of its category, As filmed, the other amounts of 50, 70, 85 and 100 (not for As filmed), and All looks in Picture ›
+    /// when the editor has a Picture tab. Twin of the Mac <c>makeItLookOptions</c>.</summary>
+    public static IReadOnlyList<string> LookOptions(ProjectClipControls? controls, IReadOnlyList<string> alternatives, ClipLookLibrary looks,
+        bool pictureTab = true)
+    {
+        var original = ClipLook.Original.Name();
+        var current = (controls is null ? null : looks.Match(controls)?.Look) ?? looks.Look(original);
+        var suggested = alternatives.Select(looks.Look).OfType<ClipLookPreset>().Where(look => !look.Hidden && look.Id != current?.Id).ToArray();
+        var others = looks.Visible.Where(look => look.Category == current?.Category && look.Id != current?.Id && look.Id != original
+            && !suggested.Any(item => item.Id == look.Id)).Take(3);
+        var options = suggested.Select(look => "✦ " + look.Label).Concat(others.Select(look => look.Label)).ToList();
+        if (current is not null && current.Id != original)
+        {
+            if (!suggested.Any(look => look.Id == original)) options.Add(looks.Look(original)?.Label ?? "As filmed");
+            var amount = controls?.ColorGrade?.Amount ?? 100;
+            options.AddRange(LookAmounts.Where(value => value != amount).Select(value => value.ToString(CultureInfo.InvariantCulture) + "%"));
+        }
+        if (pictureTab) options.Add(AllLooks);
+        return options;
+    }
+
+    /// <summary>The look and amount a Change chip names: an amount keeps the clip's look; Claude's alternative starts at its planner amount
+    /// (within the plan's limits), any other look at the whole look, as a hand pick does.</summary>
+    public static (ClipLookPreset Look, int Amount)? LookChoice(string option, ProjectClipControls? controls, IReadOnlyList<string> alternatives,
+        ClipLookLibrary looks)
+    {
+        if (option.EndsWith('%') && int.TryParse(option[..^1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var amount))
+            return controls is not null && looks.Match(controls)?.Look is { } current ? (current, amount) : null;
+        var suggested = option.StartsWith("✦ ", StringComparison.Ordinal);
+        var label = suggested ? option[2..] : option;
+        if (looks.Visible.FirstOrDefault(look => look.Label == label) is not { } look) return null;
+        if (!suggested || !alternatives.Contains(look.Id)) return (look, 100);
+        return (look, Math.Min(look.Strength == ClipLookStrength.Strong ? 85 : 100, Math.Max(40, look.PlannerAmount)));
+    }
 
     /// <summary>The speed row's other choices: the presets.</summary>
     public static IReadOnlyList<string> SpeedOptions(double except) => SpeedPresets.Where(rate => rate != except).Select(SpeedLabel).ToArray();

@@ -138,8 +138,9 @@ enum MakeItInverse {
     case voice(segments: [String])
     /// A whole-clip revoice (ADR-R46): its segments off and its record removed.
     case wholeClip(WholeClipRevoiceRecord)
-    /// The clip's look before Claude's (or the creator's) choice; the speed and the other controls stay.
-    case look(clipID: String, previous: ClipLook)
+    /// The clip's whole colour state (look, fine-tuning and grade, Fix included) before Claude's (or the creator's)
+    /// choice; the speed and the other controls stay (looks spec §9.6).
+    case look(clipID: String, previous: ClipColorState)
     /// The clip's speed before the choice; the look and the other controls stay.
     case speed(clipID: String, previous: Double)
     /// An effect the run added (the hook's title card): removed, or put back as it was when the run replaced one.
@@ -960,15 +961,25 @@ extension EditorModel {
             project.share.captions[clipID] = text
             return (.share(clipID: clipID, previous: previous), nil)
         case .look(let clipID, let look):
-            // The clip's look (design.md §6.9), set by the clip controls' own rule in this same step.
-            guard let previous = ClipControlsProject.controls(for: clipID, in: project)?.look,
-                  look.id != .original || previous != .original,
-                  let changed = try? ClipControlsProject.settingLook(look.id, clipId: clipID, in: project) else { return (nil, nil) }
+            // The clip's look from the looks file at Claude's amount, with the Fix measured on the clip's sheet frames when
+            // Claude asked for it (looks spec §9.6), set by the clip controls' own rule in this same step.
+            guard let looks = ClipLookLibrary.app, let preset = looks.look(look.id.rawValue),
+                  let before = ClipControlsProject.controls(for: clipID, in: project) else { return (nil, nil) }
+            let unavailable = look.id == .original && plan.repairs.contains { $0.field == "look" }
+            let fix = plan.look.fix ? run.frames.flatMap { FrameLightSampling.fix($0.sent.frames, measure: looks.measure) } : nil
+            guard let changed = try? ClipControlsProject.settingLookPreset(id: preset.id, amount: look.amount, fix: fix, clipId: clipID,
+                                                                           in: project, looks: looks),
+                  let after = ClipControlsProject.controls(for: clipID, in: changed) else { return (nil, nil) }
+            let applied = after.colorState != before.colorState
+            guard applied || unavailable || preset.id != ClipLook.original.rawValue else { return (nil, nil) }
             project = changed
-            let applied = previous != look.id
-            return (applied ? .look(clipID: clipID, previous: previous) : nil,
-                    MakeItRow(id: operation.id, kind: .choice, text: "Claude chose the \(Self.lookName(look.id)) look", detail: look.reason,
-                              play: clipPlay(clipID, in: project), undoable: applied, change: .look, options: Self.makeItLookOptions(except: look.id)))
+            let fixLine = fix.map(\.summary).flatMap { $0.isEmpty ? nil : "Fix: " + $0 }
+            return (applied ? .look(clipID: clipID, previous: before.colorState) : nil,
+                    MakeItRow(id: operation.id, kind: .choice,
+                              text: unavailable ? "Claude's look wasn't available; kept as filmed" : "Claude chose " + Self.makeItLookName(preset, amount: look.amount),
+                              detail: [look.reason, fixLine].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · "),
+                              play: clipPlay(clipID, in: project), undoable: applied, change: .look,
+                              options: Self.makeItLookOptions(after, alternatives: plan.look.alternatives, looks: looks)))
         case .speed(let clipID, let speed):
             // The whole clip's speed, pitch kept (design.md §6.9), normalised as the Clip section's slider is.
             guard let previous = ClipControlsProject.controls(for: clipID, in: project)?.speed,
@@ -1331,7 +1342,7 @@ extension EditorModel {
             guard next != project else { return false }
             replace(next, name: name); return true
         case .look(let clipID, let previous):
-            guard let next = try? ClipControlsProject.settingLook(previous, clipId: clipID, in: project) else { return false }
+            guard let next = try? ClipControlsProject.settingColorState(previous, clipId: clipID, in: project) else { return false }
             if next != project { replace(next, name: name) }
             return true
         case .speed(let clipID, let previous):
@@ -1405,17 +1416,26 @@ extension EditorModel {
         }
     }
 
-    /// A chip on the look or speed row: applies that look or speed to the clip at once, as one undo step (`setLook`,
-    /// `setSpeed`), and the row names the creator's choice. The row's Undo still goes back to the clip before the run.
+    /// A chip on the look or speed row: applies that look, amount or speed to the clip at once, as one undo step
+    /// (`apply(look:)`, `setSpeed`), and the row names the creator's choice. The row's Undo still goes back to the clip
+    /// before the run. "All looks in Picture ›" opens the Picture panel instead.
     func makeItChoose(_ option: String, rowID: String, run: MakeItRun) {
         guard !run.running, let index = run.rows.firstIndex(where: { $0.id == rowID }), !run.rows[index].undone,
               let controls = ClipControlsProject.controls(for: run.clipID, in: project) else { return }
         switch run.rows[index].change {
         case .look:
-            guard let look = ClipLook.allCases.first(where: { Self.lookName($0) == option }), setLook(look, clipID: run.clipID) else { return }
-            if run.inverses[rowID] == nil { run.inverses[rowID] = .look(clipID: run.clipID, previous: controls.look) }
-            run.rows[index].text = "You chose the \(option) look"
-            run.rows[index].options = Self.makeItLookOptions(except: look)
+            if option == Self.makeItAllLooks {
+                run.openChoice = nil
+                app.shell.choosePanelJob(.picture, for: self)
+                return
+            }
+            guard let looks = ClipLookLibrary.app,
+                  let choice = Self.makeItLookChoice(option, controls: controls, alternatives: run.plan?.look.alternatives ?? [], looks: looks),
+                  apply(look: ClipAutopilotPlan.Look(id: .init(rawValue: choice.look.id), amount: choice.amount), clipID: run.clipID),
+                  let after = ClipControlsProject.controls(for: run.clipID, in: project) else { return }
+            if run.inverses[rowID] == nil { run.inverses[rowID] = .look(clipID: run.clipID, previous: controls.colorState) }
+            run.rows[index].text = "You chose " + Self.makeItLookName(choice.look, amount: choice.amount)
+            run.rows[index].options = Self.makeItLookOptions(after, alternatives: run.plan?.look.alternatives ?? [], looks: looks)
         case .speed:
             guard let rate = ProjectClipControls.speedPresets.first(where: { ProjectClipControls.speedLabel($0) == option }),
                   setSpeed(rate, clipID: run.clipID) else { return }
@@ -1487,17 +1507,58 @@ extension EditorModel {
         return (carries ? [post] : [hook, post]).filter { !$0.isEmpty }.joined(separator: "\n\n")
     }
 
-    /// The look row's other choices.
-    static func makeItLookOptions(except look: ClipLook) -> [String] { ClipLook.allCases.filter { $0 != look }.map(lookName) }
+    /// The look row's last chip: it opens the Picture panel, where every look is.
+    static let makeItAllLooks = "All looks in Picture ›"
+    static let makeItLookAmounts = [50, 70, 85, 100]
+
+    /// "Warm Print at 70%", or the label alone at the whole look and for As filmed.
+    static func makeItLookName(_ look: ClipLookPreset, amount: Int) -> String {
+        amount >= 100 || look.id == ClipLook.original.rawValue ? look.label : "\(look.label) at \(amount)%"
+    }
+
+    /// The look row's Change chips (looks spec §9.6), for the look the clip shows now: Claude's alternatives (✦), up to three
+    /// other looks of its category, As filmed, the other amounts of 50, 70, 85 and 100 (not for As filmed), and All looks in
+    /// Picture ›.
+    static func makeItLookOptions(_ controls: ProjectClipControls, alternatives: [ClipAutopilotPlan.LookPresetID], looks: ClipLookLibrary) -> [String] {
+        let current = looks.match(controls)?.look ?? looks.look(ClipLook.original.rawValue)
+        let original = ClipLook.original.rawValue
+        let suggested = alternatives.compactMap { looks.look($0.rawValue) }.filter { !$0.hidden && $0.id != current?.id }
+        let others = looks.visible.filter { look in
+            look.category == current?.category && look.id != current?.id && look.id != original && !suggested.contains { $0.id == look.id }
+        }
+        var options = suggested.map { "✦ " + $0.label } + others.prefix(3).map(\.label)
+        if let current, current.id != original {
+            if !suggested.contains(where: { $0.id == original }) { options.append(looks.look(original)?.label ?? ClipLook.original.label) }
+            let amount = controls.colorGrade?.amount ?? 100
+            options += makeItLookAmounts.filter { $0 != amount }.map { "\($0)%" }
+        }
+        return options + [makeItAllLooks]
+    }
+
+    /// The look and amount a Change chip names: an amount keeps the clip's look; Claude's alternative starts at its planner
+    /// amount (within the plan's limits), any other look at the whole look, as a hand pick does.
+    static func makeItLookChoice(_ option: String, controls: ProjectClipControls, alternatives: [ClipAutopilotPlan.LookPresetID],
+                                 looks: ClipLookLibrary) -> (look: ClipLookPreset, amount: Int)? {
+        if option.hasSuffix("%"), let amount = Int(option.dropLast()), let current = looks.match(controls)?.look { return (current, amount) }
+        let suggested = option.hasPrefix("✦ ")
+        let label = suggested ? String(option.dropFirst(2)) : option
+        guard let look = looks.visible.first(where: { $0.label == label }) else { return nil }
+        guard suggested, alternatives.contains(where: { $0.rawValue == look.id }) else { return (look, 100) }
+        return (look, min(look.strength == .strong ? 85 : 100, max(40, look.plannerAmount)))
+    }
+
+    /// The VoiceOver label of a look chip.
+    static func makeItLookChipLabel(_ option: String) -> String {
+        if option == makeItAllLooks { return "Show all looks in Picture" }
+        if option.hasSuffix("%") { return "Set the look's amount to \(option)" }
+        return "Use the \(option.replacingOccurrences(of: "✦ ", with: "")) look" + (option.hasPrefix("✦ ") ? ", Claude's alternative" : "")
+    }
 
     /// The speed row's other choices: the Clip section's presets.
     static func makeItSpeedOptions(except rate: Double) -> [String] {
         ProjectClipControls.speedPresets.filter { $0 != rate }.map(ProjectClipControls.speedLabel)
     }
 
-    static func lookName(_ id: ClipLook) -> String {
-        switch id { case .original: "as filmed"; case .muted: "muted"; case .warm: "warm"; case .bw: "black and white" }
-    }
 
     /// Under the headline: Claude's finished length and anything the plan flags, or a clip longer than the style allows.
     func makeItLengthNotes(_ run: MakeItRun) -> [String] {

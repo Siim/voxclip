@@ -84,7 +84,8 @@ internal static class CliAnalyzeFrames
             ?? throw new CliUsageException("The requested clip has no kept words.");
         var contentKey = project.Media.Source.ContentKey;
         var cache = facesOnly || arguments.GetValue<bool>("--no-cache") ? null : new FrameAnalysisCache();
-        var analyzer = new FrameAnalyzer(faces, FrameAnalyzer.ScreensWith(text), sources.Decoder, cache);
+        // Each sentence frame's light, as the app measures it, so a cache the CLI writes serves the app too.
+        var analyzer = new FrameAnalyzer(faces, FrameAnalyzer.ScreensWith(text), sources.Decoder, cache, CliLooks.Measure());
         JsonObject? pass = null;
         double? passBaseline = null;
         if (arguments.GetValue<bool>("--video-pass"))

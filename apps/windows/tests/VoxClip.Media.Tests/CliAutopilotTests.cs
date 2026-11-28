@@ -23,6 +23,8 @@ public sealed partial class CliAutopilotTests
     {
         private readonly object gate = new();
         internal List<LlmRequest> Requests { get; } = [];
+        /// <summary>The look each plan picks, with its amount.</summary>
+        internal (string Id, int Amount) Look { get; init; } = ("original", 100);
         public ConnectorId Id => ConnectorId.Ollama;
         public Task<ConnectorStatus> GetStatusAsync(CancellationToken ct) => Task.FromResult<ConnectorStatus>(new ConnectorStatus.Ready());
         public Task<IReadOnlyList<LlmModel>> GetModelsAsync(bool refresh, CancellationToken ct) =>
@@ -48,7 +50,7 @@ public sealed partial class CliAutopilotTests
                     ["title"] = "Planned " + start, ["hook"] = "A hook", ["cuts"] = new JsonArray(), ["pauseCuts"] = new JsonArray(),
                     ["corrections"] = new JsonArray(), ["rewrites"] = new JsonArray(new JsonObject { ["startWord"] = start + 2, ["endWord"] = start + 4, ["text"] = rewrite, ["reason"] = "a stumble" }),
                     ["captionStyle"] = "vox-bold", ["captionFont"] = "Roboto", ["captionWeight"] = 900, ["captionCase"] = "upper", ["wordsPerCaption"] = 3, ["captionReason"] = "",
-                    ["look"] = "original", ["lookReason"] = "", ["speed"] = 1, ["speedReason"] = "", ["lengthReason"] = "", ["tone"] = "none", ["toneSummary"] = "",
+                    ["look"] = Look.Id, ["lookReason"] = "", ["lookAmount"] = Look.Amount, ["lookFix"] = false, ["lookAlternatives"] = new JsonArray(), ["speed"] = 1, ["speedReason"] = "", ["lengthReason"] = "", ["tone"] = "none", ["toneSummary"] = "",
                     ["music"] = new JsonArray(new JsonObject { ["title"] = "Pulse", ["mood"] = "driven", ["prompt"] = "Instrumental, 120 BPM", ["reason"] = "pace", ["underVoiceDb"] = 18 }),
                     ["musicPick"] = 0, ["zooms"] = new JsonArray(), ["postText"] = "Post", ["score"] = start == 0 ? 6 : 8, ["verdict"] = "post", ["scoreReason"] = "",
                     ["questions"] = new JsonArray(), ["frames"] = new JsonObject { ["blur"] = new JsonArray(), ["cover"] = new JsonObject { ["id"] = "", ["reason"] = "" } }
@@ -247,6 +249,41 @@ public sealed partial class CliAutopilotTests
             Assert.Contains(("frames", (int?)null), stages);
             Assert.Contains(("opening", (int?)1), stages);
             Assert.Contains(("opening", (int?)2), stages);
+        }
+        finally { Directory.Delete(Path.GetDirectoryName(project)!, true); }
+    }
+
+    /// <summary>A plan may pick any look of the looks file, not only the four base looks: Warm Print at 70% is the clip's look in the
+    /// saved project, as on the Mac (looks spec §9.6).</summary>
+    [Fact]
+    public async Task APlanPicksAnyLookOfTheLooksFileAtItsAmount()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var project = await SourcedProjectAsync();
+        try
+        {
+            var outDir = Directory.CreateDirectory(Path.Combine(Path.GetDirectoryName(project)!, "out")).FullName;
+            var parsed = CliApplication.Parse(["autopilot", "--open", project, "--connector", "ollama", "--model", "fixture", "--count", "1",
+                "--out-dir", outDir, "--no-check", "--quiet", "--json"]);
+            Assert.Empty(parsed.Errors);
+            async Task<(Project?, MediaInfo)> Open(string path, CancellationToken token)
+            {
+                var opened = (await new Core.Services.Project.ProjectStore().LoadAsync(path, token)).Project;
+                var source = opened.Media.Source;
+                return (opened, new MediaInfo(source.AbsolutePath, source.DurationSeconds, source.Video, source.Audio, new(1920, 1080), "h264", "aac", false, 0, 1, 0));
+            }
+            Task<ExportResult> Prepare(ExportJob job, IProgress<ExportProgress>? progress, CancellationToken token)
+            {
+                File.WriteAllText(job.OutputPath + ".partial", "synthetic test export");
+                return Task.FromResult(new ExportResult(job.OutputPath, null, job.Snapshot.RenderedDuration, job.Snapshot.Output.Size.Width,
+                    job.Snapshot.Output.Size.Height, 30, 180, 48_000, job.Snapshot.Timeline.OutputSamples, "h264", "test", 0));
+            }
+            var result = await CliAutopilot.RunAsync(parsed, (_, _) => new Stub { Look = ("warmPrint", 70) }, ct, Open, Prepare,
+                new CliFrameSources(null, null, new Frames.StubFrameDecoder()));
+            var clipId = Assert.Single(result["clips"]!.AsArray())!["clipId"]!.GetValue<string>();
+            var saved = (await new Core.Services.Project.ProjectStore().LoadAsync(result["project"]!.GetValue<string>(), ct)).Project;
+            var grade = Core.Domain.Clips.ClipControlsProject.Controls(clipId, saved)?.ColorGrade;
+            Assert.Equal(("warmPrint", 70), (grade?.Preset, grade?.Amount ?? 0));
         }
         finally { Directory.Delete(Path.GetDirectoryName(project)!, true); }
     }

@@ -119,7 +119,9 @@ import VoxClipCore
     private func creativeLabel(_ operation: ClipAutopilotOperation, applied: MakeItRow?) -> String {
         switch operation.action {
         case .hook(_, let text): return "Hook “\(text)” · title card"
-        case .look(_, let look): return "\(Self.lookName(look.id)) look"
+        case .look(_, let look):
+            guard let preset = ClipLookLibrary.app?.look(look.id.rawValue) else { return "\(look.id.rawValue) look" }
+            return Self.makeItLookName(preset, amount: look.amount) + " look"
         case .speed(_, let speed): return "\(Self.rate(speed.rate)) speed"
         case .captions(let settings, let font):
             if let applied { return applied.text }

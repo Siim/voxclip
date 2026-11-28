@@ -361,8 +361,10 @@ public static partial class ClipAutopilotMapping
     /// a stretch over a whole clip as its speed, translated captions, and ducking music that exists. Stretches over part of a clip,
     /// rewrites and music come back as pending: a clip plays at one speed, a rewrite needs a paid voice, and music needs a source to
     /// fetch from (the App's Music section picks it). Pure: one undo step is the caller's choice.</summary>
+    /// <remarks>The look is a look of <paramref name="looks"/> at its amount (<see cref="ClipControlsProject.SettingLookPreset"/>, looks spec
+    /// §9.6), the clip's Fix kept; without the library only the four base looks apply.</remarks>
     public static (Project Project, IReadOnlyList<ClipAutopilotOperation> Pending) Apply(IReadOnlyList<ClipAutopilotOperation> operations, Project project,
-        (string Id, ClipStyle Style)? clipCaptions = null)
+        (string Id, ClipStyle Style)? clipCaptions = null, ClipLookLibrary? looks = null)
     {
         var result = project;
         var pending = new List<ClipAutopilotOperation>();
@@ -411,7 +413,18 @@ public static partial class ClipAutopilotMapping
                     var texts = new Dictionary<string, string>(result.Share.Captions, StringComparer.Ordinal) { [share.ClipId] = share.Text };
                     result = result with { Share = new(texts) };
                     break;
-                case ClipAutopilotAction.Look look: result = ClipControlsProject.SettingLook(look.Choice.Id, look.ClipId, result); break;
+                case ClipAutopilotAction.Look look:
+                    if (looks is not null)
+                    {
+                        if (looks.Look(look.Choice.Id) is null) throw new HarnessException("Choose one of VoxClip's looks.");
+                        result = ClipControlsProject.SettingLookPreset(look.Choice.Id, look.Choice.Amount, null, look.ClipId, result, looks);
+                    }
+                    else
+                    {
+                        result = ClipControlsProject.SettingLook(ClipAutopilotWire.Look(look.Choice.Id) ?? throw new HarnessException("Choose one of VoxClip's looks."),
+                            look.ClipId, result);
+                    }
+                    break;
                 case ClipAutopilotAction.Speed speed: result = ClipControlsProject.SettingSpeed(speed.Choice.Rate, speed.ClipId, result); break;
                 case ClipAutopilotAction.Hook hook:
                     if (ClipHookTitle.Effect(hook.Text, hook.ClipId, result) is { } card) result = ClipEffects.Adding([card], result);

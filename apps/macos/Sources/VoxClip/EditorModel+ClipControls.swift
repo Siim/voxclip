@@ -86,9 +86,14 @@ extension EditorModel {
         return updateClipControls(clipID, name: "Rotate", announcing: "Rotated \(rotation) degrees") { $0.rotationDegrees = rotation }
     }
 
-    /// The planner's look ("Claude chose Warm"), as one undo step.
-    @discardableResult func apply(look: ClipAutopilotPlan.Look, clipID: String? = nil) -> Bool {
-        setLook(look.id, clipID: clipID)
+    /// The planner's look ("Claude chose Warm Print at 70%"), as one undo step: the look of shared/looks/clip-looks.json at
+    /// its amount (`ClipControlsProject.settingLookPreset`'s rule, looks spec §9.6), with `fix` as the clip's Fix when given
+    /// and the clip's own Fix otherwise. False for a look this build doesn't know.
+    @discardableResult func apply(look: ClipAutopilotPlan.Look, fix: ClipColorFix? = nil, clipID: String? = nil) -> Bool {
+        guard let preset = ClipLookLibrary.app?.look(look.id.rawValue) else { return false }
+        return updateClipControls(clipID, name: "Change look", announcing: "Look \(EditorModel.makeItLookName(preset, amount: look.amount))") {
+            $0.applyLook(preset, amount: look.amount, fix: fix)
+        }
     }
 
     /// The planner's speed ("Claude chose 1.1×"), as one undo step.

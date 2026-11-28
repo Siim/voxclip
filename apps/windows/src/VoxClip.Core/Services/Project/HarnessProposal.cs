@@ -115,12 +115,15 @@ public sealed class HarnessTimeline
         ClipAutopilotPlan.Look? look = null;
         if (wire.TryGetProperty("look", out var lookChoice))
         {
-            RequireObject(lookChoice, ["id", "reason"]);
-            look = new(Text(lookChoice, "id") switch
-            {
-                "original" => ClipLook.Original, "muted" => ClipLook.Muted, "warm" => ClipLook.Warm, "bw" => ClipLook.Bw,
-                _ => throw InvalidTimeline()
-            }, Text(lookChoice, "reason", 240) ?? "");
+            // Any look ID of shared/looks/clip-looks.json with an amount of 0-100 (looks spec §8.5); the review checks the ID against
+            // the file.
+            RequireObject(lookChoice, ["id", "amount", "reason"]);
+            var id = Text(lookChoice, "id") ?? throw InvalidTimeline();
+            if (!ClipColorGrade.IsPresetId(id)) throw InvalidTimeline();
+            var amount = 100;
+            if (lookChoice.TryGetProperty("amount", out _) && (Index(lookChoice, "amount") is not { } given || given > 100)) throw InvalidTimeline();
+            else if (Index(lookChoice, "amount") is { } wanted) amount = wanted;
+            look = new(id, Text(lookChoice, "reason", 240) ?? "") { Amount = amount };
         }
         ClipAutopilotPlan.Speed? speed = null;
         if (wire.TryGetProperty("speed", out var speedChoice))
@@ -367,7 +370,8 @@ public sealed class HarnessProposal
         var operations = ClipAutopilotMapping.Operations(proposal, clipId, snapshot, fonts, stickers);
         var clipStyle = operations.Any(operation => operation.Decision == ClipAutopilotDecision.Captions)
             ? snapshot.ClipStyle ?? ClipStyleCatalog.Load(sharedRoot).Initial(null) : null;
-        var result = ClipAutopilotMapping.Apply(operations, snapshot, clipStyle is null ? null : (clipId, clipStyle));
+        var looks = proposal.Look is null ? null : ClipLookLibrary.Load(sharedRoot);
+        var result = ClipAutopilotMapping.Apply(operations, snapshot, clipStyle is null ? null : (clipId, clipStyle), looks);
         if (!result.Project.Edits.Clips.Any(clip => clip.Id == clipId))
             throw new HarnessException("The proposed clip duplicates an existing clip or doesn't have valid parts.");
         if (result.Pending.Any(operation => operation.Action is not (ClipAutopilotAction.Asset or ClipAutopilotAction.Music or ClipAutopilotAction.Rewrite)))

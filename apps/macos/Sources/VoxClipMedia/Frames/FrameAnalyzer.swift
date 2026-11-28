@@ -75,12 +75,15 @@ public struct FrameAnalyzer: Sendable {
     let vision: any FrameObserving
     let decoder: any FrameDecoding
     let cache: FrameAnalysisCache?
+    /// The shared thresholds each sentence frame's light is measured with (looks spec §9.3); nil measures none.
+    public let light: ClipColorMeasure?
 
     public init(vision: any FrameObserving = AppleFrameVision(), decoder: any FrameDecoding = AVFoundationFrameDecoder(),
-                cache: FrameAnalysisCache?) {
+                cache: FrameAnalysisCache?, light: ClipColorMeasure? = nil) {
         self.vision = vision
         self.decoder = decoder
         self.cache = cache
+        self.light = light
     }
 
     /// A clip's sentence frames and opening scan with their timings, and the sheet of its sentence frames.
@@ -113,7 +116,8 @@ public struct FrameAnalyzer: Sendable {
     }
 
     /// The observation at each of `times`, in order: cached ones from the cache, the rest decoded and looked at in
-    /// `lanes` parallel lanes and then cached. With `sheet`, each newly decoded frame's sheet JPEG is made and cached too.
+    /// `lanes` parallel lanes and then cached. With `sheet`, each newly decoded frame's sheet JPEG is made and cached too, and
+    /// its light measured when the analyzer has thresholds.
     public func observations(source: URL, contentKey: String, times: [Double], tolerance: Double, sheet: Bool = false) async throws -> Found {
         let pass = FrameAnalysisCache.pass(tolerance: tolerance)
         let cached = cache?.observations(contentKey: contentKey, pass: pass) ?? [:]
@@ -169,7 +173,7 @@ public struct FrameAnalyzer: Sendable {
         // Contiguous runs, so each lane's generator decodes forward through its own stretch of the source.
         let size = (ordered.count + laneCount - 1) / laneCount
         let runs = stride(from: 0, to: ordered.count, by: size).map { Array(ordered[$0..<min(ordered.count, $0 + size)]) }
-        let vision = self.vision, decoder = self.decoder
+        let vision = self.vision, decoder = self.decoder, light = sheet ? self.light : nil
         return try await withThrowingTaskGroup(of: [Analyzed].self) { group in
             for run in runs {
                 group.addTask {
@@ -178,7 +182,11 @@ public struct FrameAnalyzer: Sendable {
                     for time in run {
                         try Task.checkCancellation()
                         let decoded = try await reader.image(at: time)
-                        let observation = try await Self.look(vision, image: decoded.image, time: decoded.time)
+                        var observation = try await Self.look(vision, image: decoded.image, time: decoded.time)
+                        if let light {
+                            observation.light = FrameLightSampling.sample(decoded.image, edge: light.auto.frameSize, face: observation.face?.rect)
+                                .map { FrameLight($0, measure: light) }
+                        }
                         let jpeg = sheet ? try FrameJPEG.encode(decoded.image, edge: FrameSheet.frameEdge) : nil
                         results.append(Analyzed(requested: time, observation: observation, jpeg: jpeg))
                     }

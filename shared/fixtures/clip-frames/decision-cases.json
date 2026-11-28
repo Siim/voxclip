@@ -30,7 +30,7 @@
     "maximumSentenceWords": 40,
     "pixelsPerToken": 750.0
   },
-  "caseCount": 136,
+  "caseCount": 137,
   "counts": {
     "eyes": 11,
     "looks": 11,
@@ -39,7 +39,7 @@
     "crops": 11,
     "screens": 12,
     "blurSpans": 7,
-    "summaries": 6,
+    "summaries": 7,
     "imageTokens": 6,
     "samplings": 9,
     "openingTimes": 6,
@@ -8734,6 +8734,154 @@
       }
     },
     {
+      "id": "each-frame-s-light-line",
+      "frames": [
+        {
+          "time": 1.0,
+          "faceCount": 1,
+          "face": {
+            "rect": {
+              "x": 0.4,
+              "y": 0.3,
+              "width": 0.2,
+              "height": 0.4
+            },
+            "captureQuality": 0.6,
+            "leftEyeAspect": 0.3,
+            "rightEyeAspect": 0.3,
+            "eyes": "open"
+          },
+          "textRects": [],
+          "screens": [],
+          "light": {
+            "medianLuma": 0.25,
+            "p95Luma": 0.5,
+            "meanChroma": 0.0625,
+            "neutralMeans": [
+              0.5,
+              0.4375,
+              0.4375
+            ],
+            "faceMeanLuma": 0.28125,
+            "faceMedianLuma": 0.25,
+            "faceClippedShare": 0.0625
+          }
+        },
+        {
+          "time": 2.0,
+          "faceCount": 1,
+          "face": {
+            "rect": {
+              "x": 0.4,
+              "y": 0.3,
+              "width": 0.2,
+              "height": 0.4
+            },
+            "captureQuality": 0.6,
+            "leftEyeAspect": 0.3,
+            "rightEyeAspect": 0.3,
+            "eyes": "open"
+          },
+          "textRects": [],
+          "screens": [],
+          "light": {
+            "medianLuma": 0.5,
+            "p95Luma": 0.75,
+            "meanChroma": 0.125,
+            "neutralMeans": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "faceMeanLuma": 0.5,
+            "faceMedianLuma": 0.5,
+            "faceClippedShare": 0.0
+          }
+        },
+        {
+          "time": 3.0,
+          "faceCount": 0,
+          "textRects": [],
+          "screens": [],
+          "light": {
+            "medianLuma": 0.375,
+            "p95Luma": 0.875,
+            "meanChroma": 0.25,
+            "neutralMeans": [
+              0.375,
+              0.4375,
+              0.4375
+            ]
+          }
+        },
+        {
+          "time": 4.0,
+          "faceCount": 0,
+          "textRects": [],
+          "screens": [],
+          "light": {
+            "medianLuma": 0.375,
+            "p95Luma": 0.875,
+            "meanChroma": 0.25,
+            "neutralMeans": [
+              0.4375,
+              0.375,
+              0.4375
+            ]
+          }
+        },
+        {
+          "time": 5.0,
+          "faceCount": 1,
+          "face": {
+            "rect": {
+              "x": 0.4,
+              "y": 0.3,
+              "width": 0.2,
+              "height": 0.4
+            },
+            "captureQuality": 0.6,
+            "leftEyeAspect": 0.3,
+            "rightEyeAspect": 0.3,
+            "eyes": "open"
+          },
+          "textRects": [],
+          "screens": [],
+          "light": {
+            "medianLuma": 0.5,
+            "p95Luma": 0.5,
+            "meanChroma": 0.15,
+            "faceMeanLuma": 0.5,
+            "faceMedianLuma": 0.5,
+            "faceClippedShare": 0.03
+          }
+        },
+        {
+          "time": 6.0,
+          "faceCount": 1,
+          "face": {
+            "rect": {
+              "x": 0.4,
+              "y": 0.3,
+              "width": 0.2,
+              "height": 0.4
+            },
+            "captureQuality": 0.6,
+            "leftEyeAspect": 0.3,
+            "rightEyeAspect": 0.3,
+            "eyes": "open"
+          },
+          "textRects": [],
+          "screens": []
+        }
+      ],
+      "pitchBaseline": null,
+      "expect": {
+        "summary": "Frames measured on this computer (one per sentence; rects are x,y,w,h of the picture, top-left origin):\nF1 1.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.60, light: face a little dark · highlights clipped 6% · warm-yellow cast · magenta cast · low color\nF2 2.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.60, light: even\nF3 3.00 s: no face, light: cool-blue cast · green cast · high color\nF4 4.00 s: no face, light: magenta cast · high color\nF5 5.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.60, light: even\nF6 6.00 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.60",
+        "summaryTokens": 278
+      }
+    },
+    {
       "id": "at-most-24-frames",
       "frames": [
         {
@@ -10430,7 +10578,7 @@
     }
   ],
   "analysis": {
-    "fileName": "analysis-v2.json",
+    "fileName": "analysis-v3.json",
     "file": {
       "frames": {
         "0.250:1250": {
@@ -10458,7 +10606,20 @@
               "height": 0.03
             }
           ],
-          "screens": []
+          "screens": [],
+          "light": {
+            "medianLuma": 0.4375,
+            "p95Luma": 0.8125,
+            "meanChroma": 0.09375,
+            "neutralMeans": [
+              0.5,
+              0.46875,
+              0.4375
+            ],
+            "faceMeanLuma": 0.46875,
+            "faceMedianLuma": 0.453125,
+            "faceClippedShare": 0.015625
+          }
         },
         "0.250:4750": {
           "time": 4.75,
@@ -10583,10 +10744,15 @@
           "time": 15.25,
           "faceCount": 0,
           "textRects": [],
-          "screens": []
+          "screens": [],
+          "light": {
+            "medianLuma": 0.125,
+            "p95Luma": 0.25,
+            "meanChroma": 0.03125
+          }
         }
       },
-      "schema": "voxclip-frames/2"
+      "schema": "voxclip-frames/3"
     },
     "frameAnalysis": {
       "contentKey": "sha256-0123456789abcdef",
@@ -10666,7 +10832,20 @@
               "height": 0.03
             }
           ],
-          "screens": []
+          "screens": [],
+          "light": {
+            "medianLuma": 0.4375,
+            "p95Luma": 0.8125,
+            "meanChroma": 0.09375,
+            "neutralMeans": [
+              0.5,
+              0.46875,
+              0.4375
+            ],
+            "faceMeanLuma": 0.46875,
+            "faceMedianLuma": 0.453125,
+            "faceClippedShare": 0.015625
+          }
         },
         {
           "time": 4.75,
@@ -10743,7 +10922,12 @@
           "time": 15.25,
           "faceCount": 0,
           "textRects": [],
-          "screens": []
+          "screens": [],
+          "light": {
+            "medianLuma": 0.125,
+            "p95Luma": 0.25,
+            "meanChroma": 0.03125
+          }
         }
       ],
       "timings": {
@@ -10752,7 +10936,7 @@
         "openingSeconds": 0.125,
         "sentenceSeconds": 1.5
       },
-      "version": 2
+      "version": 3
     },
     "pitchBaseline": 0.11
   }

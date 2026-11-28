@@ -42,6 +42,7 @@ private actor OneClipStub: LLMConnector {
                                        "captionFont": "Roboto", "captionCase": "upper", "look": "original", "lookReason": "", "speedReason": "",
                                        "postText": "We ship.", "verdict": "post", "scoreReason": "Clear.", "tone": "none", "toneSummary": ""]
         for (key, value) in numbers { reply[key] = value }
+        reply["lookAmount"] = 100; reply["lookFix"] = false; reply["lookAlternatives"] = [String]()
         for (key, value) in texts { reply[key] = value }
         for key in ["corrections", "cuts", "pauseCuts", "rewrites", "zooms", "music", "questions"] { reply[key] = [Any]() }
         reply["frames"] = ["blur": [Any](), "cover": ["id": "", "reason": ""]]

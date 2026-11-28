@@ -69,7 +69,8 @@ public sealed partial class EditorViewModel
             if (await pass.FramesAsync(clip, ct).ConfigureAwait(false) is not { } found) return null;
             // The opening scan runs beside the plan request; the apply waits for it.
             pass.StartOpening(clip);
-            var frames = ClipAutopilotFrames.FromSheet(found.Sheet, clip.Start, clip.End, ai.SendsImages, await pass.PitchBaselineAsync(ct).ConfigureAwait(false));
+            var frames = ClipAutopilotFrames.FromSheet(found.Sheet, clip.Start, clip.End, ai.SendsImages, await pass.PitchBaselineAsync(ct).ConfigureAwait(false),
+                pass.Light?.Light);
             run.Frames = new(ai, frames, found.Sentences);
             return frames;
         };

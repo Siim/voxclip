@@ -22,6 +22,14 @@ doc/design.md section 6.9.
   `grade` (`highlights`, `shadows`, `vibrance`, `fade`, `vignette`, `grain`, an optional `curve` and `splitTone`). A
   missing number means 0. Ranges match a project's `colorAdjustments` and `colorGrade`.
 
+## Who reads it
+
+- The planner prompt's `looks` list (`shared/prompts/clip-autopilot.json`) is generated from the visible looks by
+  `tools/looks/generate_prompt_looks.py`; `ClipAutopilotPrompt` refuses a prompt whose looks differ. Run it, then
+  `tools/fixtures/autopilot/generate_plan_looks.py` (the validator's look vectors, `plan-look-cases.json`) and
+  `generate_plan_frames.py` (the prompt hashes) after changing a look. `check_drift.py` runs all three.
+- The planner's light line and dim-face repair use `measure.light`; Make it's Fix uses `measure.auto`.
+
 ## The test card
 
 `test-card.png` is the synthetic picture looks are shown on before a clip's own frame is ready, or while its source is

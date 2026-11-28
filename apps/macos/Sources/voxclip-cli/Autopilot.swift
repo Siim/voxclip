@@ -101,7 +101,7 @@ extension CLIWorkflow {
         let lanes: [any LLMConnector] = id == .claudeCode || id == .codex ? [connector(id, catalog: catalog), connector(id, catalog: catalog)] : []
         let report = AutopilotReport(quiet: options.quiet)
         let main = connector(id, catalog: catalog)
-        let frames = framePass(project: project, source: source, report: report)
+        let frames = framePass(project: project, source: source, report: report, light: (try? ClipLookLibrary.load(shared: shared))?.measure)
         let images = (id == .claudeCode || id == .codex || id == .appleFoundation || id == .ollama || id == .lmstudio) ? await main.supportsImages() : false
         guard let preset = ClipPresetID(rawValue: options.preset), let aspect = AspectRatio(rawValue: options.aspect) else {
             throw ValidationError("Unknown clip preset or aspect")
@@ -124,10 +124,11 @@ extension CLIWorkflow {
         return success("autopilot", fields: fields)
     }
 
-    /// The whole video's frame pass on this Mac (Apple Vision, cached under the content key); nil for audio only.
-    static func framePass(project: Project, source: URL, report: AutopilotReport) -> VideoFramePass? {
+    /// The whole video's frame pass on this Mac (Apple Vision, cached under the content key, each sentence frame's light
+    /// measured with `light`'s thresholds); nil for audio only.
+    static func framePass(project: Project, source: URL, report: AutopilotReport, light: ClipColorMeasure?) -> VideoFramePass? {
         guard project.media.source.video != nil, let words = project.transcript?.words, words.contains(where: { $0.kind == .word }) else { return nil }
-        return VideoFramePass(analyzer: FrameAnalyzer(cache: FrameAnalysisCache(locations: DataLocations())), source: source,
+        return VideoFramePass(analyzer: FrameAnalyzer(cache: FrameAnalysisCache(locations: DataLocations()), light: light), source: source,
                               contentKey: project.media.source.contentKey, words: words) { line in report.line(line) }
     }
 
@@ -256,7 +257,7 @@ extension CLIWorkflow {
                 clock.end(.opening, clip: index + 1)
             }
             let frames = ClipAutopilotFrames(sheet: found.sheet, clipStart: clip.start, clipEnd: clip.end, images: images,
-                                             pitchBaseline: await pass.pitchBaseline())
+                                             pitchBaseline: await pass.pitchBaseline(), light: pass.light?.light)
             sent.record(index, ClipFramesSent.Record(frames: frames, sentences: found.sentences, opening: opening))
             return frames
         }

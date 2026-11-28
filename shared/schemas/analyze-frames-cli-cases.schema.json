@@ -65,7 +65,7 @@
                   "cachedFrames": {"type": "integer", "minimum": 0}, "analyzedFrames": {"type": "integer", "minimum": 0}
                 }
               },
-              "version": {"const": 2}
+              "version": {"const": 3}
             }
           },
           "sheet": {

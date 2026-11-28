@@ -185,13 +185,13 @@ internal sealed class MakeItPanel : InlineEditorJob
             field.Loaded += (_, _) => field.Focus(FocusState.Programmatic);
             return field;
         }
-        var chips = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemHeight = 32 };
+        // Each chip at its own width (design §6.8's flow layout): a wrap grid sizes every cell from its first chip and clips the wider ones.
+        var chips = new FlowPanel { Spacing = 4 };
         foreach (var option in row.Options)
         {
             var chip = row.Change == MakeItChange.Question
                 ? Ui.Button(option, () => Editor.MakeItAnswer(option, row.Question, run))
                 : Ui.Button(option, () => Editor.MakeItChoose(option, row.Id, run));
-            chip.Margin = new(0, 0, 4, 4);
             chips.Children.Add(chip);
         }
         return chips;

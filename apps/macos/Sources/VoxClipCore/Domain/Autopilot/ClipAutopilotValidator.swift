@@ -540,17 +540,74 @@ public enum ClipAutopilotValidator {
         return fallback
     }
 
-    /// The look: one of `ClipAutopilotPlan.LookID`, read ignoring case and non-letters ("B&W" is `bw`), with its reason. A
-    /// reply without one keeps the original look; an unknown one becomes the original look without its reason (a repair).
+    /// The looks that darken a dim face or its shadows, and the look they become under one (looks spec §9.5).
+    static let dimFaceLooks: [ClipAutopilotPlan.LookPresetID] = ["moody", "tealAmber"]
+    static let dimFaceReplacement: ClipAutopilotPlan.LookPresetID = "softSkin"
+
+    /// The look (looks spec §9.4, §9.5): one the pickers offer, read by its ID or label ignoring case and non-letters ("B&W"
+    /// is `bw`, "As filmed" is `original`), with its amount, Fix, alternatives and reason. A reply without one keeps As
+    /// filmed; an unknown one becomes As filmed without its reason. Each change below is a repair or a drop in `log`:
+    /// - `lookAmount`: missing keeps 100; 0…1 is a fraction; rounded to 5 and kept within 40…100, a strong look within 85.
+    ///   As filmed has no look to blend, so its amount is 100.
+    /// - `lookFix`: kept only when a frame's light was measured.
+    /// - A dim face (the frames' median face luma under `Light.dimFaceLuma`) turns Moody and Teal & Amber into Soft Skin at
+    ///   its planner amount, and the reason says so.
+    /// - `lookAlternatives`: up to two other known looks, in order; unknown ones, the look itself and repeats are dropped.
     static func look(_ value: JSONValue, context: ClipAutopilotContext, log: inout Log) -> ClipAutopilotPlan.Look {
         guard value[ai: "look"] != .null else { return .original }
-        let key = (value[ai: "look"].aiString ?? "").lowercased().filter { $0.isLetter }
-        let aliases: [String: ClipAutopilotPlan.LookID] = ["blackandwhite": .bw, "blackwhite": .bw, "monochrome": .bw, "none": .original]
-        guard let id = ClipAutopilotPlan.LookID(rawValue: key) ?? aliases[key] else {
+        let library = context.prompt.library
+        guard var look = lookPreset(value[ai: "look"].aiString ?? "", in: library) else {
             log.repair("look", "unknown look “\(value[ai: "look"].aiString ?? "")”; original")
             return .original
         }
-        return .init(id: id, reason: text(value[ai: "lookReason"], limit: context.prompt.limits.maxReasonScalars, field: "lookReason", log: &log))
+        var reason = text(value[ai: "lookReason"], limit: context.prompt.limits.maxReasonScalars, field: "lookReason", log: &log)
+        let measured = (context.frames?.frames ?? []).compactMap(\.observation.light)
+        let faces = measured.compactMap(\.faceMedianLuma)
+        var amount = 100
+        if dimFaceLooks.contains(.init(rawValue: look.id)), !faces.isEmpty,
+           ClipColorMeasure.median(faces) < library.measure.light.dimFaceLuma,
+           let soft = library.visible.first(where: { $0.id == dimFaceReplacement.rawValue }) {
+            log.repair("look", "\(look.label) darkens a dim face; \(soft.label)")
+            look = soft
+            amount = soft.plannerAmount
+            reason = reason.isEmpty ? "Brightened for a dim face" : reason + "; brightened for a dim face"
+        } else if look.id != ClipLook.original.rawValue, value[ai: "lookAmount"] != .null {
+            if let given = value[ai: "lookAmount"].aiDouble, given.isFinite {
+                // Bounded before the Int conversion, which traps past Int.max; the result is the same within 40–100.
+                let points = min(100, max(0, (0...1).contains(given) ? given * 100 : given))
+                var checked = Int((points / 5).rounded(.toNearestOrAwayFromZero)) * 5
+                checked = min(100, max(40, checked))
+                if look.strength == .strong { checked = min(checked, 85) }
+                if Double(checked) != given { log.repair("lookAmount", "\(given); \(checked)") }
+                amount = checked
+            } else {
+                log.repair("lookAmount", "not a number; 100")
+            }
+        }
+        var fix = value[ai: "lookFix"].aiBool ?? false
+        if fix, measured.isEmpty {
+            log.repair("lookFix", "no measured light; the Fix stays off")
+            fix = false
+        }
+        var alternatives: [ClipAutopilotPlan.LookPresetID] = []
+        for (index, item) in value[ai: "lookAlternatives"].aiArray.enumerated() {
+            let field = "lookAlternatives[\(index)]"
+            guard let found = lookPreset(item.aiString ?? "", in: library) else { log.drop(field, "not a look"); continue }
+            let id = ClipAutopilotPlan.LookPresetID(rawValue: found.id)
+            guard found.id != look.id, !alternatives.contains(id) else { log.drop(field, "the look itself, or named twice"); continue }
+            guard alternatives.count < 2 else { log.drop(field, "more than two alternatives"); continue }
+            alternatives.append(id)
+        }
+        return .init(id: .init(rawValue: look.id), amount: amount, fix: fix, alternatives: alternatives, reason: reason)
+    }
+
+    /// The visible look `name` names by its ID or label, ignoring case and non-letters, or by an alias.
+    static func lookPreset(_ name: String, in library: ClipLookLibrary) -> ClipLookPreset? {
+        let aliases = ["blackandwhite": "bw", "blackwhite": "bw", "monochrome": "bw", "none": "original", "asfilmed": "original"]
+        let key = ClipLookLibrary.key(name)
+        let wanted = aliases[key] ?? key
+        guard !wanted.isEmpty else { return nil }
+        return library.visible.first { $0.id.lowercased() == wanted || ClipLookLibrary.key($0.label) == wanted }
     }
 
     /// The speed: a finite rate other than 1 (within 0.005), clamped to `minSpeed...maxSpeed` (a repair), with its reason.

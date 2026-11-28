@@ -357,7 +357,7 @@
       "additionalProperties": false,
       "required": ["fileName", "file", "frameAnalysis", "pitchBaseline"],
       "properties": {
-        "fileName": {"const": "analysis-v2.json"},
+        "fileName": {"const": "analysis-v3.json"},
         "file": {
           "type": "object",
           "additionalProperties": false,
@@ -368,7 +368,7 @@
               "propertyNames": {"pattern": "^[0-9]+\\.[0-9]{3}:-?[0-9]+$"},
               "additionalProperties": {"$ref": "#/$defs/observation"}
             },
-            "schema": {"const": "voxclip-frames/2"}
+            "schema": {"const": "voxclip-frames/3"}
           }
         },
         "frameAnalysis": {
@@ -388,7 +388,7 @@
                 "openingSeconds": {"type": "number", "minimum": 0}, "sentenceSeconds": {"type": "number", "minimum": 0}
               }
             },
-            "version": {"const": 2}
+            "version": {"const": 3}
           }
         },
         "pitchBaseline": {"$ref": "#/$defs/baseline"}
@@ -440,7 +440,22 @@
         "faceCount": {"type": "integer", "minimum": 0},
         "face": {"$ref": "#/$defs/face"},
         "textRects": {"type": "array", "items": {"$ref": "#/$defs/rect"}},
-        "screens": {"type": "array", "items": {"$ref": "#/$defs/screen"}}
+        "screens": {"type": "array", "items": {"$ref": "#/$defs/screen"}},
+        "light": {"$ref": "#/$defs/light"}
+      }
+    },
+    "light": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["medianLuma", "p95Luma", "meanChroma"],
+      "properties": {
+        "medianLuma": {"type": "number", "minimum": 0, "maximum": 1},
+        "p95Luma": {"type": "number", "minimum": 0, "maximum": 1},
+        "meanChroma": {"type": "number", "minimum": 0, "maximum": 1},
+        "faceMeanLuma": {"type": "number", "minimum": 0, "maximum": 1},
+        "faceMedianLuma": {"type": "number", "minimum": 0, "maximum": 1},
+        "faceClippedShare": {"type": "number", "minimum": 0, "maximum": 1},
+        "neutralMeans": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": 0, "maximum": 1}}
       }
     },
     "span": {

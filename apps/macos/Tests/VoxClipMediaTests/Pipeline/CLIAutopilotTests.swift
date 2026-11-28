@@ -104,6 +104,7 @@ private actor LatencyStub: LLMConnector {
                                        "postText": "Post \(rank).", "verdict": "post", "scoreReason": "Clear.", "tone": "none", "toneSummary": ""]
         let lists = ["corrections", "cuts", "pauseCuts", "rewrites", "zooms", "music", "questions"]
         for (key, value) in numbers { reply[key] = value }
+        reply["lookAmount"] = 100; reply["lookFix"] = false; reply["lookAlternatives"] = [String]()
         reply["parts"] = [["startWord": start, "endWord": end]]
         reply["not_in_take"] = ""; reply["musicTrackId"] = ""
         for (key, value) in texts { reply[key] = value }
