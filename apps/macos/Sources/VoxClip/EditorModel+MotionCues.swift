@@ -148,9 +148,18 @@ struct TimelineMotionCue: Equatable {
         showSelectedFrame(model: model)
     }
 
+    /// A moment in a cut has no frame (seeking there shows the next kept one, maybe after the cue), so the viewer
+    /// goes to the nearest kept moment inside the cue, and stays put when the cue has no kept video.
     func showSelectedFrame(model: EditorModel) {
         guard !model.isPlaying, let moment = keyframeMoment(selectedFrame) else { return }
-        model.seek(source: moment)
+        let kept = model.timelinePieces.pieces.compactMap { piece -> Double? in
+            let lower = max(draft.sourceStart, piece.source.lowerBound), upper = min(draft.sourceEnd, piece.source.upperBound)
+            guard upper > lower else { return nil }
+            let inset = min(0.04, (upper - lower) / 4)
+            return min(upper - inset, max(lower + inset, moment))
+        }
+        guard let nearest = kept.min(by: { abs($0 - moment) < abs($1 - moment) }) else { return }
+        model.seek(source: nearest)
     }
 
     /// The source second a keyframe happens at, kept a frame inside the cue: its range excludes
