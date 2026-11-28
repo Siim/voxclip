@@ -1,4 +1,8 @@
+using VoxClip.Core.Domain.Captions;
+using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Frames;
+using VoxClip.Tests.Support;
 using VoxClip.Media.Frames;
 using Xunit;
 
@@ -53,6 +57,60 @@ public sealed class FrameAnalyzerTests
             Assert.Contains("0.033:1000", FrameAnalysisFile.Read(await File.ReadAllTextAsync(file, Ct)).Keys);
         }
         finally { Directory.Delete(root, true); }
+    }
+
+    /// <summary>Looks spec §9.3: each sentence frame's light is measured on a small picture of it with the shared thresholds and cached
+    /// with the frame; the opening scan, and an analyzer without thresholds, measure none. Twin of the Mac
+    /// <c>sentenceFramesCarryTheirMeasuredLight</c>.</summary>
+    [Fact]
+    public async Task SentenceFramesCarryTheirMeasuredLight()
+    {
+        var root = FrameFixtures.TempRoot("light");
+        try
+        {
+            var measure = ClipLookLibrary.Load(FixtureLoader.SharedRoot).Measure;
+            var faces = new StubFrameFaces();
+            FrameAnalyzer Measuring(IFrameDecoding decoder) =>
+                new(faces, FrameAnalyzer.ScreensWith(new StubFrameText()), decoder, new FrameAnalysisCache(root), measure);
+            var found = await Measuring(new StubFrameDecoder()).ObservationsAsync("in.mp4", FrameFixtures.ContentKey, [1.0, 2.0], FrameScanKind.Sentence, Ct);
+            // The stand-in's frame is one colour, red 150, green 120, blue 90: no neutral pixel, high colour.
+            foreach (var frame in found.Frames)
+            {
+                var light = Assert.IsType<FrameLight>(frame.Light);
+                Assert.Equal(124.212 / 255, light.MedianLuma, 1e-9);
+                Assert.Equal(light.MedianLuma, light.FaceMedianLuma);
+                Assert.Equal(60.0 / 255, light.MeanChroma, 1e-9);
+                Assert.Null(light.NeutralMeans);
+                Assert.Equal(0.0, light.FaceClippedShare);
+                Assert.Equal("light: high color", light.Line(measure.Light));
+            }
+            // From the cache with its light, without decoding again.
+            var again = new StubFrameDecoder();
+            var cached = await Measuring(again).ObservationsAsync("in.mp4", FrameFixtures.ContentKey, [1.0, 2.0], FrameScanKind.Sentence, Ct);
+            Assert.Empty(again.Reads);
+            Assert.Equal(found.Frames.Select(Text), cached.Frames.Select(Text));
+            var opening = await Measuring(new StubFrameDecoder()).ObservationsAsync("in.mp4", FrameFixtures.ContentKey, [1.0], FrameScanKind.Opening, Ct);
+            Assert.Null(opening.Frames.Single().Light);
+            var bare = await FrameFixtures.Analyzer(new StubFrameDecoder(), null).ObservationsAsync("in.mp4", FrameFixtures.ContentKey, [1.0], FrameScanKind.Sentence, Ct);
+            Assert.Null(bare.Frames.Single().Light);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    /// <summary>The Fix Make it applies is measured on the sheet's own JPEGs (looks spec §5.9): a small picture of each with its face box.</summary>
+    [Fact]
+    public void ASheetFrameSamplesAtTheMeasureSize()
+    {
+        var size = FfmpegFrameDecoder.Fit(1280, 720, 1280);
+        var pixels = new byte[size.Width * size.Height * 4];
+        for (var index = 0; index < pixels.Length; index += 4) (pixels[index], pixels[index + 1], pixels[index + 2], pixels[index + 3]) = (140, 140, 140, 255);
+        var jpeg = FrameJpeg.Encode(new PixelBuffer(pixels, size.Width, size.Height, size.Width * 4), FrameSheet.FrameEdge);
+        var face = new ClipEffectRect(0.1, 0.2, 0.3, 0.4);
+        var sample = Assert.IsType<ClipFrameSample>(FrameLightSampling.Sample(jpeg, 160, face));
+        Assert.Equal((160, 90, 160 * 90 * 3), (sample.Width, sample.Height, sample.Rgb.Count));
+        Assert.Equal(face, sample.Face);
+        Assert.All(sample.Rgb.Take(3), value => Assert.InRange(value, 137, 143));
+        Assert.Null(FrameLightSampling.Sample([1, 2, 3], 160, null));
     }
 
     /// <summary>A version-1 file is ignored and left in place; a linked entry is never written through.</summary>

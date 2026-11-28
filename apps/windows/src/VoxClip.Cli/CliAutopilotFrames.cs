@@ -25,7 +25,7 @@ internal static class CliAutopilotFrames
             project.Transcript?.Words is not { } words || !words.Any(word => word.Kind == WordKind.Word)) return null;
         var (text, facesOnly) = sources.TextOrNone;
         if (facesOnly) line(FacesOnlyLine);
-        var analyzer = new FrameAnalyzer(faces, FrameAnalyzer.ScreensWith(text), sources.Decoder, sources.Cache(wanted: true));
+        var analyzer = new FrameAnalyzer(faces, FrameAnalyzer.ScreensWith(text), sources.Decoder, sources.Cache(wanted: true), CliLooks.Measure());
         return new VideoFramePass(analyzer, source, project.Media.Source.ContentKey, words, line);
     }
 
@@ -61,7 +61,8 @@ internal static class CliAutopilotFrames
             try { await pass.OpeningAsync(clip, CancellationToken.None).ConfigureAwait(false); }
             finally { clock.End(ClaudeModeStage.Opening, index + 1); }
         }, CancellationToken.None);
-        var frames = ClipAutopilotFrames.FromSheet(found.Sheet, clip.Start, clip.End, images, await pass.PitchBaselineAsync(ct).ConfigureAwait(false));
+        var frames = ClipAutopilotFrames.FromSheet(found.Sheet, clip.Start, clip.End, images, await pass.PitchBaselineAsync(ct).ConfigureAwait(false),
+            pass.Light?.Light);
         sent.Add(index, new(frames, found.Sentences, opening));
         return frames;
     };

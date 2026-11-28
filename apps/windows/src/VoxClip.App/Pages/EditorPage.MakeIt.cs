@@ -41,7 +41,7 @@ public sealed partial class EditorPage
         var faces = App.Services.FrameFaces;
         ViewModel.MakeIt.Services = new MakeItServices(MakeItPlanAsync, MakeItVoiceAsync, MakeItVoiceAvailable, MakeItExportAsync, ShareHelpers.Copy)
         {
-            SharedRoot = root, Prices = prices, Tones = tones, Assets = PlanAssets(root),
+            SharedRoot = root, Prices = prices, Tones = tones, Assets = PlanAssets(root), Looks = App.Services.Looks,
             SavedTones = MyRewriteTones.Decode(App.Services.Settings.Values.TryGetValue(RewriteToneCatalog.SettingsKey, out var saved) ? saved : null),
             FramePass = faces is null ? null : project => MakeItFramePass(faces, project)
         };
@@ -196,7 +196,8 @@ public sealed partial class EditorPage
         frameText ??= new WindowsFrameText();
         var clock = ProjectClock.Build(project);
         var recordings = clock.Regions.Count > 1 ? new RecordingFrameDecoder(project, clock, App.Services.Projects, owner.ProjectPath ?? path) : null;
-        var analyzer = new FrameAnalyzer(faces, FrameAnalyzer.ScreensWith(frameText), (IFrameDecoding?)recordings ?? new FfmpegFrameDecoder(), new FrameAnalysisCache());
+        var analyzer = new FrameAnalyzer(faces, FrameAnalyzer.ScreensWith(frameText), (IFrameDecoding?)recordings ?? new FfmpegFrameDecoder(), new FrameAnalysisCache(),
+            App.Services.Looks?.Measure);
         return new VideoFramePass(analyzer, path, recordings?.ContentKey ?? project.Media.Source.ContentKey, recordings is null ? words : clock.Words,
             line => App.Services.Log.Write(Core.Services.Logging.LogLevel.Info, "frames", line), clock);
     }

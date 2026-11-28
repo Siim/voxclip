@@ -100,6 +100,9 @@ public sealed record MakeItServices(
     internal PlanAssetServices? Assets { get; init; }
     /// <summary>The shared root for the planner's prompt, fonts and prices.</summary>
     public string? SharedRoot { get; init; }
+    /// <summary>The looks (shared/looks/clip-looks.json): the look row's names and Change chips, the frames' light lines and the Fix
+    /// Claude asks for. Null names the four base looks only and measures nothing.</summary>
+    public ClipLookLibrary? Looks { get; init; }
     /// <summary>The Voice Lab price catalog for the cap; null prices nothing.</summary>
     public Core.Domain.VoiceLab.VoiceLabPriceCatalog? Prices { get; init; }
     /// <summary>The tone catalogue and the creator's saved tones; null sends no tone line.</summary>
