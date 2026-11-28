@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, Picture now shows the 24 looks as tiles of your clip's own frame with Suggested first, an Amount, a Compare button (or hold \\) to see the clip as filmed, previews on the paused viewer, and Fine-tune with Fix and Auto, Light, Color and Effects; the Clip section keeps a compact Look row with a link into Picture.
 - On Mac, preview and export now render the new looks with their Amount, the Fix (Exposure, Temperature, Tint) and the new Light, Color and Effects adjustments, vignette and film grain included; the classic looks render exactly as before.
 - Windows now renders the new looks in preview and export as the Mac does: the Fix, Highlights and Shadows, Vibrance, the looks' curves, toning and Fade, Amount, the vignette and grain.
 - Make it postable now picks any of the 24 looks at an amount, using light measured on the clip's frames (a dim face never gets Moody or Teal & Amber), can fix the light first, offers Claude's alternatives, related looks and amounts under Change, and its Undo puts back the clip's whole color on Mac and Windows.
