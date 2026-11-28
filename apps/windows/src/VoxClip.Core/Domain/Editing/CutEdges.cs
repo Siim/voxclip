@@ -129,6 +129,19 @@ public static class CutEdges
     public static OfferSummary Offer(Project project, IReadOnlyDictionary<string, AudioEnvelope> envelopes,
         IReadOnlyDictionary<string, Freeze>? freeze = null) => Fixing(project, envelopes, freeze).Offer;
 
+    /// <summary>§3.2 for the boundary between words[<paramref name="index"/> − 1] and words[<paramref name="index"/>] of one recording,
+    /// read without levels: whether a key there would move the inputs of the paid work beside it. The editors check it before a
+    /// per-cut action pins a key or moves one back.</summary>
+    public static bool IsFrozen(IReadOnlyList<TimedWord> words, int index, IReadOnlySet<string> cutWordIds, Freeze freeze)
+    {
+        if (index < 1 || index >= words.Count) return false;
+        var positions = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var at = 0; at < words.Count; at++) positions.TryAdd(words[at].Id, at);
+        var a = words[index - 1];
+        var b = words[index];
+        return Frozen(a, b, cutWordIds, Window(a, b), freeze, positions);
+    }
+
     /// <summary>§6 "Fix cut edges": seats every qualifying boundary without a key, as one step.</summary>
     public static (Project Project, OfferSummary Offer) Fix(Project project, IReadOnlyDictionary<string, AudioEnvelope> envelopes,
         IReadOnlyDictionary<string, Freeze>? freeze = null)
@@ -207,8 +220,9 @@ public static class CutEdges
         var edgeLevel = (double)levels[edgeFrame];
         if (!(edgeLevel > Math.Max(analysis.Threshold, 0.35 * analysis.SpeechLevel))) return null;
         var quiet = Math.Max(analysis.Threshold, Math.Min(0.5 * edgeLevel, 0.35 * analysis.SpeechLevel));
-        var lowTime = Math.Max(edge - Reach, a.Start + Math.Max(0.04, 0.5 * (a.End - a.Start)));
-        var highTime = Math.Min(edge + Reach, b.End - Math.Max(0.04, 0.5 * (b.End - b.Start)));
+        var search = Window(a, b);
+        var lowTime = search.Start;
+        var highTime = search.End;
         var lowFrame = Math.Max(0, Math.Ceiling(lowTime / frameLength));
         var highFrame = Math.Min(levels.Count - 1, Math.Floor(highTime / frameLength) - 1);
         if (!double.IsFinite(lowFrame) || !double.IsFinite(highFrame) || lowFrame > highFrame) return null;
@@ -240,6 +254,15 @@ public static class CutEdges
         if (best is not { } run) return null;
         var time = (double)(run.First + run.Last + 1) / 2 * frameLength;
         return new(EditingMath.Round(time * sampleRate) / sampleRate, new(lowTime, highTime));
+    }
+
+    /// <summary>§3.1 step 5's window in seconds: within 0.15 s of the word edge, and never more than half of either word.</summary>
+    private static TimeRange Window(TimedWord a, TimedWord b)
+    {
+        var edge = (a.End + b.Start) / 2;
+        var lowTime = Math.Max(edge - Reach, a.Start + Math.Max(0.04, 0.5 * (a.End - a.Start)));
+        var highTime = Math.Min(edge + Reach, b.End - Math.Max(0.04, 0.5 * (b.End - b.Start)));
+        return new(lowTime, highTime);
     }
 
     /// <summary>§3.2: a Voice Lab replace range overlaps the window, or the kept word lies inside a paid scope and the cut word outside

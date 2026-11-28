@@ -83,6 +83,22 @@ public sealed class CutEdgesTests
         Assert.Equal(Sorted(new Dictionary<string, double> { ["w3"] = 1.205 }), Sorted(inside.Project.Edits.CutEdges));
     }
 
+    /// <summary>The per-cut actions pin a key or move one back without levels to seat with: the same freeze decides.</summary>
+    [Fact]
+    public void ABoundaryBesidePaidWorkIsFrozenWithoutLevels()
+    {
+        var words = Words();
+        var cut = new HashSet<string>(StringComparer.Ordinal) { "w2" };
+        var voice = new CutEdges.Freeze([new TimeRange(1.30, 1.90)], []);
+        Assert.True(CutEdges.IsFrozen(words, 2, cut, voice));
+        // w1|w2's window is 0.65–0.95 s, clear of the patch.
+        Assert.False(CutEdges.IsFrozen(words, 1, cut, voice));
+        Assert.True(CutEdges.IsFrozen(words, 2, cut, new([], [new ClipWordRange("w3", "w3")])));
+        Assert.False(CutEdges.IsFrozen(words, 2, cut, new([], [new ClipWordRange("w2", "w3")])));
+        Assert.False(CutEdges.IsFrozen(words, 0, cut, voice));
+        Assert.False(CutEdges.IsFrozen(words, 3, cut, voice));
+    }
+
     [Fact]
     public void AnEdgeInALaterRecordingIsStoredInItsLocalSecondsAndPlannedOnTheClock()
     {
