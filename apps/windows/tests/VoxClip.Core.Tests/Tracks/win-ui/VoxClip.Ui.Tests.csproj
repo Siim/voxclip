@@ -103,6 +103,7 @@
     <Compile Include="EditorLayoutTests.cs" />
     <Compile Include="ColumnBoundsGateTests.cs" />
     <Compile Include="TimelineTests.cs" />
+    <Compile Include="TimelinePrecisionTests.cs" />
     <Compile Include="UpdateRestartTests.cs" />
     <Compile Include="VelopackUpdateTests.cs" />
     <Compile Include="VelopackUpdateTestDoubles.cs" />

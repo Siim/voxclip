@@ -8,6 +8,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - On Mac, older cuts can move into the quiet with one click: the timeline's edit bar offers Fix cut edges (also Edit ▸ Fix Cut Edges), and a selected cut can go back to its word edge or into the quiet again.
 - On Windows, new cuts land in the quiet too, and older ones move there with one click: the timeline offers Fix cut edges (also in the command row's ⋯ menu), and a selected cut can go back to its word edge or into the quiet again.
 - Projects on Mac and Windows can now save agent turns with their own undo history, separate from your manual edits.
+- Mark an exact timeline range with Snapping off (Ctrl+drag on Windows), step the playhead by frame with , and ., scrub exactly, and play, title, trim an item to or make a clip from the range (#41).
 - On Mac, the Pan and zoom panel follows Undo and timeline edits to its cue, says why Apply is unavailable, and shows the edited keyframe in the paused viewer; the preview shows pan and zoom under Reduce Motion too, as the export does.
 - On Mac, Put Back shows leading and consecutive skipped lines and restores each in recording order.
 - On Mac, alternate versions and uninserted lines play in place without changing the clip.

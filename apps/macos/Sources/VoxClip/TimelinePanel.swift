@@ -105,9 +105,10 @@ import VoxClipCore
             .layoutPriority(-1)
             }
             Spacer(minLength: 0)
-            // A dragged range: ✦ Ask Claude about it (design.md §6.8). Shown only while a range is set and Claude can act.
-            if model.askClaude.timeRange != nil, model.canAskClaude {
-                Button { model.openAskClaudeOnTimeRange() } label: {
+            // A dragged range: ✦ Ask Claude about it (design.md §6.8). The edit bar has it; a shallow timeline shows it here,
+            // only while an exact range or a pause-only drag is set and Claude can act.
+            if compactEdits, model.timelineAskClaudeTimeRange != nil, model.canAskClaude {
+                Button { model.askClaudeOnTimelineRange() } label: {
                     Text("\u{2726} Ask Claude").font(VCType.small.font(.medium)).padding(.horizontal, VCTokens.spacingRowGap).frame(height: 22)
                         .background(DesignValues.color("bg.selectedRow"), in: RoundedRectangle(cornerRadius: 5))
                 }
@@ -298,11 +299,26 @@ import VoxClipCore
 
 /// "4.4 s selected" (notes.md §2, f1): an 8 pt `tint.default` square, the length on the
 /// timeline's axis in SF Mono 11 `text.primary` and "selected" in 11 `text.tertiary`. Only
-/// while words are selected.
+/// while words are selected. An exact range reads "0.43 s · 12:04.10–12:04.53" (issue #41):
+/// its length the same way, then its In and Out in the recording's time in SF Mono 11 `text.tertiary`.
 @MainActor struct TimelineSelectionLength: View {
     let model: EditorModel
     var body: some View {
-        if let selection = model.timelineSelection(on: model.timelineAxis) {
+        if let readout = model.timelineRangeReadoutParts, let range = model.timelineRange {
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 2).fill(DesignValues.color("tint.default")).frame(width: 8, height: 8)
+                HStack(spacing: 3) {
+                    Text(readout.length).font(VCType.small.mono()).foregroundStyle(DesignValues.color("text.primary"))
+                    Text("· \(readout.span)").font(VCType.small.mono()).foregroundStyle(DesignValues.color("text.tertiary"))
+                }
+            }
+            .fixedSize()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(String(format: "Exact range, %.2f seconds, from %@ to %@", locale: Locale(identifier: "en_US_POSIX"),
+                                       range.end - range.start, EditorModel.rangeTime(range.start), EditorModel.rangeTime(range.end)))
+            .accessibilityIdentifier("voxclip.timeline.selectionLength")
+            .columnLayoutEvidence("timeline.selectionLength")
+        } else if let selection = model.timelineSelection(on: model.timelineAxis) {
             let length = selection.upperBound - selection.lowerBound
             HStack(spacing: 6) {
                 RoundedRectangle(cornerRadius: 2).fill(DesignValues.color("tint.default")).frame(width: 8, height: 8)

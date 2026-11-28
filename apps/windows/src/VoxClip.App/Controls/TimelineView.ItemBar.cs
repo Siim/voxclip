@@ -55,8 +55,11 @@ public sealed partial class TimelineView
     {
         if (model is null || itemLayout is null || itemPlan is null || selectedItems.Count == 0)
         {
-            itemBar.Visibility = Visibility.Collapsed; itemBarHeight = 0; barSelection = []; barCommands.Clear(); return;
+            // With no item selected the row holds the edit bar's range actions instead (issue #41).
+            itemBar.Visibility = Visibility.Collapsed; barSelection = []; barCommands.Clear();
+            itemBarHeight = RefreshEditBar() ? EditBarHeight : 0; return;
         }
+        editBar.Visibility = Visibility.Collapsed;
         if (ReferenceEquals(model.Project, barProject) && barSelection.SequenceEqual(selectedItems) && barEditable == CanEditItems)
         {
             RefreshItemActions(true); return;

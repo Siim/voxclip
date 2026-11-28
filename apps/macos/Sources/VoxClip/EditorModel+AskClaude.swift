@@ -390,8 +390,7 @@ extension EditorModel {
     /// ▶: plays the row's stretch with half a second either side.
     func playAskClaudeRow(_ id: String) {
         guard let row = askClaude.run?.rows.first(where: { $0.id == id }), let range = Self.sourceRange(row.operation, words: words) else { return }
-        previewStop = min(sourceDuration, range.upperBound + 0.5)
-        seek(source: max(0, range.lowerBound - 0.5))
+        seek(source: max(0, range.lowerBound - 0.5), stop: min(sourceDuration, range.upperBound + 0.5))
         preview.play(); isPlaying = preview.isPlaying
     }
 

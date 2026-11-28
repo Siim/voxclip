@@ -81,8 +81,12 @@ extension TimelineInteraction {
             guard !ids.isEmpty else { return false }
             if model.commitTimelineItemEdit(.delete(items: ids)) { model.selectTimelineItems([]) }
         case .nudge(let step, let word):
-            guard !ids.isEmpty else { return false }
-            model.nudgeTimelineItems(ids, by: word ? .words(step) : .frames(step))
+            // With no item selected the playhead steps instead: a frame, or with ⇧ to a word boundary.
+            if ids.isEmpty {
+                if word { model.stepTimelineWordBoundary(step) } else { model.stepTimelineFrame(step) }
+            } else {
+                model.nudgeTimelineItems(ids, by: word ? .words(step) : .frames(step))
+            }
         case .start, .end:
             guard ids.count == 1, let id = ids.first else { return false }
             model.trimTimelineItemToPlayhead(id, edge: shortcut == .start ? .start : .end)

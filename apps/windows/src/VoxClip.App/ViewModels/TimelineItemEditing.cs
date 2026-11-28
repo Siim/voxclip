@@ -169,7 +169,7 @@ internal static class TimelineItemEditing
 }
 
 internal enum TimelineShortcut { None, Select, Next, Previous, EarlierFrame, LaterFrame, EarlierWord, LaterWord,
-    TrimStart, TrimEnd, Split, SplitAll, Duplicate, Delete, VolumeUp, VolumeDown, Snapping, ZoomIn, ZoomOut, Fit, Escape }
+    TrimStart, TrimEnd, Split, SplitAll, Duplicate, Delete, VolumeUp, VolumeDown, Snapping, ZoomIn, ZoomOut, Fit, Escape, RangeIn, RangeOut }
 
 internal static class TimelineKeys
 {
@@ -198,6 +198,8 @@ internal static class TimelineKeys
             (189, true, false) => TimelineShortcut.ZoomOut,
             ('Z', false, true) => TimelineShortcut.Fit,
             (27, false, false) => TimelineShortcut.Escape,
+            ('I', false, false) => TimelineShortcut.RangeIn,
+            ('O', false, false) => TimelineShortcut.RangeOut,
             _ => TimelineShortcut.None
         };
     }

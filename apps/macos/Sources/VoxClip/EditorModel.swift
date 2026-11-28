@@ -34,6 +34,8 @@ struct EditorRenderSnapshot {
     var selectedWordIDs: Set<String> = [] {
         didSet {
             guard selectedWordIDs != oldValue else { return }
+            // Any other selection replaces the timeline's exact range (issue #41).
+            if !settingTimelineRange { timelineRange = nil }
             if !selectedWordIDs.isEmpty { selectTimelineItems([]) }
             rewriteOpenTask?.cancel()
             // Changing the selection ends an open inline correction, as a click elsewhere ends an inline rename.
@@ -44,11 +46,16 @@ struct EditorRenderSnapshot {
     var selectedPauseIDs: Set<String> = [] {
         didSet {
             guard selectedPauseIDs != oldValue else { return }
+            if !settingTimelineRange { timelineRange = nil }
             if !selectedPauseIDs.isEmpty { selectTimelineItems([]) }
             rewriteOpenTask?.cancel(); updateSelectionEnds(); refreshPendingSendScope()
         }
     }
-    var previewStop: Double?
+    /// Where Play range, P or an Ask Claude row's ▶ stops, in source seconds. Space and every seek end it.
+    var previewStop: Double? { didSet { previewStopArmed = false } }
+    /// Whether playback has reported a time before `previewStop`: only then does reaching it stop, so a time
+    /// queued from before the seek can't end the range at once.
+    @ObservationIgnored var previewStopArmed = false
     var storyPartPlaybackEnd: Double?
     var selectedStoryPartID: String?
     var draggedStoryPartID: String?
@@ -87,6 +94,20 @@ struct EditorRenderSnapshot {
     var timelineSnapping = true
     var timelineItemSelection: Set<TimelineItemID> = []
     var timelineItemRefusal: String?
+    /// The last frame or word-boundary step of the playhead (, / . on the timeline): where it
+    /// started and where it asked to go, so a key repeat steps on before the seek lands.
+    @ObservationIgnored var timelineStep: (axis: TimelineAxis, from: Double, to: Double)?
+    /// The exact range a drag with Snapping off (or ⌥) leaves on the timeline, or I and O set
+    /// there (issue #41), or nil. The words wholly inside it are selected underneath; any other
+    /// word, pause or item selection replaces it. A selection, so no undo step.
+    var timelineRange: TimelineRange? {
+        didSet {
+            guard timelineRange != oldValue else { return }
+            // ✦ Ask Claude asks about a range of at least 0.1 s (design.md §6.8).
+            askClaude.timeRange = timelineRangeSource.flatMap { $0.upperBound - $0.lowerBound >= 0.1 ? $0 : nil }
+        }
+    }
+    @ObservationIgnored var settingTimelineRange = false
     /// The selection's first and last word or pause in reading order (a pause follows the
     /// word before it), one id when they are the same. A fold opens while one of them is in
     /// it (`openFoldEnds`), so what is selected always shows.
@@ -889,7 +910,9 @@ struct EditorRenderSnapshot {
                 case .time(let edited, let source):
                     playhead = edited; sourceTime = source
                     if let stop = recordingAuditionEnd, edited >= stop { stopRecordingAudition() }
-                    if let stop = previewStop, source >= stop { preview.pause(); previewStop = nil }
+                    if let stop = previewStop {
+                        if source < stop { previewStopArmed = true } else if previewStopArmed { preview.pause(); previewStop = nil }
+                    }
                     if let stop = storyPartPlaybackEnd, edited >= stop { preview.pause(); storyPartPlaybackEnd = nil }
                 case .playing(let playing): isPlaying = playing
                 case .failed(let error, let reason):
@@ -965,7 +988,7 @@ struct EditorRenderSnapshot {
         history = nil
         renderedTranscript = nil; renderedEdits = nil; renderedMedia = nil; renderedVoiceLab = nil
         planningSegments = nil; planningWordIndex = [:]; summaryCache.removeAll()
-        correctionID = nil; selectedWordIDs = []; selectedPauseIDs = []
+        correctionID = nil; selectedWordIDs = []; selectedPauseIDs = []; timelineRange = nil
         fallbackNote = nil; focusedSuggestion = nil; clipError = nil; error = nil; previewError = nil
         mediaResolved = document.demo; mediaChecked = false
         refresh()
@@ -1390,6 +1413,8 @@ struct EditorRenderSnapshot {
         return fallback
     }
     func cutSelection(restore: Bool = false) {
+        // An exact range cuts nothing yet: the words under it are only its highlight (issue #41).
+        if timelineRange != nil { announce(Self.timelineCutRangeReason); return }
         let selected = selectedIDs + selectedPauseIDs.sorted()
         let ids = restore ? selected : selected.filter { (id: String) -> Bool in
             !cutWordIDs.contains(id) && !cutPauseIDs.contains(id)
@@ -1405,15 +1430,19 @@ struct EditorRenderSnapshot {
     /// Make Clip (⌥⌘K, design §3.4): one undo step adds the clip and selects its row. A
     /// selection an existing clip already covers selects that clip instead.
     func makeClip() {
-        guard let start = selectedIDs.first, let end = selectedIDs.last else { return }
+        // From an exact range the clip's edges snap to the words it covers (issue #41).
+        let range = timelineRange.flatMap { _ in timelineRangeClipWords }
+        guard let start = range?.start ?? selectedIDs.first, let end = range?.end ?? selectedIDs.last else { return }
         if let existing = project.edits.clips.first(where: { $0.startWordId == start && $0.endWordId == end }) {
             let message = clipNumber(existing.id).map { "Clip \($0) already covers these words." } ?? "A clip already covers these words."
             if activeClip?.id == existing.id { announce(message) } else { activate(existing, announcing: message) }
             return
         }
-        let title = EditingAlgorithms.clipTitle(words.lazy.filter { self.selectedWordIDs.contains($0.id) }.map { self.text($0) })
+        guard let lower = index(start), let upper = index(end), lower <= upper else { return }
+        let named = range == nil ? words.filter { self.selectedWordIDs.contains($0.id) } : words[lower...upper].filter { !self.cutWordIDs.contains($0.id) }
+        let title = EditingAlgorithms.clipTitle(named.lazy.map { self.text($0) })
         let clip = ClipRange(id: UUID().uuidString.lowercased(), startWordId: start, endWordId: end, title: title)
-        guard apply([.addClip(clip), .setActiveClip(clipId: clip.id)], name: "Make clip from selection") else { return }
+        guard apply([.addClip(clip), .setActiveClip(clipId: clip.id)], name: range == nil ? "Make clip from selection" : "Make clip") else { return }
         announce(clipNumber(clip.id).map { "Clip \($0) made." } ?? "Clip made.")
     }
     func nudge(_ clip: ClipRange, start: Bool, offset: Int) {
@@ -1468,6 +1497,7 @@ struct EditorRenderSnapshot {
     func activate(_ clip: ClipRange?, announcing message: String? = nil) {
         let previous = project.edits.activeClipId
         setScope(clip?.id)
+        if project.edits.activeClipId != previous { timelineRange = nil }
         if let message { announce(message) }
         else if project.edits.activeClipId != previous { announce(scopeName(project.edits.activeClipId)) }
         if project.edits.activeClipId == clip?.id {
@@ -1680,12 +1710,15 @@ struct EditorRenderSnapshot {
         while sentence && position > 0 && position < words.count - 1 && !words[max(0, position - 1)].text.hasSuffix(".")
         select(words[position].id, extend: extend)
     }
-    func seek(source: Double) {
+    /// Seeks the preview. A seek ends any stop (`previewStop`); `stop` sets a new one once the seek has landed, so a
+    /// time from before the seek can't end it at once.
+    func seek(source: Double, stop: Double? = nil) {
         guard let renderTimeline else { return }
+        previewStop = nil
         let time = renderTimeline.mapTime(source)
         Task { [weak self] in
             guard let self else { return }
-            do { try await preview.seek(to: time, exact: true); playhead = time; sourceTime = source }
+            do { try await preview.seek(to: time, exact: true); playhead = time; sourceTime = source; if let stop { previewStop = stop } }
             catch { previewError = await app.safeError(error, context: .preview) }
         }
     }
@@ -1698,13 +1731,15 @@ struct EditorRenderSnapshot {
         endCorrection()
         switch key.lowercased() {
         case " ":
+            // Space is plain playback: it ends a Play range or P stop, as on Windows.
+            previewStop = nil
             if shift, let word = words.first(where: { selectedWordIDs.contains($0.id) }) { seek(source: word.start) }
             if wasPlaying { preview.pause() } else { preview.play() }
             isPlaying = preview.isPlaying
         case "j": seek(source: max(0, sourceTime - 3))
         case "k": preview.pause(); isPlaying = false; playbackRate = 1; previewStop = nil
         case "l": playbackRate = wasPlaying ? (playbackRate == 1 ? 1.5 : 2) : 1; preview.play(); nativePreview?.player.rate = playbackRate; isPlaying = preview.isPlaying
-        case "p": if let word = words.first(where: { selectedWordIDs.contains($0.id) }), let last = words.last(where: { selectedWordIDs.contains($0.id) }) { previewStop = min(sourceDuration, last.end + 2); seek(source: max(0, word.start - 2)); preview.play(); isPlaying = preview.isPlaying }
+        case "p": if let word = words.first(where: { selectedWordIDs.contains($0.id) }), let last = words.last(where: { selectedWordIDs.contains($0.id) }) { seek(source: max(0, word.start - 2), stop: min(sourceDuration, last.end + 2)); preview.play(); isPlaying = preview.isPlaying }
         case "c", "\r": beginCorrection()
         case "i": setClipEdge(start: true)
         case "o": setClipEdge(start: false)
