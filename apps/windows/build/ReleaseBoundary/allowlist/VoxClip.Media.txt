@@ -1139,12 +1139,13 @@ member VoxClip.Media.Frames.FrameAnalyzer :: field public OpeningTolerance
 member VoxClip.Media.Frames.FrameAnalyzer :: field public SentenceTolerance
 member VoxClip.Media.Frames.FrameAnalyzer :: method private AnalyzeMissingAsync(string,System.Collections.Generic.IReadOnlyList`1<double>,VoxClip.Media.Frames.FrameScanKind,System.Threading.CancellationToken)
 member VoxClip.Media.Frames.FrameAnalyzer :: method private LaneAsync(string,double[],VoxClip.Media.Frames.FrameScanKind,System.Threading.CancellationTokenSource)
-member VoxClip.Media.Frames.FrameAnalyzer :: method public .ctor(VoxClip.Core.Domain.Frames.IFrameFaces,System.Func`1<VoxClip.Core.Domain.Frames.FrameScreenScan>,VoxClip.Media.Frames.IFrameDecoding,VoxClip.Media.Frames.FrameAnalysisCache)
+member VoxClip.Media.Frames.FrameAnalyzer :: method public .ctor(VoxClip.Core.Domain.Frames.IFrameFaces,System.Func`1<VoxClip.Core.Domain.Frames.FrameScreenScan>,VoxClip.Media.Frames.IFrameDecoding,VoxClip.Media.Frames.FrameAnalysisCache,VoxClip.Core.Domain.Clips.ClipColorMeasure)
 member VoxClip.Media.Frames.FrameAnalyzer :: method public AnalyzeAsync(string,string,VoxClip.Core.Domain.Frames.FrameClip,System.Threading.CancellationToken)
 member VoxClip.Media.Frames.FrameAnalyzer :: method public ObservationsAsync(string,string,System.Collections.Generic.IReadOnlyList`1<double>,VoxClip.Media.Frames.FrameScanKind,System.Threading.CancellationToken)
 member VoxClip.Media.Frames.FrameAnalyzer :: method public ScreensWith(VoxClip.Core.Domain.Frames.IFrameTextLines)
 member VoxClip.Media.Frames.FrameAnalyzer :: method public SheetAsync(string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.FrameObservation>,System.Collections.Generic.IReadOnlyDictionary`2<long,byte[]>,System.Threading.CancellationToken)
 member VoxClip.Media.Frames.FrameAnalyzer :: method public Tolerance(VoxClip.Media.Frames.FrameScanKind)
+member VoxClip.Media.Frames.FrameAnalyzer :: method public get_Light()
 member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method private .ctor(VoxClip.Media.Frames.FrameAnalyzer+Analyzed)
 member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method private get_EqualityContract()
@@ -1182,6 +1183,10 @@ member VoxClip.Media.Frames.FrameJpeg :: method private Failed()
 member VoxClip.Media.Frames.FrameJpeg :: method public Encode(VoxClip.Core.Domain.Captions.PixelBuffer,int)
 member VoxClip.Media.Frames.FrameJpeg :: method public Encode(VoxClip.Core.Domain.Captions.PixelBuffer,int,int)
 member VoxClip.Media.Frames.FrameJpeg :: method public Size(byte[])
+member VoxClip.Media.Frames.FrameLightSampling :: method private Sample(SkiaSharp.SKImage,int,System.Nullable`1<VoxClip.Core.Domain.Effects.ClipEffectRect>)
+member VoxClip.Media.Frames.FrameLightSampling :: method public Fix(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.FrameSheetFrame>,VoxClip.Core.Domain.Clips.ClipColorMeasure)
+member VoxClip.Media.Frames.FrameLightSampling :: method public Sample(VoxClip.Core.Domain.Captions.PixelBuffer,int,System.Nullable`1<VoxClip.Core.Domain.Effects.ClipEffectRect>)
+member VoxClip.Media.Frames.FrameLightSampling :: method public Sample(byte[],int,System.Nullable`1<VoxClip.Core.Domain.Effects.ClipEffectRect>)
 member VoxClip.Media.Frames.FrameObservationsFound :: method private .ctor(VoxClip.Media.Frames.FrameObservationsFound)
 member VoxClip.Media.Frames.FrameObservationsFound :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Media.Frames.FrameObservationsFound :: method private get_EqualityContract()
@@ -1271,6 +1276,7 @@ member VoxClip.Media.Frames.VideoFramePass :: method public get_Analyzed()
 member VoxClip.Media.Frames.VideoFramePass :: method public get_Cached()
 member VoxClip.Media.Frames.VideoFramePass :: method public get_Ended()
 member VoxClip.Media.Frames.VideoFramePass :: method public get_FrameCount()
+member VoxClip.Media.Frames.VideoFramePass :: method public get_Light()
 member VoxClip.Media.Frames.VideoFramePass :: method public get_Seconds()
 member VoxClip.Media.Frames.VideoFramePass :: method public get_Started()
 member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method private .ctor(VoxClip.Media.Frames.VideoFramePass+ClipFrames)
@@ -3611,6 +3617,7 @@ type VoxClip.Media.Frames.FrameAnalyzer
 type VoxClip.Media.Frames.FrameAnalyzer+Analyzed
 type VoxClip.Media.Frames.FrameClipAnalysis
 type VoxClip.Media.Frames.FrameJpeg
+type VoxClip.Media.Frames.FrameLightSampling
 type VoxClip.Media.Frames.FrameObservationsFound
 type VoxClip.Media.Frames.FrameScanKind
 type VoxClip.Media.Frames.IFrameDecoding

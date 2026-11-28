@@ -257,6 +257,8 @@ member VoxClip.Cli.CliFrameSources :: method public set_Text(VoxClip.Core.Domain
 member VoxClip.Cli.CliInputException :: method internal get_Failure()
 member VoxClip.Cli.CliInputException :: method public .ctor(VoxClip.Core.Domain.Shared.VoxClipException)
 member VoxClip.Cli.CliJsonContext :: field private InstanceMemberBindingFlags
+member VoxClip.Cli.CliLooks :: method internal Library()
+member VoxClip.Cli.CliLooks :: method internal Measure()
 member VoxClip.Cli.CliMusic :: method internal AutopilotTrack(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,string,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.ProjectMusic>,string)
 member VoxClip.Cli.CliMusic :: method internal Json(VoxClip.Core.Domain.Music.ProjectMusic)
 member VoxClip.Cli.CliMusic :: method internal LocalAsync(string,System.Threading.CancellationToken)
@@ -516,6 +518,7 @@ type VoxClip.Cli.CliError
 type VoxClip.Cli.CliFrameSources
 type VoxClip.Cli.CliInputException
 type VoxClip.Cli.CliJsonContext
+type VoxClip.Cli.CliLooks
 type VoxClip.Cli.CliMusic
 type VoxClip.Cli.CliOperations
 type VoxClip.Cli.CliOperations+CliProgress`1
