@@ -491,6 +491,21 @@ private actor PrecisionTestSettings: SettingsStore {
         #expect(undo.undoActionName == "Trim to range" && model.timelineTrimToRangeReason == "The music already fits inside the range.")
     }
 
+    /// On Source a range can lie wholly inside cut words (14 and 15 here): nothing in it plays, so Play range says so
+    /// and does nothing. A range reaching a kept word plays.
+    @Test func playRangeIsOffWithItsReasonWhenEverythingInTheRangeIsCut() async throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = true
+        _ = model.setTimelineRange(from: 14.2, to: 15.5, on: .source)
+        #expect(model.timelineRange != nil)
+        #expect(model.timelinePlayRangeReason == "Everything in this range is cut, so nothing plays.")
+        model.playTimelineRange(); await settle()
+        #expect(model.previewStop == nil && !model.isPlaying)
+        _ = model.setTimelineRange(from: 13.5, to: 14.5, on: .source)
+        #expect(model.timelinePlayRangeReason == nil)
+    }
+
     @Test func playRangeStopsAtOutEvenFromPastItAndSpaceOrASeekEndsTheStop() async throws {
         let engine = ReportingPreview(), app = try app()
         let model = EditorModel(document: VoxClipDocument(project: try project(), demo: true), app: app, preview: engine)

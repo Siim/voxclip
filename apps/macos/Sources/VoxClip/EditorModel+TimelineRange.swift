@@ -203,10 +203,15 @@ extension EditorModel {
     static let timelineRangeHint = "Drag across the waveform to select words. Turn Snapping off for an exact range."
     static let timelineCutRangeReason = "Exact cuts are coming. Turn Snapping on to cut words."
     static let timelineMakeClipHelp = "Clip edges follow words"
+    static let timelinePlayRangeAllCutReason = "Everything in this range is cut, so nothing plays."
     private static let notReady = "The timeline is not ready to edit."
 
-    /// Why Play range can't run, or nil.
-    var timelinePlayRangeReason: String? { timelineActionRange == nil ? Self.timelineRangeHint : nil }
+    /// Why Play range can't run, or nil: nothing to play, or a range (on Source) wholly inside cut words.
+    var timelinePlayRangeReason: String? {
+        guard let range = timelineActionRange else { return Self.timelineRangeHint }
+        guard renderTimeline != nil else { return nil }
+        return timelinePieces.indices(overlapping: range.lowerBound..<range.upperBound, on: .source).isEmpty ? Self.timelinePlayRangeAllCutReason : nil
+    }
 
     /// Play range: from In, stopping at Out (`previewStop`). The stop is set once the seek has
     /// landed, so a time from playback past Out can't end the range before it starts.
