@@ -22,10 +22,10 @@ struct CLIFindClipsTests {
         #expect(NSDictionary(dictionary: actual).isEqual(to: expected))
     }
 
-    @Test(.timeLimit(.minutes(1)))
-    func dryRunMatchesSharedExpectedShapeWithoutChangingProject() throws {
+    @Test(.timeLimit(.minutes(1)), arguments: ["dryRun", "bestTakesDryRun"])
+    func dryRunMatchesSharedExpectedShapeWithoutChangingProject(_ name: String) throws {
         let fixture = try loadFixture()
-        let dryRun = try #require(fixture["dryRun"] as? [String: Any])
+        let dryRun = try #require(fixture[name] as? [String: Any])
         let shared = try FixtureLoader.sharedRoot(environment: [:])
         let project = shared.appendingPathComponent("fixtures/\(try #require(dryRun["project"] as? String))")
         let original = try Data(contentsOf: project)
@@ -48,6 +48,9 @@ struct CLIFindClipsTests {
         for prompt in prompts {
             #expect(Set(prompt.keys) == promptKeys)
             for key in promptKeys { #expect((prompt[key] as? String)?.isEmpty == false) }
+            for text in dryRun["cachedBlockContains"] as? [String] ?? [] {
+                #expect((prompt["cachedBlock"] as? String)?.contains(text) == true)
+            }
         }
         #expect(try Data(contentsOf: project) == original)
     }

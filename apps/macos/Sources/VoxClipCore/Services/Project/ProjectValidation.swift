@@ -103,7 +103,18 @@ enum ProjectValidation {
             if !isV5, case .object(let fields) = clip, fields["parts"] != nil || fields["kind"] != nil {
                 try fail("story clip needs schemaVersion 5", at: path)
             }
-            let fields = try object(clip, required: "id startWordId endWordId title origin aiResultId aiClipIndex selected", optional: "leadInSeconds" + (isV5 ? " parts kind" : ""), at: path)
+            let fields = try object(clip, required: "id startWordId endWordId title origin aiResultId aiClipIndex selected",
+                                    optional: "leadInSeconds" + (isV5 ? " parts kind" : "") + (isV7 ? " displacedVersions" : ""), at: path)
+            if let saved = fields["displacedVersions"] {
+                for (index, range) in try array(saved, at: "\(path)/displacedVersions").enumerated() {
+                    let rangePath = "\(path)/displacedVersions/\(index)"
+                    let range = try object(range, required: "startWordId endWordId", at: rangePath)
+                    for name in ["startWordId", "endWordId"] {
+                        guard let word = range[name]?.aiString else { try fail("expected a word id", at: "\(rangePath)/\(name)") }
+                        try text(word, pattern: idPattern, at: "\(rangePath)/\(name)")
+                    }
+                }
+            }
             if let kind = fields["kind"] {
                 guard fields["parts"] != nil && (kind == .string("story") || kind == .string("showreel")) else { try fail("invalid clip kind", at: "\(path)/kind") }
             }

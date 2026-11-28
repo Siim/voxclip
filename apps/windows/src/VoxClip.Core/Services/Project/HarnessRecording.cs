@@ -1,4 +1,3 @@
-using System.Text.Json;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
@@ -44,35 +43,11 @@ public static class HarnessRecording
     }
 
     /// <summary>Read a confirmed local transcript for a media content key, if available.</summary>
-    public static Transcript? CachedTranscript(string key, string cache)
-    {
-        if (!ValidKey(key)) return null;
-        try
-        {
-            var transcript = JsonSerializer.Deserialize(File.ReadAllText(CacheFile(key, cache)), ProjectJsonContext.Default.Transcript);
-            return transcript is { Engine.Id: not TranscriptEngine.Elevenlabs } ? transcript : null;
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException) { return null; }
-    }
+    public static Transcript? CachedTranscript(string key, string cache) => RecordingTranscriptCache.Read(key, cache, localOnly: true);
 
     /// <summary>Remember a confirmed local transcript for another project using the same media.</summary>
     public static void CacheTranscript(string key, string cache, Transcript transcript)
     {
-        if (!ValidKey(key) || transcript.Engine.Id != TranscriptEngine.Whispercpp) return;
-        var target = CacheFile(key, cache);
-        var temporary = target + "." + Guid.NewGuid().ToString("N");
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            File.WriteAllText(temporary, JsonSerializer.Serialize(transcript, ProjectJsonContext.Default.Transcript));
-            File.Move(temporary, target, overwrite: true);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            try { File.Delete(temporary); }
-            catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException) { }
-        }
+        if (transcript.Engine.Id != TranscriptEngine.Elevenlabs) RecordingTranscriptCache.Write(key, cache, transcript);
     }
-
-    private static string CacheFile(string key, string cache) => Path.Combine(cache, key, "transcripts", "confirmed-v1.json");
 }

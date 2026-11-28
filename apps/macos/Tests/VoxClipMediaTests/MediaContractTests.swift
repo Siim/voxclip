@@ -15,6 +15,10 @@ import VoxClipMedia
     }
 }
 
+@Test @MainActor func previewIsSilentInATestProcess() {
+    #expect(PreviewPlayerController().player.isMuted)
+}
+
 @Test @MainActor func emptyPreviewStartsStoppedAndClosesSafely() {
     let preview: any PreviewEngine = PreviewPlayerController()
     #expect(!preview.isPlaying)

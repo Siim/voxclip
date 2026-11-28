@@ -159,7 +159,7 @@ public enum VoxClipError: Error, LocalizedError, Codable, Sendable, Equatable {
     /// CLI mapping shared by both platforms; architecture §9.3.
     public var exitCode: Int32 {
         switch self {
-        case .unsupportedContainer, .mediaMissing, .noAudioTrack, .decodeFailed, .projectUnreadable, .projectTooNew, .sharedResourcesMissing, .ffmpegLicenceGate: 3
+        case .unsupportedContainer, .mediaMissing, .recordingMissing, .noAudioTrack, .decodeFailed, .projectUnreadable, .projectTooNew, .sharedResourcesMissing, .ffmpegLicenceGate: 3
         case .noSpeech, .keyPermissionMissing, .mediaTooLong, .transcriptionLanguageUnsupported, .speechAssetsUnavailable, .transcriptionFailed: 4
         case .everythingCut, .diskFull, .encoderUnavailable, .exportFailed: 5
         case .cancelled: 6

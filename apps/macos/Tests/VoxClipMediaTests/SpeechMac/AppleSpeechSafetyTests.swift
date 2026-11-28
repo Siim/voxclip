@@ -34,10 +34,21 @@ struct AppleSpeechSafetyTests {
         #expect(reserves.withLock { $0 } == 1)
     }
 
-    @Test(arguments: [VoxClipError.transcriptionLanguageUnsupported("en"), .speechAssetsUnavailable("en")])
+    /// Swift numbers an error enum's payload cases first, so a new VoxClipError case shifts these codes. Take whichever
+    /// cases collide with the asset codes today.
+    static let assetCodes = [SFSpeechError.Code.assetLocaleNotAllocated.rawValue, SFSpeechError.Code.tooManyAssetLocalesAllocated.rawValue]
+    static let collisions: [VoxClipError] = [.keyPermissionMissing, .quotaExceeded("en"), .rateLimited("en"), .mediaTooLong("en"),
+        .transcriptionLanguageUnsupported("en"), .speechAssetsUnavailable("en"), .transcriptionFailed("en")]
+        .filter { assetCodes.contains(($0 as NSError).code) }
+
+    @Test func bothAssetCodesHaveACollidingVoxClipCase() {
+        #expect(Set(Self.collisions.map { ($0 as NSError).code }) == Set(Self.assetCodes))
+    }
+
+    @Test(arguments: collisions)
     func voxClipCaseIndexCollisionsDoNotRecover(_ failure: VoxClipError) async throws {
         let code = (failure as NSError).code
-        #expect([SFSpeechError.Code.assetLocaleNotAllocated.rawValue, SFSpeechError.Code.tooManyAssetLocalesAllocated.rawValue].contains(code))
+        #expect(Self.assetCodes.contains(code))
         let recoveries = Mutex(0)
         await #expect(throws: failure) {
             try await AppleSpeechAssets.prepare(locale: "en-US", operation: { throw failure },

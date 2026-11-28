@@ -2776,7 +2776,6 @@ member VoxClip.App.Services.ProviderEntry :: method public set_Metadata(System.T
 member VoxClip.App.Services.ProviderEntry :: method public set_WireId(string)
 member VoxClip.App.Services.RecordingTranscriptCache :: method internal ReadAsync(string,System.Threading.CancellationToken)
 member VoxClip.App.Services.RecordingTranscriptCache :: method internal WriteAsync(string,VoxClip.Core.Domain.Transcript.Transcript)
-member VoxClip.App.Services.RecordingTranscriptCache :: method private Entry(string)
 member VoxClip.App.Services.RedirectedLaunchSelection :: method internal FilePath(System.Collections.Generic.IReadOnlyList`1<string>,string)
 member VoxClip.App.Services.RestartNotice :: field internal HeldByPaidWork
 member VoxClip.App.Services.RestartPreparation :: field public Busy

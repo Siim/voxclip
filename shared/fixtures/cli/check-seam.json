@@ -1,0 +1,8 @@
+{
+  "status": "ok",
+  "items": [{
+    "kind": "recordingSeam",
+    "time": 1.25,
+    "recordingSeam": {"at": 1.25, "from": "0007", "to": "0010"}
+  }]
+}

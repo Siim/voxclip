@@ -3,6 +3,12 @@
   "project": "reference-recordings.voxclip",
   "recordingA": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "recordingB": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+  "unmatchedRoundTrip": {
+    "original": ["We", "record", "voice,", "for", "later.", "Keep", "this."],
+    "alternate": ["We", "record", "voice,", "today."],
+    "swapped": [["r2.w1", "r2.w3"], ["w6", "w7"]],
+    "restored": [["w1", "w7"]]
+  },
   "started": [
     [
       "w1",

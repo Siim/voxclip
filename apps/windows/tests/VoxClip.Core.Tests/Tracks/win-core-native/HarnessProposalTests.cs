@@ -13,6 +13,37 @@ namespace VoxClip.Core.Tests.Tracks.WinCoreNative;
 public sealed class HarnessProposalTests
 {
     [Fact]
+    public void ConfirmedLocalAndCloudTranscriptsStaySeparate()
+    {
+        var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/recordings/two-recordings.voxclip"));
+        var key = project.Media.Source.ContentKey;
+        var cloud = project.Transcript!;
+        var local = cloud with { Engine = cloud.Engine with { Id = TranscriptEngine.Whispercpp } };
+        var cache = Directory.CreateTempSubdirectory("voxclip-recording-cache-");
+        try
+        {
+            RecordingTranscriptCache.Write(key, cache.FullName, cloud);
+            Assert.Equal(TranscriptEngine.Elevenlabs, RecordingTranscriptCache.Read(key, cache.FullName)?.Engine.Id);
+            Assert.Null(HarnessRecording.CachedTranscript(key, cache.FullName));
+            var directory = Path.Combine(cache.FullName, key, "transcripts");
+            var legacy = Path.Combine(directory, "confirmed-win-v1.json");
+            var legacyBytes = JsonSerializer.Serialize(cloud);
+            File.WriteAllText(legacy, legacyBytes);
+            File.Delete(Path.Combine(directory, "confirmed-cloud-v1.json"));
+            Assert.Equal(TranscriptEngine.Elevenlabs, RecordingTranscriptCache.Read(key, cache.FullName)?.Engine.Id);
+            HarnessRecording.CacheTranscript(key, cache.FullName, local);
+            RecordingTranscriptCache.Write(key, cache.FullName, cloud);
+            Assert.Equal(TranscriptEngine.Whispercpp, HarnessRecording.CachedTranscript(key, cache.FullName)?.Engine.Id);
+            Assert.Equal(TranscriptEngine.Whispercpp, RecordingTranscriptCache.Read(key, cache.FullName)?.Engine.Id);
+            Assert.Equal(legacyBytes, File.ReadAllText(legacy));
+            File.WriteAllText(Path.Combine(directory, "confirmed-local-v1.json"), "{}");
+            Assert.Null(HarnessRecording.CachedTranscript(key, cache.FullName));
+            Assert.Equal(TranscriptEngine.Elevenlabs, RecordingTranscriptCache.Read(key, cache.FullName)?.Engine.Id);
+        }
+        finally { cache.Delete(recursive: true); }
+    }
+
+    [Fact]
     public void ALocalCompanionAndStoryMapToTheSharedOperations()
     {
         using var input = FixtureLoader.ReadJson("fixtures/recordings/harness-cases.json");
