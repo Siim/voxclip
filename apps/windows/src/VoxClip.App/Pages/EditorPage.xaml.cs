@@ -269,7 +269,6 @@ public sealed partial class EditorPage : Page
     }
     private async Task LoadWaveformAsync(MediaInfo source, Project project, CancellationTokenSource request, Task previous)
     {
-        var loadingKey = project.Media.Source.ContentKey;
         try
         {
             await previous;
@@ -286,19 +285,23 @@ public sealed partial class EditorPage : Page
                 if (!disposed && !request.IsCancellationRequested && ReferenceEquals(waveformRequest, request)) Timeline.SetRecordingMedia(paths);
                 const double bucketSeconds = .05;
                 var samples = new float[checked((int)Math.Ceiling(clock.TotalSamples / (clock.SampleRate * bucketSeconds)))];
-                foreach (var region in clock.Regions)
+                // One recording that can't be probed or decoded is marked unreadable on its own; the others still load.
+                await RecordingLoads.EachAsync(clock.Regions, async region =>
                 {
-                    if (!paths.TryGetValue(region.Key, out var reference) || reference.Audio is null) { CutEdgeLevelsUnreadable(region.Key, request); continue; }
-                    loadingKey = region.Key;
+                    if (!paths.TryGetValue(region.Key, out var reference) || reference.Audio is null) { CutEdgeLevelsUnreadable(region.Key, request); return; }
                     var recording = reference.AbsolutePath == source.Path ? source : await new FfmpegMediaProbe().ProbeAsync(reference.AbsolutePath, request.Token);
                     var localLevels = await App.Services.Waveform.GetAsync(recording, region.Key, request.Token);
-                    await LoadCutEdgeLevelsAsync(recording, region.Key, request);
                     var offset = (int)Math.Round(region.OffsetSamples / (clock.SampleRate * bucketSeconds));
                     var localCount = (int)Math.Ceiling(region.DurationSamples / (clock.SampleRate * bucketSeconds));
                     var gain = (float)Math.Pow(10, region.GainDb / 20);
                     for (var index = 0; index < Math.Min(Math.Min(localCount, localLevels.Count), samples.Length - offset); index++)
                         samples[offset + index] = localLevels[index] * gain;
-                }
+                    await LoadCutEdgeLevelsAsync(recording, region.Key, request);
+                }, (region, exception) =>
+                {
+                    UiError.WriteFailure(exception, "Waveform");
+                    CutEdgeLevelsUnreadable(region.Key, request);
+                }, request.Token);
                 levels = samples;
             }
             if (!disposed && !request.IsCancellationRequested && ReferenceEquals(waveformRequest, request)) Timeline.SetWaveform(levels);
@@ -307,7 +310,7 @@ public sealed partial class EditorPage : Page
         catch (Exception exception)
         {
             UiError.WriteFailure(exception, "Waveform");
-            CutEdgeLevelsUnreadable(loadingKey, request);
+            CutEdgeLevelsUnreadable(project.Media.Source.ContentKey, request);
         }
         finally
         {

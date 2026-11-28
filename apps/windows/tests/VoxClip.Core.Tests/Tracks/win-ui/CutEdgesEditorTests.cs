@@ -488,5 +488,39 @@ public sealed class CutEdgesEditorTests
         // View models never reach the WinUI App: the page hands the levels and the Voice Lab folder in.
         Assert.DoesNotContain("App.Services", File.ReadAllText(Path.Combine(AppRoot, "ViewModels", "EditorViewModel.CutEdges.cs")), StringComparison.Ordinal);
     }
+
+    /// <summary>A recording whose video can't be probed or decoded is marked unreadable on its own; the others still load their
+    /// waveform and levels, so their cut edges never wait on it. Only cancelling the load stops it.</summary>
+    [Fact]
+    public async Task OneUnreadableRecordingLeavesTheOthersLoading()
+    {
+        var loaded = new List<string>();
+        var unreadable = new List<string>();
+        await RecordingLoads.EachAsync(["r1", "r2", "r3", "r4"], async key =>
+        {
+            await Task.Yield();
+            if (key == "r2") throw new InvalidDataException("The probe could not read this video.");
+            if (key == "r3") throw new OperationCanceledException("A decode timed out.");
+            loaded.Add(key);
+        }, (key, _) => unreadable.Add(key), TestContext.Current.CancellationToken);
+        Assert.Equal(["r1", "r4"], loaded);
+        Assert.Equal(["r2", "r3"], unreadable);
+        using var cancel = new CancellationTokenSource();
+        var started = new List<string>();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => RecordingLoads.EachAsync(["r1", "r2"], key =>
+        {
+            started.Add(key);
+            cancel.Cancel();
+            cancel.Token.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }, (key, _) => unreadable.Add(key), cancel.Token));
+        Assert.Equal(["r1"], started);
+        Assert.Equal(["r2", "r3"], unreadable);
+        // The page loads every recording through it.
+        var page = File.ReadAllText(Path.Combine(AppRoot, "Pages", "EditorPage.xaml.cs"));
+        var load = page[page.IndexOf("private async Task LoadWaveformAsync(", StringComparison.Ordinal)..page.IndexOf("private static MediaInfo MediaFromProject(", StringComparison.Ordinal)];
+        Assert.Contains("await RecordingLoads.EachAsync(clock.Regions,", load, StringComparison.Ordinal);
+        Assert.DoesNotContain("foreach (var region in clock.Regions)", load, StringComparison.Ordinal);
+    }
 }
 #endif
