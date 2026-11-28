@@ -19,13 +19,20 @@ internal sealed class RightColumn : Grid
     private readonly Button rewriteTab;
     private readonly Button voiceTab;
     private readonly Button captionsTab;
+    private readonly Button pictureTab;
+    private PicturePanel? picture;
     private readonly DirectorPanel director = new();
     internal event EventHandler? SourcePlaybackRequested;
     internal static void RequestSourcePlayback(EditorViewModel editor)
     {
         if (hosts.TryGetValue(editor, out var host)) host.SourcePlaybackRequested?.Invoke(host, EventArgs.Empty);
     }
-    internal Control FocusTarget => job?.FocusTarget ?? (ReferenceEquals(surface.Child, director) ? director.FocusTarget : null) ?? captions.FocusTarget;
+    internal Control FocusTarget => job?.FocusTarget ?? (ReferenceEquals(surface.Child, director) ? director.FocusTarget : null)
+        ?? (picture is not null && ReferenceEquals(surface.Child, picture) ? picture.FocusTarget : null) ?? captions.FocusTarget;
+    /// <summary>The Picture tab's panel, made on first use; the page gives it the preview's stills.</summary>
+    internal PicturePanel Picture => picture ??= new(captions.Editor);
+    /// <summary>The Picture tab is the column's surface.</summary>
+    internal bool ShowsPicture => picture is not null && ReferenceEquals(surface.Child, picture);
     internal RightColumn(CaptionsPanel captions)
     {
         this.captions = captions;
@@ -44,7 +51,10 @@ internal sealed class RightColumn : Grid
         rewriteTab = Ui.Button("Rewrite", () => { if (rewrite is not null && CloseJob()) ShowDirector(); });
         voiceTab = Ui.Button("Voice", ShowVoice);
         Compact(rewriteTab, "Rewrite", "\uE70F"); Compact(voiceTab, "Voice", "\uE720");
-        tabs.Children.Add(rewriteTab); tabs.Children.Add(voiceTab); Grid.SetColumn(tabs, 2); header.Children.Add(tabs);
+        // Picture (looks spec §3.7), the fourth tab: the clip's looks, Amount and Fine-tune, shown only for a source with a picture.
+        pictureTab = Ui.Button("Picture", () => ShowPicture());
+        Compact(pictureTab, "Picture", "\uE790");
+        tabs.Children.Add(rewriteTab); tabs.Children.Add(voiceTab); tabs.Children.Add(pictureTab); Grid.SetColumn(tabs, 2); header.Children.Add(tabs);
         Children.Add(header);
         surface.Child = captions;
         Grid.SetRow(surface, 1); Grid.SetRow(fade, 1);
@@ -112,8 +122,17 @@ internal sealed class RightColumn : Grid
         if ((!App.Services.VoiceLabEnabled && !captions.Editor.IsStoryClip) || !CloseJob()) return;
         director.Show(new DirectorVoiceSteps(captions.Editor)); surface.Child = director; heading.Text = "Voice"; RefreshHeader();
     }
+    /// <summary>Shows the Picture tab (its tab button, the palette's "Open Picture", Make it's "All looks in Picture ›"); false when the
+    /// source has no picture or the job open in the column stays.</summary>
+    internal bool ShowPicture()
+    {
+        if (!captions.Editor.Picture.IsAvailable || !CloseJob()) return false;
+        surface.Child = Picture; heading.Text = "Picture"; RefreshHeader();
+        return true;
+    }
     private void EditorChanged(object? sender, EventArgs args)
     {
+        if (ShowsPicture && !captions.Editor.Picture.IsAvailable) ShowCaptions();
         if (heading.Text == "Voice")
         {
             if (!App.Services.VoiceLabEnabled && !captions.Editor.IsStoryClip) ShowCaptions();
@@ -125,6 +144,7 @@ internal sealed class RightColumn : Grid
     {
         rewriteTab.IsEnabled = rewrite?.IsSessionOpen == true;
         voiceTab.Visibility = App.Services.VoiceLabEnabled || captions.Editor.IsStoryClip ? Visibility.Visible : Visibility.Collapsed;
+        pictureTab.Visibility = captions.Editor.Picture.IsAvailable ? Visibility.Visible : Visibility.Collapsed;
         context.Text = captions.Editor.Project.Edits.ActiveClipId is { } id
             ? "Clip " + captions.Editor.Clips.FirstOrDefault(clip => clip.Id == id)?.Number : "Full Take";
     }

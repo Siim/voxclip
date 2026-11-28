@@ -374,6 +374,14 @@ public sealed class PicturePanelModel(EditorViewModel editor)
             .Where(look => !look.Hidden || look.Id == current).Take(8).ToArray();
     }
 
+    /// <summary>A tile's square of a <paramref name="width"/> × <paramref name="height"/> still before the grade: the largest square in the
+    /// middle of the frame (looks spec §7.3; Windows doesn't map the face anchor into the output frame yet).</summary>
+    public static RectD TileSquare(int width, int height)
+    {
+        var side = Math.Min(width, height);
+        return new((width - side) / 2, (height - side) / 2, side, side);
+    }
+
     /// <summary>The colour a tile and its hover preview show: the look at 100% with the clip's Fix (looks spec §7.4).</summary>
     public ProjectClipControls? TileColour(ClipLookPreset look) => Controls?.WithLook(look);
 

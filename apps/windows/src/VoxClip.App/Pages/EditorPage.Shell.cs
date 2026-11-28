@@ -217,6 +217,10 @@ public sealed partial class EditorPage
             Command("view.timeline", timelineVisible ? "Hide timeline" : "Show timeline", "Ctrl+J", () => true, ToggleShellTimeline),
             Command("view.viewer", Viewer.IsChecked == true ? "Hide viewer" : "Show viewer", "Ctrl+Shift+I", () => true, () => SetViewerVisible(Viewer.IsChecked != true)),
             Command("view.find", "Find transcript words", "Ctrl+F", () => ViewModel.HasTranscript, () => FindClicked(this, new())),
+            // Picture (looks spec §3.9): the tab, and Compare as a toggle (the backslash key holds it).
+            Command("picture.open", "Open Picture", "", () => ViewModel.Picture.IsAvailable, () => ShowPicture(), "This recording has no picture to color."),
+            Command("picture.compare", ViewModel.Picture.Comparing ? "Stop Comparing with As Filmed" : "Compare with As Filmed", "\\",
+                () => ViewModel.Picture.Comparing || ViewModel.Picture.CompareReason is null, TogglePictureCompare, ViewModel.Picture.CompareReason),
             Command("tab.pin", "Keep preview tab open", "", () => Tabs.Model.ActiveClipId is not null && Tabs.Model.Items.Any(tab => !tab.Pinned), Tabs.PinActive),
             Command("project.saveAs", "Save project as…", "", () => !demo && !ViewModel.IsLeaving && !ViewModel.Busy, () => SaveAsClicked(this, new())),
             Command("project.reveal", "Show project file", "", () => owner.ProjectPath is not null, () => ShowProjectClicked(this, new())),

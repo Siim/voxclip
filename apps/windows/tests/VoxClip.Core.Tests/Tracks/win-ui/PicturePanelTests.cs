@@ -413,5 +413,28 @@ public sealed class PicturePanelTests
         Assert.Empty(editor.Picture.TimedLooks);
         Assert.Equal("Remove timed look", editor.UndoActionName);
     }
+
+    [Fact]
+    public void TheWindowsAppWiresThePictureTabCommandsAndMakeItsChip()
+    {
+        static string App(string path) => File.ReadAllText(Path.Combine(Path.GetDirectoryName(SharedResources.ResolveRoot())!, "apps", "windows", "src", "VoxClip.App", path));
+        var column = App("Controls/RightColumn.cs");
+        Assert.Contains("Compact(pictureTab, \"Picture\", \"\\uE790\")", column);
+        Assert.Contains("PictureTab = true", App("Pages/EditorPage.MakeIt.cs"));
+        var page = App("Pages/EditorPage.Picture.cs");
+        Assert.Contains("MakeItShowPictureRequested", page);
+        Assert.Contains("StillBeforeGradeAsync", page);
+        Assert.Contains("StillAsync(shown.Colour", page);
+        Assert.Contains("KeyUp=\"EditorKeyUp\"", App("Pages/EditorPage.xaml"));
+        var shell = App("Pages/EditorPage.Shell.cs");
+        Assert.Contains("\"picture.open\"", shell);
+        Assert.Contains("\"picture.compare\"", shell);
+        var panel = App("Controls/PicturePanel.cs");
+        foreach (var needle in new[] { "ItemsWrapGrid", "HyperlinkButton", "AutomationProperties.SetHelpText", "SetHeadingLevel", "SystemColorHighlightColor", "RaiseNotificationEvent" })
+            Assert.True(panel.Contains(needle, StringComparison.Ordinal) || App("Controls/Ui.cs").Contains(needle, StringComparison.Ordinal), needle);
+        Assert.DoesNotContain("Flyout", panel);
+        Assert.DoesNotContain("ContentDialog", panel);
+        Assert.DoesNotContain("App.Services", App("ViewModels/PicturePanelModel.cs"));
+    }
 }
 #endif

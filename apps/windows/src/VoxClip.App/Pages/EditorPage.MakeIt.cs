@@ -41,7 +41,7 @@ public sealed partial class EditorPage
         var faces = App.Services.FrameFaces;
         ViewModel.MakeIt.Services = new MakeItServices(MakeItPlanAsync, MakeItVoiceAsync, MakeItVoiceAvailable, MakeItExportAsync, ShareHelpers.Copy)
         {
-            SharedRoot = root, Prices = prices, Tones = tones, Assets = PlanAssets(root), Looks = App.Services.Looks,
+            SharedRoot = root, Prices = prices, Tones = tones, Assets = PlanAssets(root), Looks = App.Services.Looks, PictureTab = true,
             SavedTones = MyRewriteTones.Decode(App.Services.Settings.Values.TryGetValue(RewriteToneCatalog.SettingsKey, out var saved) ? saved : null),
             FramePass = faces is null ? null : project => MakeItFramePass(faces, project)
         };
