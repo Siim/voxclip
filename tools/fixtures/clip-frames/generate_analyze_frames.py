@@ -138,7 +138,7 @@ def scan(start, faces_by_time):
 
 
 def analysis(content_key, sentences, opening, timings):
-    return {'contentKey': content_key, 'sentences': sentences, 'opening': opening, 'timings': timings, 'version': 2}
+    return {'contentKey': content_key, 'sentences': sentences, 'opening': opening, 'timings': timings, 'version': 3}
 
 
 def timings(sentence, opening, cached, analyzed):
