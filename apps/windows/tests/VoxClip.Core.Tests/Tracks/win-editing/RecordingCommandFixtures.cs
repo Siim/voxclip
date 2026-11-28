@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.ContextDemo;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Tests.Support;
 using Xunit;
 
@@ -153,6 +154,29 @@ public sealed class RecordingCommandFixtures
         AssertRanges(vectors["swapped"]!, Assert.Single(swapped.Project.Edits.Clips));
         var restored = Apply(new RecordingEdit.UseLineVersion(clip.Id, beat.Id, keyB), swapped.Project, "Use version");
         Assert.Equal(clip.PlayParts.ToArray(), Assert.Single(restored.Project.Edits.Clips).PlayParts.ToArray());
+    }
+
+    [Fact]
+    public void AVersionRoundTripRestoresAnUnmatchedClauseAfterReopening()
+    {
+        var (vectors, project) = Load();
+        var row = vectors["unmatchedRoundTrip"]!;
+        TimedWord[] Words(string key) => row[key]!.AsArray().Select((word, index) => new TimedWord($"w{index + 1}",
+            word!.GetValue<string>(), WordKind.Word, index / 5d, index / 5d + 0.1, null, null, null, null, TimingSource.Native)).ToArray();
+        var source = Assert.Single(project.Media.SpokenSources!);
+        var clip = new ClipRange("round-trip", "w1", "w7", null, ClipOrigin.Manual, null, null, true);
+        project = project with
+        {
+            Transcript = project.Transcript! with { Words = Words("original") },
+            Media = project.Media with { SpokenSources = [source with { Transcript = source.Transcript with { Words = Words("alternate") } }] },
+            Edits = project.Edits with { Clips = [clip] },
+        };
+        var beat = TakeMatch.Build(ProjectClock.Build(project)).Beats[0];
+        var swapped = Apply(new RecordingEdit.UseLineVersion(clip.Id, beat.Id, Text(vectors, "recordingA")), project, "Use version");
+        AssertRanges(row["swapped"]!, Assert.Single(swapped.Project.Edits.Clips));
+        var reopened = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(swapped.Project));
+        var restored = Apply(new RecordingEdit.UseLineVersion(clip.Id, beat.Id, Text(vectors, "recordingB")), reopened, "Use version");
+        AssertRanges(row["restored"]!, Assert.Single(restored.Project.Edits.Clips));
     }
 
     private static (JsonNode Vectors, Project Project) Load()

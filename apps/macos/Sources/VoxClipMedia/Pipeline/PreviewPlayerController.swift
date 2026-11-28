@@ -38,6 +38,8 @@ final class LeasedPlayerItem: AVPlayerItem {
     public convenience init() { self.init(builder: CompositionBuilder()) }
     init(builder: CompositionBuilder) {
         self.builder = builder
+        // Tests play real previews; they must never sound through the speakers.
+        player.isMuted = TestProcess.isRunning
         // A failure must not be pushed out by the clock's ticks before the editor reads it.
         let stream = AsyncStream<PreviewEvent>.makeStream(bufferingPolicy: .bufferingNewest(8))
         events = stream.stream; continuation = stream.continuation

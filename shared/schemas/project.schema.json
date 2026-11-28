@@ -580,6 +580,11 @@
               "properties": {
                 "clips": {
                   "items": {
+                    "not": {
+                      "required": [
+                        "displacedVersions"
+                      ]
+                    },
                     "properties": {
                       "parts": {
                         "items": {
@@ -655,6 +660,11 @@
               "properties": {
                 "clips": {
                   "items": {
+                    "not": {
+                      "required": [
+                        "displacedVersions"
+                      ]
+                    },
                     "properties": {
                       "parts": {
                         "items": {
@@ -1517,6 +1527,13 @@
             "story",
             "showreel"
           ]
+        },
+        "displacedVersions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/clipWordRange"
+          },
+          "description": "Exact ranges displaced by a line version change, for restoring that version."
         }
       },
       "dependentRequired": {

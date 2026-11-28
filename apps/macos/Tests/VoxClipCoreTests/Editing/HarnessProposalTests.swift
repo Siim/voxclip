@@ -4,6 +4,36 @@ import Testing
 
 @Suite("Project harness proposals", .offlineFixtures)
 struct HarnessProposalTests {
+    @Test func confirmedLocalAndCloudTranscriptsStaySeparate() throws {
+        let project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/recordings/two-recordings.voxclip"))
+        let key = project.media.source.contentKey
+        let cloud = try #require(project.transcript)
+        var local = cloud
+        local.engine.id = .whispercpp
+        let cache = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: cache) }
+        RecordingTranscriptCache.write(cloud, key: key, cache: cache)
+        #expect(RecordingTranscriptCache.read(key, cache: cache) == cloud)
+        #expect(HarnessRecording.cachedTranscript(key, cache: cache) == nil)
+        var recent = project
+        recent.transcript = local
+        let recentURL = cache.appendingPathComponent("recent.voxclip")
+        try JSONProjectStore.encode(recent).write(to: recentURL)
+        #expect(HarnessRecording.cachedTranscript(key, cache: cache, recent: [recentURL]) == local)
+        let directory = cache.appendingPathComponent("\(key)/transcripts")
+        let legacy = directory.appendingPathComponent("confirmed-v1.json")
+        let legacyBytes = try JSONEncoder().encode(cloud)
+        try legacyBytes.write(to: legacy)
+        RecordingTranscriptCache.write(local, key: key, cache: cache)
+        RecordingTranscriptCache.write(cloud, key: key, cache: cache)
+        #expect(HarnessRecording.cachedTranscript(key, cache: cache) == local)
+        #expect(RecordingTranscriptCache.read(key, cache: cache) == local)
+        #expect(try Data(contentsOf: legacy) == legacyBytes)
+        try Data("invalid".utf8).write(to: directory.appendingPathComponent("confirmed-local-v1.json"))
+        #expect(HarnessRecording.cachedTranscript(key, cache: cache) == nil)
+        #expect(RecordingTranscriptCache.read(key, cache: cache) == cloud)
+    }
+
     @Test func aLocalCompanionAndStoryMapToTheSharedOperations() throws {
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())
         struct Vector: Decodable {

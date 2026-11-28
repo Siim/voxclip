@@ -436,6 +436,7 @@ attribute VoxClip.Core.Domain.Editing.ClipOrigin :: field public Manual @ System
 attribute VoxClip.Core.Domain.Editing.ClipOrigin @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Editing.ClipOrigin], System.Text.Json")
 attribute VoxClip.Core.Domain.Editing.ClipPart :: property Reframe @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Editing.ClipPart :: property TakeReason @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Editing.ClipRange :: property DisplacedVersions @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Editing.ClipRange :: property Kind @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Editing.ClipRange :: property LeadInSeconds @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Editing.ClipRange :: property Parts @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
@@ -791,6 +792,7 @@ literal "/chunks"
 literal "/clipControls"
 literal "/clips"
 literal "/cost"
+literal "/displacedVersions"
 literal "/edgeGain"
 literal "/engine"
 literal "/footage"
@@ -6342,6 +6344,7 @@ member VoxClip.Core.Domain.Editing.ClipRange :: method public PlayPartIndices(Sy
 member VoxClip.Core.Domain.Editing.ClipRange :: method public ToString()
 member VoxClip.Core.Domain.Editing.ClipRange :: method public get_AiClipIndex()
 member VoxClip.Core.Domain.Editing.ClipRange :: method public get_AiResultId()
+member VoxClip.Core.Domain.Editing.ClipRange :: method public get_DisplacedVersions()
 member VoxClip.Core.Domain.Editing.ClipRange :: method public get_EndWordId()
 member VoxClip.Core.Domain.Editing.ClipRange :: method public get_Id()
 member VoxClip.Core.Domain.Editing.ClipRange :: method public get_Kind()
@@ -6356,6 +6359,7 @@ member VoxClip.Core.Domain.Editing.ClipRange :: method public op_Equality(VoxCli
 member VoxClip.Core.Domain.Editing.ClipRange :: method public op_Inequality(VoxClip.Core.Domain.Editing.ClipRange,VoxClip.Core.Domain.Editing.ClipRange)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public set_AiClipIndex(System.Nullable`1<int>)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public set_AiResultId(string)
+member VoxClip.Core.Domain.Editing.ClipRange :: method public set_DisplacedVersions(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.ClipWordRange>)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public set_EndWordId(string)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public set_Id(string)
 member VoxClip.Core.Domain.Editing.ClipRange :: method public set_Kind(System.Nullable`1<VoxClip.Core.Domain.Editing.StoryClipKind>)
@@ -7455,6 +7459,7 @@ member VoxClip.Core.Domain.Editing.RecordingEdits+ShortcutParts :: method public
 member VoxClip.Core.Domain.Editing.RecordingEdits+ShortcutParts :: method public Replace(int,int,int,VoxClip.Core.Domain.Editing.ClipPart,bool)
 member VoxClip.Core.Domain.Editing.RecordingEdits+ShortcutParts :: method public get_Clip()
 member VoxClip.Core.Domain.Editing.RecordingEdits+ShortcutParts :: method public get_Clock()
+member VoxClip.Core.Domain.Editing.RecordingEdits+ShortcutParts :: method public get_DisplacedVersions()
 member VoxClip.Core.Domain.Editing.RecordingEdits+ShortcutParts :: method public get_Joins()
 member VoxClip.Core.Domain.Editing.RecordingEdits+ShortcutParts :: method public get_Made()
 member VoxClip.Core.Domain.Editing.RecordingEdits+ShortcutParts :: method public get_Parts()
@@ -8829,6 +8834,7 @@ member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public Phra
 member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public PhrasesSkipped
 member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public PictureSource
 member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public RecordingLevel
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public RecordingSeam
 member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public Silent
 member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public TitleBand
 member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public TrackEnd
@@ -8922,11 +8928,9 @@ member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public GetHa
 member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public ToString()
 member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public get_Item(VoxClip.Core.Domain.ExportChecks.ExportCheckKind)
 member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public get_Passed()
-member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public get_RecordingSeams()
 member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public get_Results()
 member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public op_Equality(VoxClip.Core.Domain.ExportChecks.ExportCheckReport,VoxClip.Core.Domain.ExportChecks.ExportCheckReport)
 member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public op_Inequality(VoxClip.Core.Domain.ExportChecks.ExportCheckReport,VoxClip.Core.Domain.ExportChecks.ExportCheckReport)
-member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public set_RecordingSeams(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckRecordingSeam>)
 member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public set_Results(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckResult>)
 member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method internal Skipped(VoxClip.Core.Domain.ExportChecks.ExportCheckKind,string)
 member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method private .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckResult)
@@ -20071,7 +20075,6 @@ member VoxClip.Core.Services.Project.HarnessProposal :: method public ValidateRe
 member VoxClip.Core.Services.Project.HarnessProposal :: method public get_Timeline()
 member VoxClip.Core.Services.Project.HarnessProposal :: method public get_Timelines()
 member VoxClip.Core.Services.Project.HarnessRecording :: method internal ValidKey(string)
-member VoxClip.Core.Services.Project.HarnessRecording :: method private CacheFile(string,string)
 member VoxClip.Core.Services.Project.HarnessRecording :: method public Add(string,VoxClip.Core.Domain.Transcript.Transcript,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Services.Project.HarnessRecording :: method public CacheTranscript(string,string,VoxClip.Core.Domain.Transcript.Transcript)
 member VoxClip.Core.Services.Project.HarnessRecording :: method public CachedTranscript(string,string)
@@ -20197,6 +20200,12 @@ member VoxClip.Core.Services.Project.ProjectValidation :: method private Transcr
 member VoxClip.Core.Services.Project.ProjectValidation :: method private UniqueIds(System.Collections.Generic.IEnumerable`1<string>)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private UniqueStrings(System.Text.Json.JsonElement,string,string)
 member VoxClip.Core.Services.Project.ProjectValidation :: method private WordText(System.Text.Json.JsonElement,bool)
+member VoxClip.Core.Services.Project.RecordingTranscriptCache :: field private Cloud
+member VoxClip.Core.Services.Project.RecordingTranscriptCache :: field private LegacyWindowsReader
+member VoxClip.Core.Services.Project.RecordingTranscriptCache :: field private Local
+member VoxClip.Core.Services.Project.RecordingTranscriptCache :: method private .cctor()
+member VoxClip.Core.Services.Project.RecordingTranscriptCache :: method public Read(string,string,bool)
+member VoxClip.Core.Services.Project.RecordingTranscriptCache :: method public Write(string,string,VoxClip.Core.Domain.Transcript.Transcript)
 member VoxClip.Core.Services.Project.RuntimeAgreementFiles :: method public .ctor()
 member VoxClip.Core.Services.Project.RuntimeAgreementFiles :: method public Delete(string)
 member VoxClip.Core.Services.Project.RuntimeAgreementFiles :: method public Read(string)
@@ -22808,6 +22817,7 @@ type VoxClip.Core.Services.Project.ProjectOpenResult
 type VoxClip.Core.Services.Project.ProjectRelinkResult
 type VoxClip.Core.Services.Project.ProjectStore
 type VoxClip.Core.Services.Project.ProjectValidation
+type VoxClip.Core.Services.Project.RecordingTranscriptCache
 type VoxClip.Core.Services.Project.RuntimeAgreementFiles
 type VoxClip.Core.Services.Project.SharedResources
 type VoxClip.Core.Services.Project.TestProcess

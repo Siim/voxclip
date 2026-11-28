@@ -221,19 +221,38 @@ internal sealed class HarnessProject
 
     private async Task<HarnessResult> FramesAsync(Project project, JsonElement arguments, CancellationToken ct)
     {
-        var source = project.Media.Source;
         if (!arguments.TryGetProperty("times", out var requested) || requested.ValueKind != JsonValueKind.Array ||
-            requested.GetArrayLength() is < 1 or > 4 || requested.EnumerateArray().Any(time => time.ValueKind != JsonValueKind.Number ||
-                !(time.GetDouble() >= 0 && time.GetDouble() < source.DurationSeconds)))
-            throw new HarnessException("Give one to four source times inside the video.");
-        var mediaPath = await ResolveSourceAsync(source, ct).ConfigureAwait(false);
-        using var reader = FfmpegFrameDecoder.OpenLocalQuickTime(mediaPath, 480, ct);
-        var frames = requested.EnumerateArray().Select(item =>
+            requested.GetArrayLength() is < 1 or > 4)
+            throw new HarnessException("Give one to four project times inside a recording.");
+        var clock = ProjectClock.Build(project);
+        var rate = (double)clock.SampleRate;
+        var targets = requested.EnumerateArray().Select(item =>
         {
+            if (item.ValueKind != JsonValueKind.Number) throw new HarnessException("Give one to four project times inside a recording.");
             var time = item.GetDouble();
-            var frame = reader.Read(time, ct);
-            return new HarnessFrame(time, frame.Time, Convert.ToBase64String(FrameJpeg.Encode(frame.Pixels, 480, 72)));
+            var region = clock.Regions.FirstOrDefault(region => region.OffsetSamples / rate <= time && time < region.EndSample / rate)
+                ?? throw new HarnessException("Give one to four project times inside a recording.");
+            return (Time: time, region.Key, Offset: region.OffsetSamples / rate);
         }).ToArray();
+        var readers = new Dictionary<string, IFrameReader>(StringComparer.Ordinal);
+        var frames = new List<HarnessFrame>(targets.Length);
+        try
+        {
+            foreach (var (time, key, offset) in targets)
+            {
+                if (!readers.TryGetValue(key, out var reader))
+                {
+                    var source = project.Media.Source.ContentKey == key ? project.Media.Source :
+                        project.Media.AdditionalSources?.FirstOrDefault(source => source.ContentKey == key);
+                    if (source is null) throw new HarnessException("The project's source video is missing. Relink it in VoxClip.");
+                    var mediaPath = await ResolveSourceAsync(source, ct).ConfigureAwait(false);
+                    readers.Add(key, reader = FfmpegFrameDecoder.OpenLocalQuickTime(mediaPath, 480, ct));
+                }
+                var frame = reader.Read(time - offset, ct);
+                frames.Add(new(time, offset + frame.Time, Convert.ToBase64String(FrameJpeg.Encode(frame.Pixels, 480, 72))));
+            }
+        }
+        finally { foreach (var reader in readers.Values) reader.Dispose(); }
         return new(new { frames = frames.Select(frame => new { frame.Requested, frame.Actual }).ToArray() }, frames);
     }
 

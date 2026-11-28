@@ -1164,7 +1164,7 @@ Rewrite's hooks now live in design.md §6.3: the scope bar, its AI picker, the R
 
 The command syntax, output object and exit codes follow architecture §9. This spec adds options to the architecture's `find-clips` and one new command:
 
-- `voxclip-cli find-clips --open <project> --preset best|hooks|topics|quotes|custom [--instruction <text>] --connector <id> [--model <id>] [--no-snap] [--dry-run] --json` runs §11 and prints the suggestions. It never modifies the project file. `--dry-run` prints the rendered `system`, `cachedBlock` and `instruction` for each window without sending anything; tests and prompt reviews use it.
+- `voxclip-cli find-clips --open <project> --preset best|hooks|topics|quotes|bestTakes|custom [--instruction <text>] --connector <id> [--model <id>] [--no-snap] [--dry-run] --json` runs §11 and prints the suggestions. It never modifies the project file. `bestTakes` requires two spoken recordings and passes their words and matched takes on the project clock. `--dry-run` prints the rendered `system`, `cachedBlock` and `instruction` for each window without sending anything; tests and prompt reviews use it.
 - `voxclip-cli llm-test --connector <id> [--model <id>] --json` runs §10.2 and exits 0 on pass. This command is new and must be added to architecture §9.2.
 - Keys come from environment variables only (§8.1). Exit codes follow §5.1.
 

@@ -6,6 +6,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 - Cutting one word out of fluent speech now ends the cut in the quiet between words, so you no longer hear part of the cut word or lose the start of the next one; word times, captions and paid voice stay as they are.
 - Projects on Mac and Windows can now save agent turns with their own undo history, separate from your manual edits.
+- The CLI can export and check a clip from another recording even if the unused original is missing.
+- CLI exports on Mac and Windows protect every spoken recording in a project, even those outside the selected clip.
 - On Windows, seek and preview cuts across recordings, recover left-out lines in order, and turn off automatic recording level matching.
 - On Mac, make one clip from the best lines across card recordings, or combine them in a project without AI; the Outline’s ✦ chip runs Best versions.
 - On Windows, start a clip from one recording, audition and swap individual line versions, and insert lines only another recording says.

@@ -410,6 +410,25 @@ class HarnessContract(unittest.TestCase):
         self.assertEqual(cli.returncode, 0, cli.stderr)
         self.assertEqual([frame["actual"] for frame in json.loads(cli.stdout)["frames"]], [0, 0.5])
 
+    def test_frames_resolve_the_recording_on_the_project_clock(self):
+        project = json.loads((ROOT / "shared/fixtures/recordings/two-recordings.voxclip").read_text())
+        sources = [project["media"]["source"], project["media"]["additionalSources"][0]]
+        for source, name in zip(sources, ("recording-0007.mp4", "recording-0010.mp4")):
+            fixture = ROOT / "shared/fixtures/media" / name
+            content = fixture.read_bytes()
+            key = hashlib.sha256(f"voxclip-source-v1\n{len(content)}\n".encode() + content).hexdigest()
+            source.update(absolutePath=str(fixture), relativePath=None, sizeBytes=len(content), contentKey=key)
+        project["media"]["spokenSources"][0]["sourceKey"] = sources[1]["contentKey"]
+        self.project.write_text(json.dumps(project))
+        offset = project["media"]["spokenSources"][0]["offsetSeconds"]
+        result, gap = self.replay(self.call("read_frames", times=[offset, 0, offset]),
+                                  self.call("read_frames", times=[offset - 0.5]))
+        self.assertNotIn("isError", result)
+        self.assertEqual([frame["actual"] for frame in result["structuredContent"]["frames"]], [offset, 0, offset])
+        first, second, repeated = [item["data"] for item in result["content"][1:]]
+        self.assertTrue(first == repeated and first != second, "Expected distinct thumbnails for distinct recordings")
+        self.assertTrue(gap["isError"])
+
     def test_live_stdio_pins_the_project_before_reading_requests(self):
         with subprocess.Popen(self.command("mcp"), env=self.environment, stdin=subprocess.PIPE,
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process, selectors.DefaultSelector() as ready:

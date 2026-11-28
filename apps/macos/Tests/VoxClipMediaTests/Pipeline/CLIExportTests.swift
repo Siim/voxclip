@@ -340,6 +340,23 @@ private func cliProject(source: URL, transcript: Transcript?, edits: ProjectEdit
 }
 
 extension HeavyMediaTests {
+@Test func cliProtectsAnUnusedSpokenRecordingFromExport() async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    var project = try await Self.recordingStoryProject()
+    let original = URL(fileURLWithPath: project.media.additionalSources[0].absolutePath)
+    let companion = directory.appendingPathComponent("companion.mp4")
+    try FileManager.default.copyItem(at: original, to: companion)
+    project.media.additionalSources[0].absolutePath = companion.path
+    project.edits.clips.append(.init(id: "primary-only", startWordId: "w1", endWordId: "w1"))
+    let input = directory.appendingPathComponent("story.voxclip")
+    try await JSONProjectStore().save(project, to: input)
+    let result = try runCLI(["export", "--open", input.path, "--clip", "primary-only", "--style", "off", "--export", companion.path, "--json"], directory: directory)
+    #expect(result.status != 0)
+    #expect((try result.json["error"] as? [String: Any])?["message"] as? String == "Output paths must not overwrite inputs or each other")
+    #expect(try JSONProjectStore.contentKey(for: companion) == project.media.additionalSources[0].contentKey)
+}
+
 @Test func cliExportsFivePartsAcrossRecordings() async throws {
     let directory = try cliDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -350,6 +367,42 @@ extension HeavyMediaTests {
     let result = try runCLI(["export", "--open", input.path, "--clip", "story", "--style", "off", "--export", output.path, "--json"], directory: directory, timeout: 100)
     try #require(result.status == 0, "CLI error: \(result.stderr.prefix(400)); watchdog: \(result.watchdogFired)")
     #expect(FileManager.default.fileExists(atPath: output.path))
+}
+
+@Test func cliCanExportWithoutTheUnusedPrimary() async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    var project = try await Self.recordingStoryProject()
+    project.media.source.absolutePath = directory.appendingPathComponent("missing.mp4").path
+    project.edits.clips.append(.init(id: "companion-only", startWordId: "r2.w1", endWordId: "r2.w2"))
+    let input = directory.appendingPathComponent("story.voxclip")
+    let output = directory.appendingPathComponent("companion.mp4")
+    try await JSONProjectStore().save(project, to: input)
+    let options = ["--style", "off", "--aspect", "source", "--loudness", "off", "--json", "--clip"]
+    let companion = try runCLI(["export", "--open", input.path, "--export", output.path] + options + ["companion-only"],
+                               directory: directory)
+    try #require(companion.status == 0)
+    let check = ["check", output.path, "--project", input.path] + options
+    let checked = try runCLI(check + ["companion-only"], directory: directory)
+    #expect(checked.status == 0 || checked.status == 8)
+    #expect(try checked.json["check"] != nil)
+    let mixed = try runCLI(check + ["story"], directory: directory)
+    #expect(mixed.status == 3)
+}
+
+@Test func cliWordRangeUsesTheProjectClock() async throws {
+    let directory = try cliDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let project = try await Self.recordingStoryProject()
+    let input = directory.appendingPathComponent("story.voxclip")
+    try await JSONProjectStore().save(project, to: input)
+    let options = ["export", "--open", input.path, "--style", "off", "--format", "fcpxml", "--export",
+                   directory.appendingPathComponent("story.fcpxml").path, "--json", "--range"]
+    let companion = try runCLI(options + ["3:4"], directory: directory)
+    #expect(companion.status == 0)
+    let mixed = try runCLI(options + ["2:3"], directory: directory)
+    #expect(mixed.status == 2)
+    #expect((try mixed.json["error"] as? [String: Any])?["message"] as? String == "A word range must come from one recording.")
 }
 
 static func recordingStoryProject() async throws -> Project {

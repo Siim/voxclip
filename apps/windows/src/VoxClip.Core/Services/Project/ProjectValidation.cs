@@ -144,7 +144,15 @@ internal static class ProjectValidation
             // leadInSeconds: schema v4 only, above 0 and at most the 0.6 s opening scan (ADR-R48 part 2).
             if (!supportsStories && clip.ValueKind == JsonValueKind.Object && (clip.TryGetProperty("kind", out _) || clip.TryGetProperty("parts", out _)))
                 throw Problem(path, "story clip needs schemaVersion 5");
-            Object(clip, "id startWordId endWordId title origin aiResultId aiClipIndex selected", supportsStories ? "leadInSeconds parts kind" : supportsContext ? "leadInSeconds" : "", path: path);
+            var optional = supportsStories ? "leadInSeconds parts kind" : supportsContext ? "leadInSeconds" : "";
+            if (supportsSpokenSources) optional += " displacedVersions";
+            Object(clip, "id startWordId endWordId title origin aiResultId aiClipIndex selected", optional, path: path);
+            if (clip.TryGetProperty("displacedVersions", out var displaced)) Array(displaced, path + "/displacedVersions", (range, rangePath) =>
+            {
+                Object(range, "startWordId endWordId", path: rangePath);
+                String(range.GetProperty("startWordId"), Id);
+                String(range.GetProperty("endWordId"), Id);
+            });
             if (clip.TryGetProperty("kind", out var kind) &&
                 (!clip.TryGetProperty("parts", out _) || kind.ValueKind != JsonValueKind.String || kind.GetString() is not ("story" or "showreel")))
                 throw Problem(path + "/kind", "invalid clip kind");

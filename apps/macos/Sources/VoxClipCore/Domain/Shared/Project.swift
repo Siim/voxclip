@@ -346,6 +346,7 @@ public struct ClipRange: Codable, Sendable, Equatable {
     public var leadInSeconds: Double?
     public var parts: [ClipPart]?
     public var kind: StoryClipKind?
+    public var displacedVersions: [ClipWordRange]?
 
     public var playParts: [ClipPart] {
         if let parts, !parts.isEmpty { return parts }
@@ -379,6 +380,7 @@ public struct ClipRange: Codable, Sendable, Equatable {
         case leadInSeconds
         case parts
         case kind
+        case displacedVersions
     }
 
     public init(from decoder: any Decoder) throws {
@@ -386,6 +388,7 @@ public struct ClipRange: Codable, Sendable, Equatable {
         self.leadInSeconds = try values.decodeIfPresent(Double.self, forKey: .leadInSeconds)
         self.parts = try values.decodeIfPresent([ClipPart].self, forKey: .parts)
         self.kind = try values.decodeIfPresent(StoryClipKind.self, forKey: .kind)
+        self.displacedVersions = try values.decodeIfPresent([ClipWordRange].self, forKey: .displacedVersions)
         self.id = try values.decode(String.self, forKey: .id)
         self.startWordId = try values.decode(String.self, forKey: .startWordId)
         self.endWordId = try values.decode(String.self, forKey: .endWordId)
@@ -409,6 +412,7 @@ public struct ClipRange: Codable, Sendable, Equatable {
         try values.encodeIfPresent(self.leadInSeconds, forKey: .leadInSeconds)
         try values.encodeIfPresent(self.parts, forKey: .parts)
         try values.encodeIfPresent(self.kind, forKey: .kind)
+        try values.encodeIfPresent(self.displacedVersions, forKey: .displacedVersions)
     }
 
 }
