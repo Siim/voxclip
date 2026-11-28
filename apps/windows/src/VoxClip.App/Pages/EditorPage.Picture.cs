@@ -19,7 +19,7 @@ public sealed partial class EditorPage
     private const VirtualKey Backslash = (VirtualKey)220;
     private CancellationTokenSource? picturePreviewWork;
     private bool resumeAfterCompare;
-    private PixelBuffer? testCard;
+    private PixelBuffer? samplePicture;
 
     private void InitializePicture()
     {
@@ -36,7 +36,7 @@ public sealed partial class EditorPage
         var panel = column.Picture;
         panel.BeforeGrade = ct => preview is { } engine ? engine.StillBeforeGradeAsync(ct) : Task.FromException<PixelBuffer>(new InvalidOperationException("No preview."));
         panel.HoldCompare = HoldCompareAsync;
-        panel.TestCard = TestCard;
+        panel.SamplePicture = SamplePicture;
     }
 
     /// <summary>Make it's "All looks in Picture ›" and the palette's Open Picture: the clip's Picture tab.</summary>
@@ -118,19 +118,19 @@ public sealed partial class EditorPage
     }
 
     /// <summary>shared/looks/test-card.png as the tiles' sample picture (looks spec §7.7); null when it can't be read.</summary>
-    private PixelBuffer? TestCard()
+    private PixelBuffer? SamplePicture()
     {
-        if (testCard is not null || App.Services.SharedRoot is not { } root) return testCard;
+        if (samplePicture is not null || App.Services.SharedRoot is not { } root) return samplePicture;
         try
         {
             using var bitmap = SKBitmap.Decode(Path.Combine(root, "looks", "test-card.png"));
             if (bitmap is null) return null;
             using var converted = bitmap.Copy(SKColorType.Bgra8888);
             if (converted is null) return null;
-            testCard = new(converted.Bytes, converted.Width, converted.Height, converted.RowBytes);
+            samplePicture = new(converted.Bytes, converted.Width, converted.Height, converted.RowBytes);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { UiError.WriteFailure(exception, "Look tiles"); }
-        return testCard;
+        return samplePicture;
     }
 
     /// <summary>The palette's Compare with As Filmed: on until chosen again.</summary>

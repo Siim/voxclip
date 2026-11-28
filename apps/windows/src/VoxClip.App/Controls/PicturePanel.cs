@@ -76,8 +76,8 @@ internal sealed class PicturePanel : Grid
     internal Func<CancellationToken, Task<PixelBuffer>>? BeforeGrade { get; set; }
     /// <summary>Compare held down (true) or released (false); the page pauses playback for a hold and resumes after it.</summary>
     internal Func<bool, Task>? HoldCompare { get; set; }
-    /// <summary>The square test card, for tiles before the still arrives or without the source.</summary>
-    internal Func<PixelBuffer?>? TestCard { get; set; }
+    /// <summary>The looks test card (shared/looks/test-card.png), for tiles when the paused frame can't be read or the source is offline.</summary>
+    internal Func<PixelBuffer?>? SamplePicture { get; set; }
 
     private PicturePanelModel Model => editor.Picture;
 
@@ -748,7 +748,7 @@ internal sealed class PicturePanel : Grid
         if (editor.IsReadOnly || BeforeGrade is null)
         {
             Model.SetStillState(editor.IsReadOnly ? PictureStillState.Offline : PictureStillState.Unreadable);
-            return TestCard?.Invoke();
+            return SamplePicture?.Invoke();
         }
         try
         {
@@ -760,7 +760,7 @@ internal sealed class PicturePanel : Grid
         catch (Exception exception) when (exception is InvalidOperationException or NotSupportedException or IOException or Core.Domain.Shared.VoxClipException)
         {
             Model.SetStillState(PictureStillState.Unreadable);
-            return TestCard?.Invoke();
+            return SamplePicture?.Invoke();
         }
     }
 
