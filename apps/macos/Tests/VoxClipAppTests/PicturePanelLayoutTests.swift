@@ -178,6 +178,54 @@ import Testing
         #expect(DebugRightColumn.texts(in: host)["picture.look.value"] == "Golden Hour")
         try await ReviewCaptures.capture(clip, name: "clip-section-compact", size: CGSize(width: 404, height: 520))
     }
+
+    /// `view` drawn on bg.surface in a dark window, read back in sRGB.
+    private func dark<V: View>(_ view: V, size: CGSize) throws -> NSBitmapImageRep {
+        let host = NSHostingView(rootView: view.frame(width: size.width, height: size.height).background(DesignValues.color("bg.surface")))
+        host.frame = CGRect(origin: .zero, size: size)
+        let window = NSWindow(contentRect: CGRect(x: -10_000, y: -10_000, width: size.width, height: size.height), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = host
+        defer { window.close() }
+        host.layoutSubtreeIfNeeded()
+        return try DebugTimeline.sRGBBitmap(of: host)
+    }
+
+    /// The panel's text actions read at 4.5:1 on the dark panel, and brighter than their disabled form; the look's tick is
+    /// drawn above the slider's filled track in the accent mark colour, not the fill's (the shipped dark Ink, #6D6F73, is
+    /// under 4.5:1 there and matches the filled track).
+    @Test func theLinksAndTheLooksTickReadOnTheDarkPanel() throws {
+        func brightest(_ bitmap: NSBitmapImageRep) -> NSColor {
+            var best = NSColor.black, luminance = -1.0
+            for y in 0..<bitmap.pixelsHigh { for x in 0..<bitmap.pixelsWide {
+                let pixel = DebugTimeline.pixel(bitmap, x: x, y: y)
+                guard pixel.count == 3 else { continue }
+                let value = 0.2126 * pixel[0] + 0.7152 * pixel[1] + 0.0722 * pixel[2]
+                if value > luminance { luminance = value; best = NSColor(srgbRed: pixel[0], green: pixel[1], blue: pixel[2], alpha: 1) }
+            } }
+            return best
+        }
+        let surface = NSColor(srgbRed: 0x1C / 255.0, green: 0x1D / 255.0, blue: 0x20 / 255.0, alpha: 1)
+        let link = Button("Back to Warm Print") {}.buttonStyle(ClipLookLinkStyle()).font(VCType.callout.font())
+        let enabled = brightest(try dark(link, size: CGSize(width: 140, height: 20)))
+        let disabled = brightest(try dark(link.disabled(true), size: CGSize(width: 140, height: 20)))
+        #expect(DesignValues.contrast(enabled, surface) >= 4.5, Comment(rawValue: "\(enabled)"))
+        #expect(DesignValues.contrast(enabled, surface) > DesignValues.contrast(disabled, surface) + 3, Comment(rawValue: "\(enabled) \(disabled)"))
+
+        let size = CGSize(width: 200, height: 24)
+        let track = ClipLookTrack(value: 80, range: -100...100, tick: 30, dragging: .constant(false), draft: .constant(nil),
+                                  preview: { _ in }, commit: { _ in }, reset: {})
+        let bitmap = try dark(track, size: size)
+        let scale = CGFloat(bitmap.pixelsWide) / size.width
+        // ClipLookTrack.tickMark: 6 pt in from each end, 130 of 200 along.
+        let x = 6 + (size.width - 12) * 130 / 200
+        let pixel = DebugTimeline.pixel(bitmap, x: Int(x * scale), y: Int(size.height / 2 * scale))
+        let expected = try DebugTimeline.swatch("accent.text")
+        #expect(pixel.count == 3 && zip(pixel, expected).allSatisfy { abs($0 - $1) < 4.0 / 255 },
+                Comment(rawValue: "the tick over the filled track: \(pixel) for \(expected)"))
+    }
 }
 #endif
 

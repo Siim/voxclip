@@ -241,7 +241,7 @@ import VoxClipCore
             }
         }
         .controlSize(.mini)
-        .background { if let tick { tickMark(tick) } }
+        .overlay { if let tick { tickMark(tick) } }
         .simultaneousGesture(TapGesture(count: 2).onEnded { reset() })
         .onKeyPress(keys: [.leftArrow, .rightArrow, .delete, .deleteForward]) { press in
             switch press.key {
@@ -260,7 +260,8 @@ import VoxClipCore
             let inset: CGFloat = 6
             let span = CGFloat(range.upperBound - range.lowerBound)
             let x = inset + (geometry.size.width - inset * 2) * CGFloat(tick - range.lowerBound) / max(1, span)
-            Rectangle().fill(Color.accentColor).frame(width: 2, height: 8)
+            // Above the track and the knob, taller than both, in the accent mark colour (not the track's fill).
+            Rectangle().fill(DesignValues.accentText).frame(width: 2, height: 12)
                 .position(x: x, y: geometry.size.height / 2)
         }
         .allowsHitTesting(false)
@@ -378,7 +379,7 @@ import VoxClipCore
             .foregroundStyle(DesignValues.color("text.primary"))
             .padding(.horizontal, VCTokens.spacingRowGap).frame(minHeight: 22)
             .background(DesignValues.color(on ? "bg.selectedRow" : "bg.muted"), in: .capsule)
-            .overlay(Capsule().strokeBorder(ring ? Color.accentColor : DesignValues.color(on ? "line.strong" : "line.default"), lineWidth: ring ? 2 : 1))
+            .overlay(Capsule().strokeBorder(ring ? DesignValues.accentText : DesignValues.color(on ? "line.strong" : "line.default"), lineWidth: ring ? 2 : 1))
             .contentShape(.capsule)
     }
 }
@@ -549,7 +550,8 @@ import VoxClipCore
                     .padding(3).background(.black.opacity(0.35), in: .circle).padding(3)
             }
             if state != .none {
-                Image(systemName: "checkmark.circle.fill").font(.system(size: 12)).foregroundStyle(.white, Color.accentColor)
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 12))
+                    .foregroundStyle(DesignValues.color("accent.on"), Color(nsColor: DesignValues.accentFill))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading).padding(4)
             }
         }
@@ -793,12 +795,13 @@ extension EditorModel {
     }
 }
 
-/// The panel's text actions: accent while they act, text.disabled while disabled (the system link style stays blue).
+/// The panel's text actions: `accentText` (the accent's mark and link colour, 4.5:1 on the panel) while they act,
+/// text.disabled while disabled. Not `Color.accentColor`: Ink's dark fill reads dimmer than text.tertiary.
 struct ClipLookLinkStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(enabled ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(DesignValues.color("text.disabled")))
+            .foregroundStyle(enabled ? AnyShapeStyle(DesignValues.accentText) : AnyShapeStyle(DesignValues.color("text.disabled")))
             .opacity(configuration.isPressed ? 0.6 : 1)
             .contentShape(.rect)
     }
