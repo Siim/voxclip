@@ -144,12 +144,15 @@ public enum VoxClipError: Error, LocalizedError, Codable, Sendable, Equatable {
         case .cliNotSignedIn(let context): "cliNotSignedIn: \(context). Your video and edits are unchanged."
         case .localeUnsupported(let context): "localeUnsupported: \(context). Your video and edits are unchanged."
         case .diskFull(let context, let size): size.map { "There isn't enough free space on \(context). Free up \($0) and try again." } ?? "diskFull: \(context). Your video and edits are unchanged."
-        case .exportFailed(let context): requiresExportRecovery ? context : "exportFailed: \(context). Your video and edits are unchanged."
+        case .exportFailed(let context): requiresExportRecovery || context == Self.looksNeedMetal ? context : "exportFailed: \(context). Your video and edits are unchanged."
         case .projectUnreadable(let context): "projectUnreadable: \(context). Your video and edits are unchanged."
         }
     }
 
     package static let exportRecoveryMessagePrefix = "Couldn't put back "
+    /// A render whose grade needs the Mac's Core Image kernels on a Mac without a Metal GPU, or whose kernel library
+    /// failed to load (looks spec 2026-11-28, section 10). Shown as it is.
+    package static let looksNeedMetal = "Looks need a Metal GPU on this Mac."
 
     package var requiresExportRecovery: Bool {
         if case .exportFailed(let context) = self { return context.hasPrefix(Self.exportRecoveryMessagePrefix) }

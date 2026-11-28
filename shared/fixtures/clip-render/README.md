@@ -21,3 +21,10 @@ Regenerate with `python3 tools/fixtures/clip-render/generate_clip_grade.py` (che
 its tolerance, since the Fix's pow and Auto's log2 can differ in the last bit between platforms). Do not hand-edit. Swift
 `ClipGradeRecipeTests` and C# `ClipGradeVectorTests` (both Core) replay every category: bytes and integers exactly, floats
 within 1e-9 and curve coefficients within 1e-12.
+
+`clip-grade-mac-goldens.json` (`voxclip-clip-grade-mac-goldens/1`) holds the Mac's Core Image bytes for every grade case
+(`controls`, `chains`, `adjustments`, `looksOnSwatches` and `skinCheck`, keyed by category and case, each input by name)
+and every `finish` case, rendered through `ClipPicture.grade` and `finish` with the clip grade's kernels. The Mac's
+`ClipGradeRenderTests` (Media) holds its renders within 1 of these and within 2 of the recipe's bytes; Windows
+`ClipPicture.Grade` and `Finish` replay them within 1. They are recorded, not generated: after a deliberate change to the
+kernels or the cases, run that suite with `VOXCLIP_RECORD_CLIP_GRADE_GOLDENS=1` and review the diff. Do not hand-edit.

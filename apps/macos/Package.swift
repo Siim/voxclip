@@ -20,7 +20,9 @@ let package = Package(
             checksum: "e57f8c48933000acabc13bb913fbe82805d483a2deff692cc6738836bd92393b"
         ),
         .target(name: "VoxClipCore", swiftSettings: [.swiftLanguageMode(.v6)]),
-        .target(name: "VoxClipMedia", dependencies: ["VoxClipCore", "whisper", .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager")], swiftSettings: [.swiftLanguageMode(.v6)]),
+        // The clip grade's kernel source is built into ClipGradeKernelLibrary.swift by tools/looks/build_mac_kernels.py.
+        .target(name: "VoxClipMedia", dependencies: ["VoxClipCore", "whisper", .product(name: "onnxruntime", package: "onnxruntime-swift-package-manager")],
+                exclude: ["Pipeline/ClipGradeKernels.ci.metal"], swiftSettings: [.swiftLanguageMode(.v6)]),
         .executableTarget(
             name: "VoxClip", dependencies: ["VoxClipCore", "VoxClipMedia"], exclude: ["Info.plist"],
             swiftSettings: [.swiftLanguageMode(.v6)],

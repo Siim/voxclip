@@ -175,7 +175,7 @@ import VoxClipCore
             var controls = ProjectClipControls(clipId: "c")
             controls.applyLook(try #require(looks.look(id)))
             #expect(controls.colorGrade == nil, "\(id)")
-            return Self.pixels(ClipPicture.grade(Self.frame(), controls: controls))
+            return Self.pixels(try ClipPicture.grade(Self.frame(), controls: controls))
         }
         let original = try pixels("original"), pop = try pixels("cleanPop"), soft = try pixels("softLight")
         let cool = try pixels("coolFilm"), vintage = try pixels("vintageFade")
@@ -185,16 +185,16 @@ import VoxClipCore
         #expect(vintage[3][0] >= original[3][0] + 20 && vintage[0][0] >= vintage[0][2] + 12)
     }
 
-    @Test func individualAdjustmentsRenderOverTheBaseLook() {
+    @Test func individualAdjustmentsRenderOverTheBaseLook() throws {
         let image = Self.frame()
-        let original = Self.pixels(ClipPicture.grade(image, controls: .init(clipId: "c")))
+        let original = Self.pixels(try ClipPicture.grade(image, controls: .init(clipId: "c")))
         #expect(original == Self.pixels(image))
-        let contrast = Self.pixels(ClipPicture.grade(image, controls: .init(clipId: "c", colorAdjustments: .init(contrast: 60))))
+        let contrast = Self.pixels(try ClipPicture.grade(image, controls: .init(clipId: "c", colorAdjustments: .init(contrast: 60))))
         #expect(contrast[7][0] > original[7][0] && contrast[3][0] < original[3][0])
-        let desaturated = Self.pixels(ClipPicture.grade(image, controls: .init(clipId: "c", colorAdjustments: .init(saturation: -100))))
+        let desaturated = Self.pixels(try ClipPicture.grade(image, controls: .init(clipId: "c", colorAdjustments: .init(saturation: -100))))
         #expect(desaturated.allSatisfy { abs($0[0] - $0[2]) <= 1 })
-        let warm = Self.pixels(ClipPicture.grade(image, controls: .init(clipId: "c", look: .warm)))
-        let combined = Self.pixels(ClipPicture.grade(image, controls: .init(clipId: "c", look: .warm, colorAdjustments: .init(brightness: 50))))
+        let warm = Self.pixels(try ClipPicture.grade(image, controls: .init(clipId: "c", look: .warm)))
+        let combined = Self.pixels(try ClipPicture.grade(image, controls: .init(clipId: "c", look: .warm, colorAdjustments: .init(brightness: 50))))
         #expect(combined[0].max()! - combined[0].min()! >= 18)
         #expect(zip(warm[0], combined[0]).allSatisfy { $1 - $0 >= 19 })
     }

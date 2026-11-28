@@ -142,8 +142,10 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
             let timedLook = lookEffect?.look
             let opacity = lookEffect?.explicitFadeOpacity(at: sourceTime) ?? 1
             if let controls {
-                let graded = ClipPicture.grade(image, controls: controls, override: timedLook)
-                image = opacity == 1 ? graded : Self.dissolve(graded, over: ClipPicture.grade(image, controls: controls), opacity: opacity)
+                do {
+                    let graded = try ClipPicture.grade(image, controls: controls, override: timedLook)
+                    image = opacity == 1 ? graded : Self.dissolve(graded, over: try ClipPicture.grade(image, controls: controls), opacity: opacity)
+                } catch { fail(request, instruction, .frameBuffer, error); return }
             } else if let timedLook { image = Self.dissolve(ClipPicture.look(image, timedLook), over: image, opacity: opacity) }
             if let effects = instruction.effects {
                 image = effects.picture(image, source: sourceExtent, crop: crop, output: size, time: effects.input.pictureTime(sourceTime),
