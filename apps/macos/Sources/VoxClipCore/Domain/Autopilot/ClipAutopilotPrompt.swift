@@ -86,8 +86,11 @@ public struct ClipAutopilotPrompt: Sendable {
     let shapeInstructions: String
     public let limits: ClipAutopilotLimits
     public let defaults: ClipAutopilotDefaults
-    /// The looks in the order the prompt lists them; the same set as `ClipAutopilotPlan.LookID`.
-    public let looks: [ClipAutopilotPlan.LookID]
+    /// The looks in the order the prompt lists them: the visible looks of shared/looks/clip-looks.json (looks spec §9.2).
+    public let looks: [ClipAutopilotPlan.LookPresetID]
+    /// shared/looks/clip-looks.json: the looks the reply may name, their strengths and planner amounts, and the light
+    /// thresholds the validator's Fix and dim-face rules read.
+    public let library: ClipLookLibrary
     public let schemaName: String
     public let schema: JSONValue
     public let momentsSchemaName: String
@@ -104,11 +107,12 @@ public struct ClipAutopilotPrompt: Sendable {
 
     public init(shared: SharedResources) throws {
         let read = try VoiceLabLLMChecks.readPrompt(shared, Self.path)
-        try self.init(document: read.document, sha256: read.sha256, stickers: AskClaudePrompt.load(shared: shared).stickers)
+        try self.init(document: read.document, sha256: read.sha256, stickers: AskClaudePrompt.load(shared: shared).stickers,
+                      looks: ClipLookLibrary.load(shared: shared))
     }
 
-    init(document: JSONValue, sha256: String, stickers: Set<String> = []) throws {
-        guard document[ai: "schemaVersion"].aiInt == 2, let version = document[ai: "promptVersion"].aiInt, version >= 1,
+    init(document: JSONValue, sha256: String, stickers: Set<String> = [], looks library: ClipLookLibrary) throws {
+        guard document[ai: "schemaVersion"].aiInt == 3, let version = document[ai: "promptVersion"].aiInt, version >= 1,
               let name = document[ai: "schemaName"].aiString, let momentsName = document[ai: "momentsSchemaName"].aiString,
               CanonicalResponseParser.validateSchemaSubset(document[ai: "schema"]),
               CanonicalResponseParser.validateSchemaSubset(document[ai: "momentsSchema"]),
@@ -125,16 +129,18 @@ public struct ClipAutopilotPrompt: Sendable {
               let under = values[ai: "underVoiceDb"].aiDouble, (limits.minUnderVoiceDb...limits.maxUnderVoiceDb).contains(under),
               let scale = values[ai: "zoomScale"].aiDouble, (limits.minZoomScale...limits.maxZoomScale).contains(scale),
               let score = values[ai: "score"].aiInt, (1...10).contains(score) else { throw VoxClipError.sharedResourcesMissing }
-        // The looks the prompt offers are exactly the ones the contract knows, each with a description.
-        var looks: [ClipAutopilotPlan.LookID] = []
+        // The looks the prompt offers are exactly the visible looks of the library, each with the line
+        // tools/looks/generate_prompt_looks.py wrote from it.
+        var looks: [ClipAutopilotPlan.LookPresetID] = []
         var lookLines: [String] = []
+        let visible = library.visible.map(\.id)
         for item in document[ai: "looks"].aiArray {
-            guard let id = item[ai: "id"].aiString.flatMap(ClipAutopilotPlan.LookID.init(rawValue:)), !looks.contains(id),
-                  let description = item[ai: "description"].aiString, !description.isEmpty else { throw VoxClipError.sharedResourcesMissing }
-            looks.append(id)
-            lookLines.append("- \(id.rawValue): \(description)")
+            guard let id = item[ai: "id"].aiString, visible.contains(id), !looks.contains(.init(rawValue: id)),
+                  let line = item[ai: "line"].aiString, line.hasPrefix(id + ": ") else { throw VoxClipError.sharedResourcesMissing }
+            looks.append(.init(rawValue: id))
+            lookLines.append("- " + line)
         }
-        guard Set(looks) == Set(ClipAutopilotPlan.LookID.allCases) else { throw VoxClipError.sharedResourcesMissing }
+        guard looks.count == visible.count else { throw VoxClipError.sharedResourcesMissing }
         var templateValues = limits.templateValues
         templateValues["looks"] = lookLines.joined(separator: "\n")
         templateValues["effectStickers"] = stickers.sorted().joined(separator: " ")
@@ -178,6 +184,7 @@ public struct ClipAutopilotPrompt: Sendable {
         self.defaults = ClipAutopilotDefaults(styleID: style, font: .init(family: family, weight: weight), textCase: textCase,
                                               wordsPerCaption: words, underVoiceDb: under, zoomScale: scale, score: score)
         self.looks = looks
+        self.library = library
         self.schemaName = name
         self.schema = schema
         self.momentsSchemaName = momentsName

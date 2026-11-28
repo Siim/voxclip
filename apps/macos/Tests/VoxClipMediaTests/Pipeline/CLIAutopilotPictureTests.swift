@@ -33,6 +33,7 @@ private actor PictureStub: LLMConnector {
                                        "captionFont": "Roboto", "captionCase": "upper", "look": "original", "lookReason": "", "speedReason": "",
                                        "postText": "We ship.", "verdict": "post", "scoreReason": "Clear.", "tone": "none", "toneSummary": ""]
         for (key, value) in numbers { reply[key] = value }
+        reply["lookAmount"] = 100; reply["lookFix"] = false; reply["lookAlternatives"] = [String]()
         reply["parts"] = [["startWord": start, "endWord": end]]
         reply["not_in_take"] = ""; reply["musicTrackId"] = ""
         for (key, value) in texts { reply[key] = value }

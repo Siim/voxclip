@@ -183,7 +183,7 @@ import Testing
 
     @Test func vectorsPinTheCurrentPrompt() throws {
         let prompt = try ClipAutopilotPrompt(shared: ClipAutopilotTests.shared())
-        #expect(prompt.promptVersion == 13)
+        #expect(prompt.promptVersion == 14)
         #expect(try Self.fixture()[ai: "sources"][ai: "shared/prompts/clip-autopilot.json"].aiString == prompt.sha256)
         #expect(prompt.system.contains("frames.blur") && prompt.schema[ai: "required"].aiArray.contains(.string("frames")))
         // Windows sends the same prompt (version 9): the frames are measured, and the opening and 9:16 decided, on this computer.
@@ -234,17 +234,17 @@ import Testing
         var reply = try ClipAutopilotV2Tests.vector("corrections")[ai: "reply"]
         if case .object(var object) = reply { object["frames"] = .object(["blur": .array([]), "cover": .object(["id": .string("C1"), "reason": .string("")])]); reply = .object(object) }
         let plan = try #require(ClipAutopilotValidator.plan(reply, context: try ClipAutopilotV2Tests.context(scope: 0...29)))
-        #expect(plan.frames == nil && plan.version == 4)
+        #expect(plan.frames == nil && plan.version == ClipAutopilotPlan.currentVersion)
     }
 
-    @Test func planVersionFourIsReadAndFiveRefused() throws {
+    @Test func planVersionFourIsReadAndSixRefused() throws {
         let plan = ClipAutopilotPlan(startWord: 0, endWord: 3, title: "T", hook: "H",
             captions: .init(styleId: "vox-bold", font: .init(family: "Roboto", weight: 900), textCase: .upper, wordsPerCaption: 3),
             postText: "P", score: 7, verdict: .post, frames: .init(blur: [.init(id: "B1", blur: true, reason: "names")], cover: .init(id: "C2", reason: "smile")))
         let data = try JSONEncoder().encode(plan)
         #expect(try JSONDecoder().decode(ClipAutopilotPlan.self, from: data) == plan)
         var raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        raw["version"] = 5
+        raw["version"] = 6
         #expect(throws: (any Error).self) { try JSONDecoder().decode(ClipAutopilotPlan.self, from: JSONSerialization.data(withJSONObject: raw)) }
         raw["version"] = 3; raw["frames"] = nil
         #expect(try JSONDecoder().decode(ClipAutopilotPlan.self, from: JSONSerialization.data(withJSONObject: raw)).frames == nil)

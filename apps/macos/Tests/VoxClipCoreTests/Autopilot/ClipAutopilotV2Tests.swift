@@ -44,7 +44,7 @@ import Testing
     @Test func plannerOffersOrderedMomentParts() throws {
         let prompt = try ClipAutopilotPrompt(shared: ClipAutopilotTests.shared())
         let fields = prompt.momentsSchema[ai: "properties"][ai: "clips"][ai: "items"][ai: "properties"]
-        #expect(prompt.promptVersion == 13)
+        #expect(prompt.promptVersion == 14)
         #expect(fields[ai: "parts"][ai: "maxItems"].aiInt == 10)
         #expect(prompt.momentsSystem.contains("showreel"))
     }
@@ -165,7 +165,7 @@ import Testing
         let old = try JSONDecoder().decode(ClipAutopilotPlan.self, from: JSONEncoder().encode(JSONValue.object(object)))
         #expect(old.version == ClipAutopilotPlan.currentVersion && old.corrections.isEmpty && old.look == .original && old.speed == nil && old.seconds == 0 && old.flags.isEmpty)
         #expect(old.captions.reason.isEmpty && old.cuts == plan.cuts && old.rewrites == plan.rewrites)
-        object["version"] = .number(5)
+        object["version"] = .number(6)
         #expect(throws: DecodingError.self) { try JSONDecoder().decode(ClipAutopilotPlan.self, from: JSONEncoder().encode(JSONValue.object(object))) }
         let series = ClipAutopilotSeries(plans: [plan], moments: [.init(startWord: 0, endWord: 29, title: "T", idea: "I", score: 7, verdict: .post,
                                                                          captionStyle: "karaoke")])

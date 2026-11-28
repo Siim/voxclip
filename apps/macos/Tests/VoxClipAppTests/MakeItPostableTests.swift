@@ -633,6 +633,61 @@ private struct RefusingAssetHTTP: MusicHTTP {
         #expect(editor.makeIt.run(for: "clip-two")?.rows.first { $0.id == "music" }?.undoable == true)
     }
 
+    /// Looks spec §9.6 and §11.6, the regression: Claude's Warm Print at 70% with the Fix replaces the clip's whole colour
+    /// state, the row names it with Claude's alternatives first under Change, and the row's Undo puts back the clip's look,
+    /// fine-tuning and grade byte for byte. With no frames there is no measurement, so the clip's own Fix stays.
+    @Test func undoAfterClaudesLookRestoresTheWholeColourState() async throws {
+        var plan = Self.plan(music: false, rewrite: false)
+        plan.look = .init(id: "warmPrint", amount: 70, fix: true, alternatives: ["goldenHour", "bw"], reason: "Soft window light suits a memory")
+        let fixture = try fixture(plan: plan)
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor
+        var before = ClipControlsProject.controls(for: "clip-main", in: editor.project) ?? ProjectClipControls(clipId: "clip-main")
+        before.look = .muted
+        before.colorAdjustments = ClipColorAdjustments(brightness: 12, contrast: -8, saturation: 0, warmth: 20)
+        before.colorGrade = ClipColorGrade(amount: 80, exposure: 15, temperature: -10, highlights: -20, vibrance: 30, fade: 10)
+        let tuned = try ClipControlsProject.setting(before, in: editor.project)
+        step(fixture.undo) { editor.replace(tuned, name: "Fine-tune") }
+        let saved = try ProjectJSON.encode(editor.project)
+        let run = try await run(fixture)
+        let after = try #require(ClipControlsProject.controls(for: "clip-main", in: editor.project))
+        let looks = try #require(ClipLookLibrary.app)
+        #expect(looks.match(after) == .applied(try #require(looks.look("warmPrint"))))
+        #expect(after.colorGrade?.preset == "warmPrint" && after.colorGrade?.amount == 70)
+        #expect(after.colorGrade?.fix == ClipColorFix(exposure: 15, temperature: -10), "no frames, no measurement: the clip's Fix stays")
+        let row = try #require(run.rows.first { $0.id == "look" })
+        #expect(row.text == "Claude chose Warm Print at 70%" && row.detail == "Soft window light suits a memory" && row.undoable)
+        #expect(row.options.prefix(3) == ["✦ Golden Hour", "✦ B&W", "Vintage Fade"] && row.options.last == "All looks in Picture ›")
+        #expect(row.options.contains("As filmed") && row.options.contains("100%") && !row.options.contains("70%"))
+        let ran = editor.project
+        step(fixture.undo) { editor.makeItUndo("look", in: run) }
+        // Only the colour goes back, and it is the clip's colour before the run, byte for byte.
+        var expected = ran
+        let index = try #require(expected.clipControls.firstIndex { $0.clipId == "clip-main" })
+        expected.clipControls[index].colorState = before.colorState
+        expected.modifiedAt = editor.project.modifiedAt
+        #expect(try ProjectJSON.encode(editor.project) == ProjectJSON.encode(expected), "the look, fine-tuning and grade go back, nothing else")
+        let original = try #require(try ProjectJSON.decode(saved).clipControls.first { $0.clipId == "clip-main" })
+        let restored = try #require(ClipControlsProject.controls(for: "clip-main", in: editor.project))
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        #expect(restored.look == original.look && restored.colorState == before.colorState)
+        #expect(try encoder.encode(restored.colorAdjustments) == encoder.encode(original.colorAdjustments))
+        #expect(try encoder.encode(restored.colorGrade) == encoder.encode(original.colorGrade))
+    }
+
+    /// Looks spec §9.4: a look this build doesn't have comes back as As filmed, and the row says so.
+    @Test func anUnavailableLookIsKeptAsFilmedAndSaysSo() async throws {
+        var plan = Self.plan(music: false, rewrite: false)
+        plan.look = .original
+        plan.repairs = [.init(field: "look", action: .repaired, detail: "unknown look “Neon”; original")]
+        let fixture = try fixture(plan: plan)
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let run = try await run(fixture)
+        let row = try #require(run.rows.first { $0.id == "look" })
+        #expect(row.text == "Claude's look wasn't available; kept as filmed" && !row.undoable && row.change == .look)
+        #expect(fixture.editor.project.clipControls.first { $0.clipId == "clip-main" }?.colorState ?? ClipColorState() == ClipColorState())
+    }
+
     /// Planner v2: a misheard word is corrected through `correct` and undoes on its own. The look and the speed render
     /// (clip controls, design.md §6.9): both apply in the run's one undo step, each row's Undo takes back only its own
     /// choice, a chip under Change applies another as one undo step, and the headline and the export use the rendered
@@ -658,9 +713,9 @@ private struct RefusingAssetHTTP: MusicHTTP {
         #expect(controls.look == .warm && controls.speed == 1.1)
         let clipStart = try #require(editor.words.first { $0.id == "w3" }).start
         let look = try #require(run.rows.first { $0.id == "look" })
-        #expect(look.kind == .choice && look.text == "Claude chose the warm look" && look.detail == "Friendly")
+        #expect(look.kind == .choice && look.text == "Claude chose Warm" && look.detail == "Friendly")
         #expect(look.change == .look && look.undoable && look.play == max(0, clipStart - 0.5))
-        #expect(look.options == ["as filmed", "muted", "black and white"])
+        #expect(look.options == ["Golden Hour", "Peach Tone", "As filmed", "50%", "70%", "85%", "All looks in Picture ›"])
         let speed = try #require(run.rows.first { $0.id == "speed" })
         #expect(speed.text == "Claude chose 1.1× speed" && speed.change == .speed && speed.undoable && speed.play == look.play)
         #expect(speed.options == ["0.75×", "1×", "1.25×", "1.5×", "2×"])
@@ -687,9 +742,13 @@ private struct RefusingAssetHTTP: MusicHTTP {
         #expect(run.openChoice == nil && abs(run.seconds - edited / 1.25) < 1e-9)
         editor.makeItChange(.look, run: run)
         #expect(run.openChoice == "look")
-        step(fixture.undo) { editor.makeItChoose("black and white", rowID: "look", run: run) }
-        #expect(ClipControlsProject.controls(for: "clip-main", in: editor.project)?.look == .bw)
-        #expect(run.rows.first { $0.id == "look" }?.text == "You chose the black and white look")
+        step(fixture.undo) { editor.makeItChoose("70%", rowID: "look", run: run) }
+        #expect(ClipControlsProject.controls(for: "clip-main", in: editor.project)?.colorGrade == ClipColorGrade(preset: "warm", amount: 70))
+        #expect(run.rows.first { $0.id == "look" }?.text == "You chose Warm at 70%")
+        step(fixture.undo) { editor.makeItChoose("As filmed", rowID: "look", run: run) }
+        #expect(ClipControlsProject.controls(for: "clip-main", in: editor.project)?.colorState == ClipColorState())
+        #expect(run.rows.first { $0.id == "look" }?.text == "You chose As filmed")
+        #expect(run.rows.first { $0.id == "look" }?.options == ["Muted", "Natural Boost", "Soft Skin", "All looks in Picture ›"])
         // Undo on the look row goes back to the clip's look before the run; the speed stays.
         step(fixture.undo) { editor.makeItUndo("look", in: run) }
         #expect(ClipControlsProject.controls(for: "clip-main", in: editor.project)?.look == .original)

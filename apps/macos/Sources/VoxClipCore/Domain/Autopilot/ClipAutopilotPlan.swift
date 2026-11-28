@@ -7,9 +7,10 @@ import Foundation
 public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
     /// `version` of this contract. A reader accepts `readableVersions` and upgrades an older plan to this one: version 1
     /// has no corrections, the original look, no speed change, no stated reasons, no length and no flags; versions 1 and 2
-    /// have no tone; versions 1 to 3 have no frame choices.
-    public static let currentVersion = 4
-    public static let readableVersions: ClosedRange<Int> = 1...4
+    /// have no tone; versions 1 to 3 have no frame choices; versions 1 to 4 have the whole look (amount 100), no Fix and no
+    /// alternatives, and only the four base looks.
+    public static let currentVersion = 5
+    public static let readableVersions: ClosedRange<Int> = 1...5
 
     public enum CutKind: String, Codable, Sendable, CaseIterable { case filler, stumble, `repeat`, falseStart, tangent, other }
 
@@ -89,14 +90,58 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
         private enum CodingKeys: String, CodingKey { case styleId, font, textCase = "case", wordsPerCaption, reason }
     }
 
-    /// The colour look of the clip (ai.md §16.2): the renderer's `ClipLook` (design.md §6.9).
-    public typealias LookID = ClipLook
+    /// A look of shared/looks/clip-looks.json by its ID (looks spec §9.1); the validator keeps only the looks the pickers
+    /// offer. The four base looks are looks of the library under their `ClipLook` IDs.
+    public struct LookPresetID: RawRepresentable, Codable, Hashable, Sendable, ExpressibleByStringLiteral, CustomStringConvertible {
+        public let rawValue: String
+        public init(rawValue: String) { self.rawValue = rawValue }
+        public init(stringLiteral value: String) { rawValue = value }
+        public init(_ look: ClipLook) { rawValue = look.rawValue }
+        public init(from decoder: any Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.singleValueContainer()
+            try container.encode(rawValue)
+        }
+        public var description: String { rawValue }
+        public static let original = Self(ClipLook.original), muted = Self(ClipLook.muted), warm = Self(ClipLook.warm), bw = Self(ClipLook.bw)
+    }
 
+    /// The clip's look (ai.md §16.2, looks spec §9.1): a look of the library at `amount` (40…100 from the planner; As filmed
+    /// is always 100), with the measured Fix when `fix`, up to two `alternatives` the review offers first, and why. A version
+    /// 4 plan reads with the whole look, no Fix and no alternatives, and the whole look with no Fix writes what version 4 wrote.
     public struct Look: Codable, Sendable, Equatable {
-        public var id: LookID
+        public var id: LookPresetID
+        public var amount: Int
+        public var fix: Bool
+        public var alternatives: [LookPresetID]
         public var reason: String
-        public init(id: LookID, reason: String = "") { self.id = id; self.reason = reason }
+        public init(id: LookPresetID, amount: Int = 100, fix: Bool = false, alternatives: [LookPresetID] = [], reason: String = "") {
+            self.id = id; self.amount = amount; self.fix = fix; self.alternatives = alternatives; self.reason = reason
+        }
         public static let original = Look(id: .original)
+
+        public init(from decoder: any Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(id: try values.decode(LookPresetID.self, forKey: .id), amount: try values.decodeIfPresent(Int.self, forKey: .amount) ?? 100,
+                      fix: try values.decodeIfPresent(Bool.self, forKey: .fix) ?? false,
+                      alternatives: try values.decodeIfPresent([LookPresetID].self, forKey: .alternatives) ?? [],
+                      reason: try values.decodeIfPresent(String.self, forKey: .reason) ?? "")
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var values = encoder.container(keyedBy: CodingKeys.self)
+            try values.encode(id, forKey: .id)
+            if amount != 100 { try values.encode(amount, forKey: .amount) }
+            if fix { try values.encode(fix, forKey: .fix) }
+            if !alternatives.isEmpty { try values.encode(alternatives, forKey: .alternatives) }
+            try values.encode(reason, forKey: .reason)
+        }
+
+        /// The look as a clip proposal carries it (`clip-proposal`, `harness-timeline`): its ID, amount and reason. The Fix and
+        /// the alternatives belong to Make it postable's review, which measures the picture.
+        public var proposed: Look { Look(id: id, amount: amount, reason: reason) }
+
+        private enum CodingKeys: String, CodingKey { case id, amount, fix, alternatives, reason }
     }
 
     /// The whole clip played at `rate` (between the prompt file's `minSpeed` and `maxSpeed`, never 1); applied with
@@ -350,7 +395,7 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
         var proposal = ClipProposal(target: target, reason: scoreReason)
         proposal.parts = parts; proposal.cuts = cuts; proposal.pauseCuts = pauseCuts; proposal.corrections = corrections
         proposal.captionStyle = captions.styleId; proposal.font = captions.font; proposal.textCase = captions.textCase
-        proposal.wordsPerCaption = captions.wordsPerCaption; proposal.look = look; proposal.speed = speed
+        proposal.wordsPerCaption = captions.wordsPerCaption; proposal.look = look.proposed; proposal.speed = speed
         proposal.hook = hook; proposal.title = title; proposal.postText = postText; proposal.coverTitle = coverTitle ?? frames?.cover?.title
         proposal.music = savedMusicTrackId.map(ClipProposal.Music.init(trackId:)) ?? pickedMusic.map { music in
             var choice = ClipProposal.Music(brief: music.prompt)

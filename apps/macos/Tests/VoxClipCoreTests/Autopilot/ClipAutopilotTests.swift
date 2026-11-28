@@ -65,7 +65,8 @@ import Testing
             object["parts"] = .array([.object(["startWord": start, "endWord": end])])
         }
         let neutral: [String: JSONValue] = ["corrections": .array([]), "lengthReason": .string(""), "captionReason": .string(""),
-                                            "look": .string("original"), "lookReason": .string(""), "speed": .number(1), "speedReason": .string(""),
+                                            "look": .string("original"), "lookReason": .string(""), "lookAmount": .number(100), "lookFix": .bool(false),
+                                            "lookAlternatives": .array([]), "speed": .number(1), "speedReason": .string(""),
                                             "tone": .string("none"), "toneSummary": .string(""), "not_in_take": .string(""), "musicTrackId": .string(""),
                                             "frames": .object(["blur": .array([]), "cover": .object(["id": .string(""), "reason": .string("")])])]
         for (key, value) in neutral where object[key] == nil { object[key] = value }
@@ -76,7 +77,7 @@ import Testing
 
     @Test func promptFileFillsItsLimitsAndKeepsBothStagesInStep() throws {
         let prompt = try ClipAutopilotPrompt(shared: Self.shared())
-        #expect(prompt.promptVersion == 13)
+        #expect(prompt.promptVersion == 14)
         for system in [prompt.system, prompt.momentsSystem] {
             #expect(!system.contains("{") && !system.contains("}"))
             #expect(system.contains("Length: 20 to 45 seconds after cuts. Up to 60 s only when the idea cannot land in less"))
@@ -84,10 +85,10 @@ import Testing
         #expect(prompt.system.contains("Never more than \(prompt.limits.maxRewrites) in a clip"))
         #expect(prompt.system.contains("from 1.05 to 1.2"))
         #expect(prompt.system.contains("from 0.75 to 1.5"))
-        #expect(prompt.system.contains("- original: the footage as filmed\n- muted: ") && prompt.system.contains("\n- bw: black and white"))
+        #expect(prompt.system.contains("\n- original: As filmed (Natural): ") && prompt.system.contains("\n- bw: B&W (B&W): "))
         #expect(prompt.system.contains("Corrections, which fix how a word is written") && !prompt.momentsSystem.contains("Corrections"))
         #expect(prompt.momentsSystem.contains("Your task: pick the moments") && !prompt.system.contains("Your task: pick the moments"))
-        #expect(prompt.looks == [.original, .muted, .warm, .bw])
+        #expect(prompt.looks.prefix(2) == [.original, .muted] && prompt.looks.count == prompt.library.visible.count)
         #expect(CanonicalResponseParser.validateSchemaSubset(prompt.schema))
         let required = Set(prompt.schema[ai: "required"].aiArray.compactMap(\.aiString))
         #expect(Set(prompt.schema[ai: "properties"].aiObject?.keys.map { $0 } ?? []).subtracting(required) == ["effects"])
@@ -105,21 +106,22 @@ import Testing
         let data = try FixtureLoader.data("prompts/clip-autopilot.json")
         let document = try JSONDecoder().decode(JSONValue.self, from: data)
         guard case .object(var root) = document else { Issue.record("not an object"); return }
-        #expect(throws: Never.self) { try ClipAutopilotPrompt(document: .object(root), sha256: "") }
+        let looks = try ClipLookLibrary.load(shared: Self.shared())
+        #expect(throws: Never.self) { try ClipAutopilotPrompt(document: .object(root), sha256: "", looks: looks) }
         var broken = root
         broken["momentsSchema"] = .object(["type": .string("object"), "additionalProperties": .bool(false), "required": .array([]),
                                            "properties": .object([:])])
-        #expect(throws: VoxClipError.sharedResourcesMissing) { try ClipAutopilotPrompt(document: .object(broken), sha256: "") }
+        #expect(throws: VoxClipError.sharedResourcesMissing) { try ClipAutopilotPrompt(document: .object(broken), sha256: "", looks: looks) }
         broken = root
         broken["looks"] = .array(root["looks"]!.aiArray.filter { $0[ai: "id"].aiString != "bw" })
-        #expect(throws: VoxClipError.sharedResourcesMissing) { try ClipAutopilotPrompt(document: .object(broken), sha256: "") }
+        #expect(throws: VoxClipError.sharedResourcesMissing) { try ClipAutopilotPrompt(document: .object(broken), sha256: "", looks: looks) }
         broken = root
         broken["system"] = .object(["plan": .array([.string("role"), .string("missing")]), "moments": .array([.string("role")])])
-        #expect(throws: VoxClipError.sharedResourcesMissing) { try ClipAutopilotPrompt(document: .object(broken), sha256: "") }
+        #expect(throws: VoxClipError.sharedResourcesMissing) { try ClipAutopilotPrompt(document: .object(broken), sha256: "", looks: looks) }
         guard case .object(var sections) = root["sections"]! else { Issue.record("no sections"); return }
         sections["role"] = .string("Use {unknownLimit} rewrites.")
         root["sections"] = .object(sections)
-        #expect(throws: VoxClipError.sharedResourcesMissing) { try ClipAutopilotPrompt(document: .object(root), sha256: "") }
+        #expect(throws: VoxClipError.sharedResourcesMissing) { try ClipAutopilotPrompt(document: .object(root), sha256: "", looks: looks) }
     }
 
     @Test func plannerKeepsOnlySupportedEffectsOnKeptWords() throws {
@@ -261,7 +263,7 @@ import Testing
         let plan = try #require(ClipAutopilotValidator.plan(clip, context: context))
         let data = try JSONEncoder().encode(plan)
         #expect(try JSONDecoder().decode(ClipAutopilotPlan.self, from: data) == plan)
-        let text = String(decoding: data, as: UTF8.self).replacingOccurrences(of: "\"version\":4", with: "\"version\":5")
+        let text = String(decoding: data, as: UTF8.self).replacingOccurrences(of: "\"version\":5", with: "\"version\":6")
         #expect(throws: DecodingError.self) { try JSONDecoder().decode(ClipAutopilotPlan.self, from: Data(text.utf8)) }
         #expect(String(decoding: data, as: UTF8.self).contains("\"case\":\"upper\""))
     }
@@ -321,7 +323,7 @@ import Testing
                                                                  mode: .clip(0...29)), connector: stub, model: "fixture")
         let plan = try #require(result.plan)
         #expect(plan.rewrites.count == 1 && plan.cuts.count == 2)
-        #expect(result.promptVersion == 13 && result.promptSHA256.count == 64)
+        #expect(result.promptVersion == 14 && result.promptSHA256.count == 64)
         let sent = await stub.requests
         #expect(sent.count == 2)
         #expect(sent.allSatisfy { $0.effort == .xhigh && $0.feature == .clipAutopilot })
@@ -402,17 +404,17 @@ import Testing
         let root = files.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try files.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? files.removeItem(at: root) }
-        for directory in ["prompts", "caption-styles", "fonts", "catalog"] {
+        for directory in ["prompts", "caption-styles", "fonts", "catalog", "looks"] {
             try files.copyItem(at: shared.root.appendingPathComponent(directory), to: root.appendingPathComponent(directory))
         }
         let url = root.appendingPathComponent(ClipAutopilotPrompt.path)
         let current = try String(contentsOf: url, encoding: .utf8).replacingOccurrences(of: "\r\n", with: "\n")
         let version12 = current.components(separatedBy: "\n").filter { line in
             !line.hasPrefix("    \"takes\":") && !line.hasPrefix("  \"takeReason\":")
-        }.joined(separator: "\n").replacingOccurrences(of: "\"promptVersion\": 13", with: "\"promptVersion\": 12")
+        }.joined(separator: "\n").replacingOccurrences(of: "\"promptVersion\": 14", with: "\"promptVersion\": 12")
         try version12.write(to: url, atomically: true, encoding: .utf8)
         let legacy = SharedResources(root: root)
-        #expect(try ClipAutopilotPrompt(shared: legacy).sha256 == "100976e5dab7d7c7bd2099395e0b6d4fb5b4c51718d21aa3e4aa3dfe2f344672")
+        #expect(try ClipAutopilotPrompt(shared: legacy).sha256 == "e4389159e11d5b47d5d3dd553dea12bc85637f8a493248d904641c89ec3b8ab3")
         let old = ClipAutopilotService(runner: try Self.runner(), shared: legacy)
         let new = ClipAutopilotService(runner: try Self.runner(), shared: shared)
         let project = try ProjectJSON.decode(Self.recordingsVector()[ai: "project"].aiEncoded())
@@ -483,7 +485,7 @@ import Testing
         let card = try #require(ClipHookTitle.existing(clipID: "c1", in: applied))
         #expect(card.kind == .title && card.text == plan.hook && card.position == .top && card.clipId == "c1")
         guard case .look(_, let look)? = operations.first(where: { $0.decision == .look })?.action else { Issue.record("no look"); return }
-        #expect(ClipControlsProject.controls(for: "c1", in: applied)?.look == look.id)
+        #expect(ClipControlsProject.controls(for: "c1", in: applied).map { ClipAutopilotPlan.LookPresetID($0.look) } == look.id)
         try ProjectValidation.validateModel(applied)
     }
 

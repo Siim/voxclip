@@ -47,7 +47,7 @@ import Testing
                 "Update plan-tone-cases.json sources when the prompt changes")
         let tones = try VoiceLabLLMChecks.readPrompt(shared, RewriteToneCatalog.path)
         #expect(sources[ai: "shared/data/rewrite-tones.json"].aiString == tones.sha256, "Update plan-tone-cases.json when the tones change")
-        #expect(try ClipAutopilotPrompt(shared: shared).promptVersion == 13)
+        #expect(try ClipAutopilotPrompt(shared: shared).promptVersion == 14)
         #expect(try Self.fixture()[ai: "cases"].aiArray.count == 11)
     }
 
@@ -108,7 +108,7 @@ import Testing
         object["version"] = .number(2)
         let old = try JSONDecoder().decode(ClipAutopilotPlan.self, from: JSONEncoder().encode(JSONValue.object(object)))
         #expect(old.version == ClipAutopilotPlan.currentVersion && old.tone == nil && old.rewrites == plan.rewrites)
-        object["version"] = .number(5)
+        object["version"] = .number(6)
         #expect(throws: DecodingError.self) { try JSONDecoder().decode(ClipAutopilotPlan.self, from: JSONEncoder().encode(JSONValue.object(object))) }
     }
 }

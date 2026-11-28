@@ -222,11 +222,11 @@ import VoxClipCore
                 actions
             }
             if row.change == .look || row.change == .speed, run.openChoice == row.id, !row.options.isEmpty, !row.undone {
-                // The other looks or speeds; a chip applies at once, as one undo step.
-                HStack(spacing: VCTokens.spacingChipGap) {
+                // The other looks and amounts (wrapping, looks spec §9.6) or speeds; a chip applies at once, as one undo step.
+                ClipStyleFlowLayout(spacing: VCTokens.spacingChipGap) {
                     ForEach(row.options, id: \.self) { option in
                         Button(option) { model.makeItChoose(option, rowID: row.id, run: run) }.buttonStyle(.bordered).controlSize(.small)
-                            .accessibilityLabel(row.change == .look ? "Use the \(option) look" : "Play at \(option)")
+                            .accessibilityLabel(row.change == .look ? EditorModel.makeItLookChipLabel(option) : "Play at \(option)")
                             .columnLayoutEvidence("makeIt.choice.\(row.id).\(option)", text: option)
                     }
                 }

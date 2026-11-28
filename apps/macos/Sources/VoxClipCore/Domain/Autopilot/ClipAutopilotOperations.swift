@@ -358,8 +358,10 @@ public enum ClipAutopilotMapping {
     /// stretch that covers a whole clip (`ClipControlsProject.wholeClip`) as that clip's speed, and the hook as the clip's
     /// title card (`ClipHookTitle`, timed on the clip as the operations before it left it). Rewrites, music, a stretch over
     /// part of a clip come back as `pending`; translated captions are stored as `captionTranslations`. Pure: one undo step is the caller's choice.
+    /// The look is a look of `looks` at its amount (`ClipControlsProject.settingLookPreset`, looks spec §9.6), the clip's Fix
+    /// kept; without the library only the four base looks apply.
     public static func apply(_ operations: [ClipAutopilotOperation], to project: Project, clipCaptions: (id: String, style: ClipStyle)? = nil,
-                             savedTracks: [ProjectMusic] = []) throws -> (project: Project, pending: [ClipAutopilotOperation]) {
+                             savedTracks: [ProjectMusic] = [], looks: ClipLookLibrary? = .located) throws -> (project: Project, pending: [ClipAutopilotOperation]) {
         var result = project
         var pending: [ClipAutopilotOperation] = []
         var effects: [ClipEffect] = []
@@ -398,7 +400,14 @@ public enum ClipAutopilotMapping {
                 guard var entry = MusicProject.entry(for: clipID, in: result) else { pending.append(operation); continue }
                 entry.ducking = on
                 result = try MusicProject.setting(entry, clipId: clipID, in: result)
-            case .look(let clipID, let look): result = try ClipControlsProject.settingLook(look.id, clipId: clipID, in: result)
+            case .look(let clipID, let look):
+                if let looks {
+                    guard looks.look(look.id.rawValue) != nil else { throw HarnessError.invalid("Choose one of VoxClip's looks.") }
+                    result = try ClipControlsProject.settingLookPreset(id: look.id.rawValue, amount: look.amount, clipId: clipID, in: result, looks: looks)
+                } else {
+                    guard let base = ClipLook(rawValue: look.id.rawValue) else { throw HarnessError.invalid("Choose one of VoxClip's looks.") }
+                    result = try ClipControlsProject.settingLook(base, clipId: clipID, in: result)
+                }
             case .speed(let clipID, let speed): result = try ClipControlsProject.settingSpeed(speed.rate, clipId: clipID, in: result)
             case .stretch(let clipID, let start, let end, let rate):
                 guard let whole = ClipControlsProject.wholeClip(clipID, start: start, end: end, in: result) else { pending.append(operation); continue }
