@@ -72,10 +72,19 @@ struct TimelineMotionCue: Equatable {
         if kept { status = "The saved cue changed. Your unapplied edits are kept." }
     }
 
+    /// The footer line. Apply is never disabled without one.
+    func footerMessage(model: EditorModel) -> String? {
+        model.motionCueValidation(draft) ?? status ?? (hasUnappliedChanges ? nil : Self.nothingToApply)
+    }
+
+    static let nothingToApply = "No unapplied changes."
+    /// Apply is enabled only for a new cue or a saved cue the draft differs from.
+    var hasUnappliedChanges: Bool { draft.original != draft.cue }
+
     @discardableResult func apply(model: EditorModel) -> Bool {
         guard model.motionCueEditing === self else { return false }
         guard model.applyMotionCue(draft) else {
-            status = model.motionCueValidation(draft) ?? "No changes to apply."
+            status = model.motionCueValidation(draft) ?? Self.nothingToApply
             return false
         }
         selectCue(draft.id, model: model)

@@ -375,6 +375,28 @@ private actor MotionCueTestSettings: SettingsStore {
         #expect(reopened.status == "This cue was removed. Undo restores it.")
     }
 
+    @Test func applyIsNeverDisabledWithoutSayingWhy() async throws {
+        let model = try editor(); defer { model.close() }
+        let shell = WorkspaceShell(app: model.app)
+        #expect(model.openMotionCueJob(in: shell))
+        let fresh = try #require(model.motionCueEditing)
+        fresh.draft.sourceStart = 11; fresh.draft.sourceEnd = 13
+        #expect(fresh.footerMessage(model: model) == nil)
+        #expect(fresh.apply(model: model))
+        let editing = try #require(model.motionCueEditing)
+        // The saved message replaces the reason until the next edit; then the reason shows.
+        editing.status = nil
+        #expect(editing.footerMessage(model: model) == "No unapplied changes.")
+        let host = NSHostingView(rootView: PanelHost(model: model, shell: shell, width: 404, height: 522).environment(model.app))
+        host.frame = CGRect(x: 0, y: 0, width: 404, height: 522)
+        #expect(await settle(host) { DebugRightColumn.texts(in: host)["motion.status"] == "No unapplied changes." })
+        editing.setFrameValue(.scale, to: 1.3)
+        #expect(editing.footerMessage(model: model) == nil)
+        #expect(await settle(host) { DebugRightColumn.texts(in: host)["motion.status"] == nil })
+        editing.setFrameValue(.scale, to: try #require(editing.draft.original?.keyframes[editing.selectedFrame].scale))
+        #expect(!editing.apply(model: model) && editing.status == "No unapplied changes.")
+    }
+
     @Test(arguments: [false, true])
     func escapeFromTheInlineHostDiscardsTheDraftAndReturnsToThePreviousJob(fromField: Bool) async throws {
         let model = try editor(); defer { model.close() }

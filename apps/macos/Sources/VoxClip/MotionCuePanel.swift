@@ -108,8 +108,9 @@ import VoxClipCore
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let message = model.motionCueValidation(editing.draft) ?? editing.status {
+            if let message = editing.footerMessage(model: model) {
                 note(message).accessibilityIdentifier("voxclip.motion.status")
+                    .columnLayoutEvidence("motion.status", text: message)
             }
             HStack(spacing: 4) {
                 PanelButton(action: PanelAction(id: "motion.delete", title: "Delete cue") {
@@ -125,7 +126,7 @@ import VoxClipCore
                 PanelButton(action: PanelAction(id: "motion.apply", title: editing.draft.original == nil ? "Add cue" : "Apply") {
                     editing.apply(model: model)
                 }, kind: .primary)
-                .disabled(model.motionCueValidation(editing.draft) != nil || editing.draft.original == editing.draft.cue)
+                .disabled(model.motionCueValidation(editing.draft) != nil || !editing.hasUnappliedChanges)
                 .keyboardShortcut(.return, modifiers: .command)
                 .accessibilityIdentifier("voxclip.motion.apply")
                 .columnLayoutEvidence("motion.apply")
