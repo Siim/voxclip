@@ -307,6 +307,20 @@ public sealed class TimelinePrecisionTests
         Assert.Null(model.TimelinePlayRangeReason);
     }
 
+    [Fact]
+    public void MakeClipFromARangeSnapsOnlyToWordsTheRangeOverlaps()
+    {
+        // Word 13 is short (12.85–12.95), just after word 12's tail. A range over that tail makes a clip of word 12, never of the
+        // short word beside it that the range doesn't reach.
+        var model = Model(("t13", 12.85, 12.95));
+        model.SetExactRange(12.6, 12.8, 12.6);
+        Assert.False(model.HasSelection);
+        Assert.Equal((model.Index("t12"), model.Index("t12")), model.TimelineRangeClipWords);
+        Assert.Null(model.TimelineMakeClipReason);
+        Assert.NotNull(model.MakeClip());
+        Assert.Equal(("t12", "t12"), (model.ActiveClip?.StartWordId, model.ActiveClip?.EndWordId));
+    }
+
     // MARK: Word ticks
 
     [Fact]
@@ -331,12 +345,15 @@ public sealed class TimelinePrecisionTests
 
     private static Project Fixture() => ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/projects/clip-from-long-take.voxclip"));
 
-    /// <summary>A 60-second, 30 fps take of 0.8-second words a second apart, with Clip 1 on words 10–29 and words 14 and 15 cut.</summary>
-    private static EditorViewModel Model()
+    /// <summary>A 60-second, 30 fps take of 0.8-second words a second apart, with Clip 1 on words 10–29 and words 14 and 15 cut;
+    /// <paramref name="timing"/> moves the words it names.</summary>
+    private static EditorViewModel Model(params (string Id, double Start, double End)[] timing)
     {
         var project = Fixture();
         var words = Enumerable.Range(0, 60).Select(index => project.Transcript!.Words[0] with
-            { Id = $"t{index}", Text = index % 10 == 9 ? "word." : "word", Start = index, End = index + 0.8, RawStart = index, RawEnd = index + 0.8 }).ToArray();
+            { Id = $"t{index}", Text = index % 10 == 9 ? "word." : "word", Start = index, End = index + 0.8, RawStart = index, RawEnd = index + 0.8 })
+            .Select(word => timing.FirstOrDefault(entry => entry.Id == word.Id) is { Id: not null } moved
+                ? word with { Start = moved.Start, End = moved.End, RawStart = moved.Start, RawEnd = moved.End } : word).ToArray();
         var source = project.Media.Source with { DurationSeconds = 60, Video = project.Media.Source.Video! with { FrameRate = 30 } };
         var clip = new ClipRange("clip-1", "t10", "t29", null, ClipOrigin.Manual, null, null, true);
         return new(project with
