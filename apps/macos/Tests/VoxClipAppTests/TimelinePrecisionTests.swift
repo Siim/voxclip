@@ -13,6 +13,34 @@ private actor PrecisionTestSettings: SettingsStore {
     func flush() async throws {}
 }
 
+/// A preview whose playback times the test reports. `whileSeeking` are times from playback before
+/// the seek: one arrives as the seek starts and the rest just before it lands.
+@MainActor private final class ReportingPreview: PreviewEngine {
+    let events: AsyncStream<PreviewEvent>
+    private let continuation: AsyncStream<PreviewEvent>.Continuation
+    private(set) var isPlaying = false
+    private(set) var editedTime = 0.0
+    private(set) var pauses = 0
+    var whileSeeking: [Double] = []
+    var timeline: RenderTimeline?
+    init() { (events, continuation) = AsyncStream.makeStream() }
+    func load(_ request: RenderRequest) async throws {}
+    func update(_ request: RenderRequest) async throws {}
+    func seek(to editedTime: Double, exact: Bool) async throws {
+        let stale = whileSeeking
+        if let first = stale.first { report(first) }
+        for _ in 0..<50 { await Task.yield() }
+        for time in stale.dropFirst() { report(time) }
+        self.editedTime = editedTime
+        continuation.yield(.time(edited: editedTime, source: timeline?.sourceTime(editedTime) ?? editedTime))
+    }
+    /// Playback reached `source`.
+    func report(_ source: Double) { continuation.yield(.time(edited: timeline?.mapTime(source) ?? source, source: source)) }
+    func play() { isPlaying = true; continuation.yield(.playing(true)) }
+    func pause() { pauses += 1; isPlaying = false; continuation.yield(.playing(false)) }
+    func close() { continuation.finish() }
+}
+
 /// Exact timeline positions and ranges (issue #41, step 1): frame and word-boundary steps of the
 /// playhead, ruler scrubbing, the exact range with Snapping off, I and O on the timeline, the
 /// edit bar's range actions and A1's word ticks. No window is shown; each test has its own data folder.
@@ -317,6 +345,74 @@ private actor PrecisionTestSettings: SettingsStore {
         undo.beginUndoGrouping(); model.makeClip(); undo.endUndoGrouping()
         let clip = try #require(model.activeClip)
         #expect(clip.startWordId == "t12" && clip.endWordId == "t16" && undo.undoActionName == "Make clip")
+    }
+
+    @Test func trimToRangeReadsASongAcrossACutWhereItShows() throws {
+        var fixture = try project()
+        let asset = MusicAsset(file: "\(fixture.id)/music-night.wav", sha256: String(repeating: "a", count: 64), durationSeconds: 46)
+        // Six seconds of song from 12 s: words 14 and 15 are cut under it, so it runs on to about 20 s of the take.
+        let segment = MusicSegment(id: "song", anchorSeconds: 12, lengthSeconds: 6, songFromSeconds: 0, loop: true, fadeInSeconds: 0, fadeOutSeconds: 0)
+        fixture.music = [.init(id: "song", clipId: fixture.edits.activeClipId, asset: asset, source: .file, title: "Night Drive",
+                               license: .own, gainDb: -30, fadeInSeconds: 0, fadeOutSeconds: 0, startOffsetSeconds: 0, segments: [segment])]
+        let app = try app(), model = editor(app, project: fixture), undo = UndoManager()
+        defer { model.close() }
+        undo.groupsByEvent = false; model.undoManager = undo
+        func shown() throws -> ClosedRange<Double> {
+            let plan = try #require(model.itemEditPlan)
+            let item = try #require(TimelineItems.layout(project: model.project, plan: plan, scope: model.itemEditScope, axis: .source).items
+                .first { $0.id == .music("song") })
+            return try #require(item.axisIntervals.map(\.start).min())...(try #require(item.axisIntervals.map(\.end).max()))
+        }
+        let before = try shown()
+        #expect(abs(before.lowerBound - 12) < 1e-3 && before.upperBound > 19.5, "\(before)")
+        _ = model.setTimelineRange(from: 11.5, to: 19, on: .source)
+        let target = try #require(model.timelineRangeTrimTarget)
+        #expect(target.id == .music("song") && abs(target.span.upperBound - before.upperBound) < 1e-6)
+        #expect(model.timelineTrimToRangeReason == nil, "The song runs past Out")
+        undo.beginUndoGrouping(); model.trimTimelineItemToRange(); undo.endUndoGrouping()
+        let after = try shown()
+        #expect(abs(after.lowerBound - 12) < 1e-3 && abs(after.upperBound - 19) < 1e-3, "\(after)")
+        #expect(undo.undoActionName == "Trim to range" && model.timelineTrimToRangeReason == "The music already fits inside the range.")
+    }
+
+    @Test func playRangeStopsAtOutEvenFromPastItAndSpaceOrASeekEndsTheStop() async throws {
+        let engine = ReportingPreview(), app = try app()
+        let model = EditorModel(document: VoxClipDocument(project: try project(), demo: true), app: app, preview: engine)
+        defer { model.close() }
+        model.showsCuts = true
+        await model.start()
+        engine.timeline = try #require(model.renderTimeline)
+        let out = 512.0 / 30
+        // Playback is past Out when Play range is pressed; times from before the seek keep coming in during it and after it.
+        engine.report(20); engine.play(); await settle()
+        engine.whileSeeking = [20.5, 20.6]
+        _ = model.setTimelineRange(from: 12.4, to: 17.06, on: .source)
+        model.playTimelineRange(); await settle(); await settle()
+        #expect(engine.pauses == 0 && model.previewStop == out && engine.isPlaying, "Old times past Out don't end the range")
+        #expect(abs(model.sourceTime - 12.4) < 1e-6)
+        engine.whileSeeking = []
+        engine.report(16.9); await settle()
+        #expect(engine.isPlaying)
+        engine.report(17.1); await settle()
+        #expect(engine.pauses == 1 && !engine.isPlaying && model.previewStop == nil, "Playback stops at Out")
+        // Space pauses and ends the stop: after a click past Out, Space plays on.
+        model.playTimelineRange(); await settle(); await settle()
+        engine.report(13); await settle()
+        model.transport(" "); await settle()
+        #expect(!engine.isPlaying && model.previewStop == nil)
+        model.seek(source: 20); await settle()
+        model.transport(" "); engine.report(20.1); engine.report(20.2); await settle()
+        #expect(engine.isPlaying, "No stop left from the range")
+        model.transport(" ")
+        // From before In, Space plays on past the old Out.
+        model.playTimelineRange(); await settle(); await settle()
+        model.transport(" "); model.seek(source: 10); await settle()
+        model.transport(" "); engine.report(10.5); engine.report(17.2); await settle()
+        #expect(engine.isPlaying)
+        // A seek while the range plays ends the stop too.
+        model.playTimelineRange(); await settle(); await settle()
+        model.seek(source: 14); engine.report(14.1); engine.report(17.3); await settle()
+        #expect(engine.isPlaying && model.previewStop == nil)
     }
 
     @Test(arguments: [CGFloat(700), 1280]) func everyRangeActionShowsInTheEditBar(_ width: CGFloat) throws {

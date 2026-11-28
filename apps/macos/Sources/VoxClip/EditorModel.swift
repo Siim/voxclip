@@ -51,7 +51,11 @@ struct EditorRenderSnapshot {
             rewriteOpenTask?.cancel(); updateSelectionEnds(); refreshPendingSendScope()
         }
     }
-    var previewStop: Double?
+    /// Where Play range, P or an Ask Claude row's ▶ stops, in source seconds. Space and every seek end it.
+    var previewStop: Double? { didSet { previewStopArmed = false } }
+    /// Whether playback has reported a time before `previewStop`: only then does reaching it stop, so a time
+    /// queued from before the seek can't end the range at once.
+    @ObservationIgnored var previewStopArmed = false
     var storyPartPlaybackEnd: Double?
     var selectedStoryPartID: String?
     var draggedStoryPartID: String?
@@ -881,7 +885,9 @@ struct EditorRenderSnapshot {
                 case .time(let edited, let source):
                     playhead = edited; sourceTime = source
                     if let stop = recordingAuditionEnd, edited >= stop { stopRecordingAudition() }
-                    if let stop = previewStop, source >= stop { preview.pause(); previewStop = nil }
+                    if let stop = previewStop {
+                        if source < stop { previewStopArmed = true } else if previewStopArmed { preview.pause(); previewStop = nil }
+                    }
                     if let stop = storyPartPlaybackEnd, edited >= stop { preview.pause(); storyPartPlaybackEnd = nil }
                 case .playing(let playing): isPlaying = playing
                 case .failed(let error, let reason):
@@ -1675,12 +1681,15 @@ struct EditorRenderSnapshot {
         while sentence && position > 0 && position < words.count - 1 && !words[max(0, position - 1)].text.hasSuffix(".")
         select(words[position].id, extend: extend)
     }
-    func seek(source: Double) {
+    /// Seeks the preview. A seek ends any stop (`previewStop`); `stop` sets a new one once the seek has landed, so a
+    /// time from before the seek can't end it at once.
+    func seek(source: Double, stop: Double? = nil) {
         guard let renderTimeline else { return }
+        previewStop = nil
         let time = renderTimeline.mapTime(source)
         Task { [weak self] in
             guard let self else { return }
-            do { try await preview.seek(to: time, exact: true); playhead = time; sourceTime = source }
+            do { try await preview.seek(to: time, exact: true); playhead = time; sourceTime = source; if let stop { previewStop = stop } }
             catch { previewError = await app.safeError(error, context: .preview) }
         }
     }
@@ -1693,13 +1702,15 @@ struct EditorRenderSnapshot {
         endCorrection()
         switch key.lowercased() {
         case " ":
+            // Space is plain playback: it ends a Play range or P stop, as on Windows.
+            previewStop = nil
             if shift, let word = words.first(where: { selectedWordIDs.contains($0.id) }) { seek(source: word.start) }
             if wasPlaying { preview.pause() } else { preview.play() }
             isPlaying = preview.isPlaying
         case "j": seek(source: max(0, sourceTime - 3))
         case "k": preview.pause(); isPlaying = false; playbackRate = 1; previewStop = nil
         case "l": playbackRate = wasPlaying ? (playbackRate == 1 ? 1.5 : 2) : 1; preview.play(); nativePreview?.player.rate = playbackRate; isPlaying = preview.isPlaying
-        case "p": if let word = words.first(where: { selectedWordIDs.contains($0.id) }), let last = words.last(where: { selectedWordIDs.contains($0.id) }) { previewStop = min(sourceDuration, last.end + 2); seek(source: max(0, word.start - 2)); preview.play(); isPlaying = preview.isPlaying }
+        case "p": if let word = words.first(where: { selectedWordIDs.contains($0.id) }), let last = words.last(where: { selectedWordIDs.contains($0.id) }) { seek(source: max(0, word.start - 2), stop: min(sourceDuration, last.end + 2)); preview.play(); isPlaying = preview.isPlaying }
         case "c", "\r": beginCorrection()
         case "i": setClipEdge(start: true)
         case "o": setClipEdge(start: false)

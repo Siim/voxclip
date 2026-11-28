@@ -207,20 +207,22 @@ extension EditorModel {
     /// Why Play range can't run, or nil.
     var timelinePlayRangeReason: String? { timelineActionRange == nil ? Self.timelineRangeHint : nil }
 
-    /// Play range: from In, stopping at Out (`previewStop`).
+    /// Play range: from In, stopping at Out (`previewStop`). The stop is set once the seek has
+    /// landed, so a time from playback past Out can't end the range before it starts.
     func playTimelineRange() {
         guard let range = timelineActionRange, let renderTimeline else { return }
         if recordingAuditionTask != nil { stopRecordingAudition() }
         storyPartPlaybackEnd = nil
         endCorrection()
         let time = renderTimeline.mapTime(range.lowerBound)
-        previewStop = range.upperBound
+        previewStop = nil
         Task { [weak self] in
             guard let self else { return }
             do {
                 try await preview.seek(to: time, exact: true); playhead = time; sourceTime = range.lowerBound
+                previewStop = range.upperBound
                 preview.play(); isPlaying = preview.isPlaying
-            } catch { previewStop = nil; previewError = await app.safeError(error, context: .preview) }
+            } catch { previewError = await app.safeError(error, context: .preview) }
         }
     }
 
@@ -254,14 +256,16 @@ extension EditorModel {
     }
 
     /// The item Trim item to range trims: of the visible titles, pictures, sounds and songs
-    /// the range overlaps, the one it overlaps most (the upper lane on a tie).
+    /// the range overlaps, the one it overlaps most (the upper lane on a tie). Its span is where
+    /// it shows on the Source axis, so a song across a cut ends where it really ends.
     var timelineRangeTrimTarget: (id: TimelineItemID, kind: String, span: ClosedRange<Double>)? {
         guard let range = timelineActionRange, let plan = itemEditPlan else { return nil }
         let layout = TimelineItems.layout(project: project, plan: plan, scope: itemEditScope, axis: .source)
         var best: (id: TimelineItemID, kind: String, span: ClosedRange<Double>, overlap: Double)?
         for item in layout.items where !item.hidden && item.kind != "bleep" && item.kind != "mute" {
             switch item.id { case .clip, .part: continue; default: break }
-            guard let span = timelineItemSpan(item.id) else { continue }
+            guard let lower = item.axisIntervals.map(\.start).min(), let upper = item.axisIntervals.map(\.end).max(), upper > lower else { continue }
+            let span = lower...upper
             let overlap = min(span.upperBound, range.upperBound) - max(span.lowerBound, range.lowerBound)
             guard overlap > 0, overlap > (best?.overlap ?? 0) else { continue }
             best = (item.id, Self.itemKind(item.kind), span, overlap)
