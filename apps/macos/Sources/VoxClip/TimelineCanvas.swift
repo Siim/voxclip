@@ -236,7 +236,7 @@ struct TimelineContent: Equatable {
             self.layoutLanes()
         }
         configureAccessibility()
-        toolTip = "Drag across the waveform, then Cut selection. Drag an In or Out bracket to trim by word. Double-click a cut to restore it."
+        toolTip = "Drag across the waveform to select words, then Cut selection. With Snapping off a drag keeps an exact range. Drag the ruler to scrub. Drag an In or Out bracket to trim by word. Double-click a cut to restore it."
         layoutLanes()
         observations = [
             ShellObservation { [weak self] in self?.renderContent() },
@@ -478,6 +478,9 @@ struct TimelineContent: Equatable {
                                               storySource: content.axis == .source ? content.story : nil,
                                               recordings: content.partMarkers.contains(where: { $0.recording != nil }) ? content.recordingRegions : [],
                                               recordingGaps: content.recordingGaps, recordingRate: content.recordingRate)
+        // From 100 pt/s A1 shows where each word starts and ends (issue #41).
+        let edges = viewport.ptPerSecond >= TimelineAudioLane.wordTickZoom ? model.timelineWordEdges(in: visible, on: content.axis) : (starts: [], ends: [])
+        audio.state.wordStarts = edges.starts; audio.state.wordEnds = edges.ends
         video.state = VideoLane.State(viewport: viewport, pieces: content.pieces, inOut: content.axis == .source ? shownInOut : nil,
                                       clip: content.axis == .source ? content.inOut : nil, takeLength: content.takeLength,
                                       showsSurroundingContext: content.showsSurroundingContext, partMarkers: content.partMarkers,
@@ -640,6 +643,7 @@ struct TimelineContent: Equatable {
         selectionElement.setAccessibilityIdentifier("voxclip.timeline.selection")
         selectionElement.read = { [weak self] in
             guard let self, let range = self.model.timelineSelection(on: self.model.timelineAxis) else { return "No selection" }
+            if self.model.timelineRange != nil, let readout = self.model.timelineRangeReadout { return "Exact range, \(readout)" }
             return "\(self.model.selectedWordIDs.count) words, \(timelineSpokenTime(range.lowerBound)) to \(timelineSpokenTime(range.upperBound)), \(self.model.timelineAxis == .source ? "source" : "edited")"
         }
         for (element, start) in [(inElement, true), (outElement, false)] {
@@ -1121,6 +1125,9 @@ struct TimelineOverviewLabel: Equatable {
         var recordings: [ProjectClock.Region] = []
         var recordingGaps: [Range<Double>] = []
         var recordingRate = 48_000.0
+        /// Word starts and ends on the axis, shown as ticks from `wordTickZoom` (issue #41).
+        var wordStarts: [Double] = []
+        var wordEnds: [Double] = []
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
 
@@ -1139,6 +1146,8 @@ struct TimelineOverviewLabel: Equatable {
         var boxes = 0
         /// Word capsules drawn in place of a waveform.
         var capsules = 0
+        /// Word start and end ticks drawn.
+        var wordTicks = 0
     }
     private(set) var drawn = Drawn()
 
@@ -1156,6 +1165,10 @@ struct TimelineOverviewLabel: Equatable {
     /// when less than a point of lane separates them, so a fitted hour of short pieces stays
     /// one box rather than none.
     nonisolated static let narrowPiece: CGFloat = 3
+    /// The zoom, in points per second, from which A1 ticks each word's start and end.
+    static let wordTickZoom = 100.0
+    /// A word tick's height: a start hangs from the row's top, an end stands on its bottom.
+    static let wordTick: CGFloat = 5
 
     private var laneRight: CGFloat { bounds.width }
     private func x(_ time: Double) -> CGFloat { headerWidth + CGFloat(state.viewport.x(time)) }
@@ -1170,7 +1183,20 @@ struct TimelineOverviewLabel: Equatable {
         if state.viewport.axis == .edited { drawEdited(in: context) } else { drawSource(in: context) }
         drawn.partSeams = drawStoryParts(state.partMarkers, viewport: state.viewport, context: context, tint: true, jumps: true)
         drawRecordingGaps(state.recordingGaps, viewport: state.viewport, context: context)
+        drawWordTicks(in: context)
         context.restoreGState()
+    }
+
+    /// 1 pt `timeline.tick` marks at the word edges: a start's from the row's top, an end's,
+    /// just inside the word, from its bottom. What a word drag grabs, and how the words sit on the audio.
+    private func drawWordTicks(in context: CGContext) {
+        guard !state.wordStarts.isEmpty || !state.wordEnds.isEmpty else { return }
+        let top = Self.pieceInset, bottom = bounds.height - Self.pieceInset - Self.wordTick
+        let ticks = state.wordStarts.map { CGRect(x: x($0), y: top, width: 1, height: Self.wordTick) }
+            + state.wordEnds.map { CGRect(x: x($0) - 1, y: bottom, width: 1, height: Self.wordTick) }
+        context.setFillColor(DesignValues.nsColor("timeline.tick").cgColor)
+        context.fill(ticks)
+        drawn.wordTicks = ticks.count
     }
 
     /// Pieces butt; a seam at every cut.

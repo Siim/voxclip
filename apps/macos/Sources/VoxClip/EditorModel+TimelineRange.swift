@@ -180,9 +180,13 @@ extension EditorModel {
 
     /// The toolbar's range readout, "0.43 s · 12:04.10–12:04.53": its length and its In and
     /// Out in the recording's own time.
-    var timelineRangeReadout: String? {
+    var timelineRangeReadout: String? { timelineRangeReadoutParts.map { "\($0.length) · \($0.span)" } }
+
+    /// The readout's two halves: "0.43 s" and "12:04.10–12:04.53".
+    var timelineRangeReadoutParts: (length: String, span: String)? {
         guard let range = timelineRange else { return nil }
-        return "\(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), range.end - range.start))\u{00A0}s · \(Self.rangeTime(range.start))\u{2013}\(Self.rangeTime(range.end))"
+        let length = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), range.end - range.start) + "\u{00A0}s"
+        return (length, "\(Self.rangeTime(range.start))\u{2013}\(Self.rangeTime(range.end))")
     }
 
     /// "12:04.10", or "1:02:04.10" past an hour: minutes, seconds and hundredths.
@@ -322,5 +326,31 @@ extension EditorModel {
         let middle = (range.lowerBound + range.upperBound) / 2
         guard let nearest = candidates.min(by: { abs((words[$0].start + words[$0].end) / 2 - middle) < abs((words[$1].start + words[$1].end) / 2 - middle) }) else { return nil }
         return (words[nearest].id, words[nearest].id)
+    }
+}
+
+extension EditorModel {
+    /// A1's word ticks in `visible` on `axis` (issue #41): each word's start and end, the open
+    /// clip's words only, and on Edited only the words that play.
+    func timelineWordEdges(in visible: ClosedRange<Double>, on axis: TimelineAxis) -> (starts: [Double], ends: [Double]) {
+        let words = words, cuts = cutWordIDs
+        guard !words.isEmpty, visible.lowerBound.isFinite, visible.upperBound.isFinite else { return ([], []) }
+        var indices = scopeBounds ?? 0...(words.count - 1)
+        if storyTimeline == nil {
+            let lower = timelineSourceTime(visible.lowerBound, on: axis), upper = timelineSourceTime(visible.upperBound, on: axis)
+            var first = indices.lowerBound, end = indices.upperBound + 1
+            while first < end { let middle = (first + end) / 2; if words[middle].end < lower { first = middle + 1 } else { end = middle } }
+            var last = first
+            while last <= indices.upperBound, words[last].start <= upper { last += 1 }
+            guard first < last else { return ([], []) }
+            indices = first...(last - 1)
+        }
+        var starts: [Double] = [], ends: [Double] = []
+        for index in indices where axis == .source || !cuts.contains(words[index].id) {
+            let start = timelineTime(source: words[index].start, on: axis), end = timelineTime(source: words[index].end, on: axis)
+            if visible.contains(start) { starts.append(start) }
+            if visible.contains(end) { ends.append(end) }
+        }
+        return (starts, ends)
     }
 }

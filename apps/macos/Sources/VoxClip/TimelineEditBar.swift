@@ -82,7 +82,9 @@ extension EditorModel {
     }
 }
 
-/// Keep the edit actions above the scrollable tracks, including when E1 is off screen.
+/// Keep the edit actions above the scrollable tracks, including when E1 is off screen. The
+/// range actions (issue #41) act on the exact range, else on the selected words; each one is
+/// always shown, disabled with its reason when it can't run. They drop to icons when the bar is narrow.
 @MainActor struct TimelineEditBar: View {
     let model: EditorModel
     var compact = false
@@ -92,7 +94,14 @@ extension EditorModel {
                 Menu("Edit") {
                     Button("Titles & effects…") { model.openTimelineEditor(.effects) }
                     Button("\(model.timelineTrimTitle)…") { model.openTimelineEditor(.trim) }.disabled(!model.timelineCanTrim)
-                    Button("Cut selection") { model.cutSelection() }.disabled(!model.timelineCanCut)
+                    if model.timelineRange != nil { Button("Cut range") {}.disabled(true) }
+                    else { Button("Cut selection") { model.cutSelection() }.disabled(!model.timelineCanCut) }
+                    Divider()
+                    Button("Play range") { model.playTimelineRange() }.disabled(model.timelinePlayRangeReason != nil)
+                    Button("\u{2726} Ask Claude") { model.askClaudeOnTimelineRange() }.disabled(model.timelineAskClaudeReason != nil)
+                    Button("Add title") { model.addTimelineTitleOverRange() }.disabled(model.timelineAddTitleReason != nil)
+                    Button("Trim item to range") { model.trimTimelineItemToRange() }.disabled(model.timelineTrimToRangeReason != nil)
+                    Button("Make clip") { model.makeClip() }.disabled(model.timelineMakeClipReason != nil)
                 }.fixedSize().controlSize(.small)
                 .accessibilityLabel("Timeline edits")
                 .columnLayoutEvidence("timeline.editMenu")
@@ -105,22 +114,81 @@ extension EditorModel {
                         .disabled(!model.timelineCanTrim)
                         .help("Adjust the first or last word")
                     Divider().frame(height: 14)
-                    Button { model.cutSelection() } label: { Label("Cut selection", systemImage: "scissors") }
-                        .disabled(!model.timelineCanCut).help("Cut the selected words and pauses (Delete). Undo with ⌘Z.")
-                        .columnLayoutEvidence("timeline.cutSelection")
-                    if model.selectedWordIDs.isEmpty && model.selectedPauseIDs.isEmpty {
-                        Text("Drag across the waveform to select words or a pause.")
-                            .foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
-                    } else {
-                        let words = model.selectedWordIDs.count, pauses = model.selectedPauseIDs.count
-                        Text([words == 0 ? nil : "\(words) \(words == 1 ? "word" : "words")", pauses == 0 ? nil : "\(pauses) \(pauses == 1 ? "pause" : "pauses")"].compactMap { $0 }.joined(separator: ", "))
-                            .foregroundStyle(.secondary).lineLimit(1)
+                    cut
+                    Divider().frame(height: 14)
+                    ViewThatFits(in: .horizontal) {
+                        rangeActions.labelStyle(.titleAndIcon)
+                        rangeActions.labelStyle(.iconOnly)
                     }
+                    status.layoutPriority(-1)
                     Spacer(minLength: 0)
                 }
                 .buttonStyle(.borderless).controlSize(.small).font(.callout)
                 .padding(.horizontal, 10).frame(height: TimelineMetrics.editBar)
             }
+        }
+    }
+
+    /// Cut selection, or Cut range while an exact range is set: shown, never run, until exact cuts ship.
+    @ViewBuilder private var cut: some View {
+        if model.timelineRange != nil {
+            Button {} label: { Label("Cut range", systemImage: "scissors") }
+                .disabled(true).help(EditorModel.timelineCutRangeReason)
+                .accessibilityHint(EditorModel.timelineCutRangeReason)
+                .columnLayoutEvidence("timeline.cutSelection")
+        } else {
+            Button { model.cutSelection() } label: { Label("Cut selection", systemImage: "scissors") }
+                .disabled(!model.timelineCanCut).help("Cut the selected words and pauses (Delete). Undo with ⌘Z.")
+                .columnLayoutEvidence("timeline.cutSelection")
+        }
+    }
+
+    private var rangeActions: some View {
+        HStack(spacing: 12) {
+            action("Play range", "play", reason: model.timelinePlayRangeReason, help: "Play the range and stop at its end", marker: "timeline.playRange") {
+                model.playTimelineRange()
+            }
+            action("Ask Claude", nil, reason: model.timelineAskClaudeReason, help: "Ask Claude about the range", marker: "timeline.askClaude") {
+                model.askClaudeOnTimelineRange()
+            }
+            action("Add title", "character.textbox", reason: model.timelineAddTitleReason, help: "Add a title over the range", marker: "timeline.addTitle") {
+                model.addTimelineTitleOverRange()
+            }
+            action("Trim item to range", "arrow.right.and.line.vertical.and.arrow.left", reason: model.timelineTrimToRangeReason,
+                   help: model.timelineRangeTrimTarget.map { "Trim the \($0.kind.lowercased()) to the range" } ?? "Trim an item to the range",
+                   marker: "timeline.trimToRange") { model.trimTimelineItemToRange() }
+            action("Make clip", "film", reason: model.timelineMakeClipReason, help: EditorModel.timelineMakeClipHelp, marker: "timeline.makeClip") {
+                model.makeClip()
+            }
+        }
+    }
+
+    /// A range action: `symbol`'s icon, or ✦ for Ask Claude, with `help`, or `reason` while disabled.
+    private func action(_ title: String, _ symbol: String?, reason: String?, help: String, marker: String, run: @escaping () -> Void) -> some View {
+        Button(action: run) {
+            if let symbol { Label(title, systemImage: symbol) }
+            else { Label { Text(title) } icon: { Text("\u{2726}") } }
+        }
+        .disabled(reason != nil)
+        .help(reason ?? help)
+        .accessibilityLabel(title)
+        .accessibilityHint(reason ?? "")
+        .columnLayoutEvidence(marker)
+    }
+
+    /// What is selected, or how to select.
+    @ViewBuilder private var status: some View {
+        if model.timelineRange != nil {
+            let words = model.selectedWordIDs.count
+            Text(words == 0 ? "Exact range" : "Exact range, \(words) \(words == 1 ? "word" : "words") inside")
+                .foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+        } else if model.selectedWordIDs.isEmpty && model.selectedPauseIDs.isEmpty {
+            Text(EditorModel.timelineRangeHint)
+                .foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+        } else {
+            let words = model.selectedWordIDs.count, pauses = model.selectedPauseIDs.count
+            Text([words == 0 ? nil : "\(words) \(words == 1 ? "word" : "words")", pauses == 0 ? nil : "\(pauses) \(pauses == 1 ? "pause" : "pauses")"].compactMap { $0 }.joined(separator: ", "))
+                .foregroundStyle(.secondary).lineLimit(1)
         }
     }
 }
@@ -175,7 +243,7 @@ extension EditorModel {
             ProjectEffectControls(model: model, effect: selected, title: title).disabled(!model.capabilities.edit)
         } else {
             Text("Titles & effects").font(.headline).accessibilityAddTraits(.isHeader)
-            Text("Add a title at the playhead").font(.subheadline)
+            Text(model.timelineActionRange == nil ? "Add a title at the playhead" : "Add a title over the range").font(.subheadline)
             ViewThatFits(in: .horizontal) {
                 HStack { titleField.frame(minWidth: 100); addButton }
                 VStack(alignment: .leading, spacing: 6) { titleField; addButton }

@@ -270,6 +270,105 @@ private actor PrecisionTestSettings: SettingsStore {
         #expect(model.activeClip?.startWordId == "t12")
     }
 
+    // MARK: Range actions
+
+    @Test func rangeActionsPlayTheRangeAndAddATitleTrimAnItemOrMakeAClipAsOrdinaryUndoSteps() async throws {
+        let app = try app(), model = editor(app, project: try project()), undo = UndoManager()
+        defer { model.close() }
+        undo.groupsByEvent = false; model.undoManager = undo
+        model.showsCuts = true
+        let hint = EditorModel.timelineRangeHint
+        #expect(model.timelinePlayRangeReason == hint && model.timelineAddTitleReason == hint)
+        #expect(model.timelineTrimToRangeReason == hint && model.timelineMakeClipReason == hint)
+        _ = model.setTimelineRange(from: 12.4, to: 17.06, on: .source)
+        let out = 512.0 / 30
+        // Play range plays from In and stops at Out.
+        model.playTimelineRange(); await settle()
+        #expect(model.previewStop == out && abs(model.sourceTime - 12.4) < 1e-6 && model.isPlaying)
+        model.transport("k")
+        // Cut range is shown but cuts nothing yet.
+        #expect(!model.timelineCanCut)
+        model.cutSelection()
+        #expect(model.cutWordIDs == ["t14", "t15"] && model.undoSteps == 0)
+        #expect(model.timelineAskClaudeReason != nil, "No AI is chosen in the test settings")
+        // Add title over the range, one "Add title" step.
+        undo.beginUndoGrouping(); model.addTimelineTitleOverRange(); undo.endUndoGrouping()
+        let title = try #require(model.project.clipEffects.first)
+        #expect(abs(title.start - 12.4) < 1e-6 && title.end == out && title.text == "Title" && undo.undoActionName == "Add title")
+        // Trim item to range: a second title from the playhead, trimmed to 19–20 s in one "Trim to range" step.
+        model.clearTimelineRange()
+        model.sourceTime = 18.5
+        undo.beginUndoGrouping(); try model.addTimelineTitle("Second"); undo.endUndoGrouping()
+        let second = try #require(model.project.clipEffects.first { $0.text == "Second" })
+        #expect(second.start == 18.5 && second.end == 20.5)
+        _ = model.setTimelineRange(from: 19, to: 20, on: .source)
+        #expect(model.timelineRangeTrimTarget?.id == .effect(second.id) && model.timelineTrimToRangeReason == nil)
+        let steps = model.undoSteps
+        undo.beginUndoGrouping(); model.trimTimelineItemToRange(); undo.endUndoGrouping()
+        let trimmed = try #require(model.project.clipEffects.first { $0.id == second.id })
+        #expect(abs(trimmed.start - 19) < 1e-3 && abs(trimmed.end - 20) < 1e-3, "\(trimmed.start)–\(trimmed.end)")
+        #expect(model.undoSteps == steps + 1 && undo.undoActionName == "Trim to range")
+        #expect(model.timelineTrimToRangeReason == "The title already fits inside the range.")
+        undo.undo()
+        #expect(model.project.clipEffects.first { $0.id == second.id }.map { ($0.start, $0.end) } ?? (0, 0) == (18.5, 20.5))
+        // Make clip: In snaps to word 12's start and Out to word 16's end.
+        _ = model.setTimelineRange(from: 12.4, to: 17.06, on: .source)
+        #expect(model.timelineMakeClipReason == nil)
+        undo.beginUndoGrouping(); model.makeClip(); undo.endUndoGrouping()
+        let clip = try #require(model.activeClip)
+        #expect(clip.startWordId == "t12" && clip.endWordId == "t16" && undo.undoActionName == "Make clip")
+    }
+
+    @Test(arguments: [CGFloat(700), 1280]) func everyRangeActionShowsInTheEditBar(_ width: CGFloat) throws {
+        let app = try app(), model = editor(app, project: try project()), shell = WorkspaceShell(app: app)
+        defer { model.close() }
+        _ = model.setTimelineRange(from: 12.4, to: 17.06, on: .source)
+        let size = NSSize(width: width, height: 210)
+        let host = ShellHost.controller(TimelinePanel(model: model, shell: shell), app: app)
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentViewController = host
+        defer { window.close() }
+        host.view.frame = CGRect(origin: .zero, size: size); host.view.layoutSubtreeIfNeeded()
+        let rects = DebugRightColumn.markers(in: host.view)
+        for marker in ["timeline.cutSelection", "timeline.playRange", "timeline.askClaude", "timeline.addTitle", "timeline.trimToRange", "timeline.makeClip"] {
+            let rect = try #require(rects[marker], "\(marker) at \(width) pt")
+            #expect(rect.width > 5 && rect.minX >= 0 && rect.maxX <= width, "\(marker): \(rect)")
+        }
+    }
+
+    // MARK: Word ticks
+
+    @Test func a1TicksWordEdgesFromAHundredPointsPerSecond() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = true
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        canvas.auditViewport(.init(axis: .source, ptPerSecond: 99, origin: 12.5, width: canvas.viewport.width))
+        canvas.audio.layer?.displayIfNeeded()
+        #expect(canvas.audio.state.wordStarts.isEmpty && canvas.audio.drawn.wordTicks == 0)
+        canvas.auditViewport(.init(axis: .source, ptPerSecond: 120, origin: 12.5, width: canvas.viewport.width))
+        canvas.audio.layer?.displayIfNeeded()
+        let starts = canvas.audio.state.wordStarts, ends = canvas.audio.state.wordEnds
+        #expect(starts.first == 13 && starts.contains(14) && ends.first.map { abs($0 - 12.8) < 1e-9 } == true, "Source ticks cut words too")
+        #expect(canvas.audio.drawn.wordTicks == starts.count + ends.count && starts.count >= 7)
+        let bitmap = try DebugTimeline.sRGBBitmap(of: canvas.audio)
+        let scale = CGFloat(bitmap.pixelsWide) / canvas.audio.bounds.width
+        let tick = try DebugTimeline.swatch("timeline.tick", over: "timeline.audioPiece")
+        func shows(_ time: Double, _ y: CGFloat) -> Bool {
+            let pixel = DebugTimeline.pixel(bitmap, x: Int((canvas.headerWidth + canvas.viewport.x(time) + 0.5) * scale), y: Int(y * scale))
+            return pixel.count == 3 && zip(pixel, tick).allSatisfy { abs($0 - $1) < 3.0 / 255 }
+        }
+        #expect(shows(13, TimelineAudioLane.pieceInset + 2), "A start hangs from the top")
+        #expect(!shows(13, canvas.audio.bounds.height - TimelineAudioLane.pieceInset - 2))
+        model.showsCuts = false; canvas.renderContent()
+        canvas.auditViewport(.init(axis: .edited, ptPerSecond: 120, origin: 2, width: canvas.viewport.width))
+        let edited = canvas.audio.state.wordStarts
+        let folded = model.timelineTime(source: 14, on: .edited), next = model.timelineTime(source: 16, on: .edited)
+        #expect(edited.contains(next) && !edited.contains { abs($0 - folded) < 1e-9 }, "Edited ticks only the words that play")
+    }
+
     // MARK: Helpers
 
     private func settle() async { for _ in 0..<100 { await Task.yield() } }
