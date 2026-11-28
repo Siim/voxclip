@@ -59,8 +59,15 @@ import Testing
         #expect(CutEdges.offer(project, envelopes: [key: Self.v1Envelope()], freeze: voice) == CutEdges.Offer(count: 0, frozen: 1, unloaded: []))
         let paid = [key: CutEdges.Freeze(paidScopes: [ClipWordRange(startWordId: "w3", endWordId: "w3")])]
         #expect(try CutEdges.fix(project, envelopes: [key: Self.v1Envelope()], freeze: paid).project.edits.cutEdges.isEmpty)
+        // An old cut inside a paid scope: nothing is being cut, so a key at w3 would change the scope's inputs.
         let inside = [key: CutEdges.Freeze(paidScopes: [ClipWordRange(startWordId: "w2", endWordId: "w3")])]
-        #expect(try CutEdges.fix(project, envelopes: [key: Self.v1Envelope()], freeze: inside).project.edits.cutEdges == ["w3": 1.205])
+        #expect(CutEdges.offer(project, envelopes: [key: Self.v1Envelope()], freeze: inside) == CutEdges.Offer(count: 0, frozen: 1, unloaded: []))
+        #expect(try CutEdges.fix(project, envelopes: [key: Self.v1Envelope()], freeze: inside).project.edits.cutEdges.isEmpty)
+        let cutWord = [key: CutEdges.Freeze(paidScopes: [ClipWordRange(startWordId: "w2", endWordId: "w2")])]
+        #expect(try CutEdges.fix(project, envelopes: [key: Self.v1Envelope()], freeze: cutWord).project.edits.cutEdges.isEmpty)
+        // The commit that cuts w2 inside that scope changes its cuts anyway, so it seats the edge.
+        let before = try Self.project(cut: [])
+        #expect(try CutEdges.finalize(before: before, after: project, envelopes: [key: Self.v1Envelope()], freeze: inside).edits.cutEdges == ["w3": 1.205])
     }
 
     /// The per-cut actions pin a key or move one back without levels to seat with: the same freeze decides.
@@ -71,7 +78,10 @@ import Testing
         // w1|w2's window is 0.65–0.95 s, clear of the patch.
         #expect(!CutEdges.isFrozen(words: words, at: 1, cutWordIds: ["w2"], freeze: voice))
         #expect(CutEdges.isFrozen(words: words, at: 2, cutWordIds: ["w2"], freeze: CutEdges.Freeze(paidScopes: [ClipWordRange(startWordId: "w3", endWordId: "w3")])))
-        #expect(!CutEdges.isFrozen(words: words, at: 2, cutWordIds: ["w2"], freeze: CutEdges.Freeze(paidScopes: [ClipWordRange(startWordId: "w2", endWordId: "w3")])))
+        // Both words inside a paid scope, or only the cut word: the key would count in it, and nothing is being cut.
+        #expect(CutEdges.isFrozen(words: words, at: 2, cutWordIds: ["w2"], freeze: CutEdges.Freeze(paidScopes: [ClipWordRange(startWordId: "w2", endWordId: "w3")])))
+        #expect(CutEdges.isFrozen(words: words, at: 2, cutWordIds: ["w2"], freeze: CutEdges.Freeze(paidScopes: [ClipWordRange(startWordId: "w2", endWordId: "w2")])))
+        #expect(!CutEdges.isFrozen(words: words, at: 2, cutWordIds: ["w2"], freeze: CutEdges.Freeze(paidScopes: [ClipWordRange(startWordId: "w1", endWordId: "w1")])))
         #expect(!CutEdges.isFrozen(words: words, at: 0, cutWordIds: ["w2"], freeze: voice))
         #expect(!CutEdges.isFrozen(words: words, at: 3, cutWordIds: ["w2"], freeze: voice))
     }

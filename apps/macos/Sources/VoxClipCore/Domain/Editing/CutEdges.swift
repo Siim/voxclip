@@ -15,7 +15,9 @@ public enum CutEdges {
     public static let minimumRun = 2
 
     /// What keeps a boundary at today's padding (§3.2): Voice Lab replace ranges in this recording's local seconds, and the
-    /// word ranges of paid scopes (a clip with a whole-clip revoice or lip sync, a Rewrite with takes) by clock id.
+    /// word ranges of paid scopes (a clip with a whole-clip revoice or lip sync, a Rewrite with takes) by clock id. A key
+    /// counts in a scope's inputs when word i−1 or word i lies in it, so a boundary touching a paid scope is frozen unless
+    /// the commit itself changes a word of it inside the scope.
     public struct Freeze: Sendable, Equatable {
         public var voiceRanges: [TimeRange]
         public var paidScopes: [ClipWordRange]
@@ -55,8 +57,11 @@ public enum CutEdges {
     }
 
     /// §3.1 over one recording: a key for each qualifying boundary without one (only those named by `only` when given).
+    /// `changedWords` are the words whose kept/cut state the commit changed (§3.3); with none, as for Fix cut edges, the
+    /// offer and a selected cut's actions, no boundary touching a paid scope gets a key.
     public static func seat(words: [TimedWord], cutWordIds: Set<String>, envelope: AudioEnvelope, sampleRate: Double,
-                            freeze: Freeze = Freeze(), existing: [String: Double] = [:], only: Set<String>? = nil) -> Seating {
+                            freeze: Freeze = Freeze(), existing: [String: Double] = [:], only: Set<String>? = nil,
+                            changedWords: Set<String> = []) -> Seating {
         var result = Seating()
         guard words.count > 1, sampleRate.isFinite, sampleRate > 0, let analysis = LevelAnalysis(words: words, envelope: envelope) else { return result }
         let positions = Dictionary(words.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
@@ -64,7 +69,7 @@ public enum CutEdges {
             let a = words[index - 1], b = words[index]
             guard qualifies(a, b, cutWordIds: cutWordIds), existing[b.id] == nil, only?.contains(b.id) ?? true,
                   let point = quietPoint(a, b, analysis: analysis, sampleRate: sampleRate) else { continue }
-            if frozen(a, b, cutWordIds: cutWordIds, window: point.window, freeze: freeze, positions: positions) {
+            if frozen(a, b, cutWordIds: cutWordIds, window: point.window, freeze: freeze, positions: positions, changedWords: changedWords) {
                 result.frozen += 1
             } else {
                 result.edges[b.id] = point.value
@@ -124,7 +129,8 @@ public enum CutEdges {
             let changed = changedBoundaries(recording.words, before: was, after: cut)
             guard !changed.isEmpty else { continue }
             let seated = seat(words: recording.words, cutWordIds: cut, envelope: envelope, sampleRate: rate,
-                              freeze: freeze[recording.key] ?? Freeze(), existing: result.edits.cutEdges, only: changed)
+                              freeze: freeze[recording.key] ?? Freeze(), existing: result.edits.cutEdges, only: changed,
+                              changedWords: was.symmetricDifference(cut))
             result.edits.cutEdges.merge(seated.edges) { _, new in new }
         }
         return try normalize(result)
@@ -137,12 +143,12 @@ public enum CutEdges {
 
     /// §3.2 for the boundary between `words[index − 1]` and `words[index]` of one recording, read without levels: whether
     /// a key there would move the inputs of the paid work beside it. The editors check it before a per-cut action pins a
-    /// key or moves one back.
+    /// key or moves one back; nothing is being cut then, so a boundary touching a paid scope is frozen.
     public static func isFrozen(words: [TimedWord], at index: Int, cutWordIds: Set<String>, freeze: Freeze) -> Bool {
         guard index >= 1, index < words.count else { return false }
         let positions = Dictionary(words.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
         let a = words[index - 1], b = words[index]
-        return frozen(a, b, cutWordIds: cutWordIds, window: window(a, b), freeze: freeze, positions: positions)
+        return frozen(a, b, cutWordIds: cutWordIds, window: window(a, b), freeze: freeze, positions: positions, changedWords: [])
     }
 
     /// §6 "Fix cut edges": seats every qualifying boundary without a key, as one step.
@@ -243,16 +249,21 @@ public enum CutEdges {
         return TimeRange(start: lowTime, end: highTime)
     }
 
-    /// §3.2: a Voice Lab replace range overlaps the window, or the kept word lies inside a paid scope and the cut word
-    /// outside it.
+    /// §3.2: a Voice Lab replace range overlaps the window, or the boundary touches a paid scope, whose inputs count a key
+    /// when word i−1 or word i lies in it. It is frozen when the kept word lies inside and the cut word outside (rule b),
+    /// and otherwise unless one of `changedWords` at this boundary lies inside the scope: a commit that cuts or restores a
+    /// word in the scope changes its cuts there anyway, and undoing that change drops the key with it.
     static func frozen(_ a: TimedWord, _ b: TimedWord, cutWordIds: Set<String>, window: TimeRange, freeze: Freeze,
-                       positions: [String: Int]) -> Bool {
+                       positions: [String: Int], changedWords: Set<String>) -> Bool {
         if freeze.voiceRanges.contains(where: { $0.start < window.end && window.start < $0.end }) { return true }
         let (kept, removed) = cutWordIds.contains(a.id) ? (b, a) : (a, b)
         return freeze.paidScopes.contains { scope in
             guard let low = positions[scope.startWordId], let high = positions[scope.endWordId],
                   let keptIndex = positions[kept.id], let removedIndex = positions[removed.id] else { return false }
-            return low <= keptIndex && keptIndex <= high && !(low <= removedIndex && removedIndex <= high)
+            let keptInside = low <= keptIndex && keptIndex <= high, removedInside = low <= removedIndex && removedIndex <= high
+            guard keptInside || removedInside else { return false }
+            if keptInside && !removedInside { return true }
+            return !((keptInside && changedWords.contains(kept.id)) || (removedInside && changedWords.contains(removed.id)))
         }
     }
 

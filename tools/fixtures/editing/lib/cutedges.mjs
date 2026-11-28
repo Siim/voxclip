@@ -57,8 +57,12 @@ export function quietPoint(A, B, a, sampleRate) {
   return { value: Math.round(t * sampleRate) / sampleRate, window: [loT, hiT] }
 }
 
-/** §3.2: a Voice Lab replace range overlaps the window, or the kept word is inside a paid scope and the cut word outside. */
-function frozen(A, B, cut, window, freeze, index) {
+/**
+ * §3.2: a Voice Lab replace range overlaps the window, or the boundary touches a paid scope (a key counts in its inputs when
+ * word i-1 or word i lies in it). Frozen when the kept word is inside and the cut word outside (rule b), and otherwise unless a
+ * word at this boundary whose kept/cut state the commit changed (`changed`) lies inside the scope.
+ */
+function frozen(A, B, cut, window, freeze, index, changed) {
   const [loT, hiT] = window
   if ((freeze.voiceRanges ?? []).some(([start, end]) => start < hiT && loT < end)) return true
   const [kept, removed] = cut.has(A.id) ? [B, A] : [A, B]
@@ -66,12 +70,17 @@ function frozen(A, B, cut, window, freeze, index) {
     const lo = index.get(first), hi = index.get(last)
     if (lo === undefined || hi === undefined) return false
     const inside = word => index.get(word.id) >= lo && index.get(word.id) <= hi
-    return inside(kept) && !inside(removed)
+    if (!inside(kept) && !inside(removed)) return false
+    if (inside(kept) && !inside(removed)) return true
+    return !((inside(kept) && changed.has(kept.id)) || (inside(removed) && changed.has(removed.id)))
   })
 }
 
-/** §3.1 over one recording: new keys for qualifying boundaries without one (only those in `only` when given). */
-export function seat({ words, cut, envelope, sampleRate, freeze = {}, existing = {}, only = null }) {
+/**
+ * §3.1 over one recording: new keys for qualifying boundaries without one (only those in `only` when given). `changed` holds the
+ * words whose kept/cut state the commit changed; empty for Fix cut edges and the offer, where nothing is cut.
+ */
+export function seat({ words, cut, envelope, sampleRate, freeze = {}, existing = {}, only = null, changed = new Set() }) {
   const edges = {}
   let kept = 0
   const a = analysis(words, envelope)
@@ -82,7 +91,7 @@ export function seat({ words, cut, envelope, sampleRate, freeze = {}, existing =
     if (!qualifies(A, B, cut) || Object.hasOwn(existing, B.id) || (only && !only.has(B.id))) continue
     const point = quietPoint(A, B, a, sampleRate)
     if (!point) continue
-    if (frozen(A, B, cut, point.window, freeze, index)) kept++
+    if (frozen(A, B, cut, point.window, freeze, index, changed)) kept++
     else edges[B.id] = point.value
   }
   return { edges, frozen: kept }

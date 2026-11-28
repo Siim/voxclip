@@ -339,7 +339,11 @@ public sealed class EditingFixtureTests
         if (input.TryGetProperty("freeze", out var frozen))
             freeze = new(frozen.TryGetProperty("voiceRanges", out var voice) ? voice.EnumerateArray().Select(range => new TimeRange(Number(range[0]), Number(range[1]))).ToArray() : [],
                 frozen.TryGetProperty("paidScopes", out var paid) ? paid.EnumerateArray().Select(scope => new ClipWordRange(scope[0].GetString()!, scope[1].GetString()!)).ToArray() : []);
-        var seated = CutEdges.Seat(words, cut, Levels(input.GetProperty("envelope")), rate, freeze, existing);
+        // Fix cut edges and the offer cut nothing; a commit changed changedWordIds, by default the cut words.
+        var changed = input.TryGetProperty("mode", out var mode) && mode.GetString() == "fix" ? new HashSet<string>(StringComparer.Ordinal)
+            : (input.TryGetProperty("changedWordIds", out var flipped) ? flipped : input.GetProperty("cutWordIds")).EnumerateArray()
+                .Select(id => id.GetString()!).ToHashSet(StringComparer.Ordinal);
+        var seated = CutEdges.Seat(words, cut, Levels(input.GetProperty("envelope")), rate, freeze, existing, changedWords: changed);
         var merged = new Dictionary<string, double>(existing, StringComparer.Ordinal);
         foreach (var (id, edge) in seated.Edges) merged[id] = edge;
         var stored = CutEdges.Normalized(merged, words, cut);

@@ -18,7 +18,9 @@ public static class CutEdges
     public const int MinimumRun = 2;
 
     /// <summary>What keeps a boundary at today's padding (§3.2): Voice Lab replace ranges in this recording's local seconds, and the
-    /// word ranges of paid scopes (a clip with a whole-clip revoice or lip sync, a Rewrite with takes) by clock id.</summary>
+    /// word ranges of paid scopes (a clip with a whole-clip revoice or lip sync, a Rewrite with takes) by clock id. A key counts in a
+    /// scope's inputs when word i−1 or word i lies in it, so a boundary touching a paid scope is frozen unless the commit itself
+    /// changes a word of it inside the scope.</summary>
     public sealed record Freeze(IReadOnlyList<TimeRange> VoiceRanges, IReadOnlyList<ClipWordRange> PaidScopes)
     {
         /// <summary>Nothing frozen.</summary>
@@ -45,9 +47,11 @@ public static class CutEdges
     }
 
     /// <summary>§3.1 over one recording: a key for each qualifying boundary without one (only those named by <paramref name="only"/>
-    /// when given).</summary>
+    /// when given). <paramref name="changedWords"/> are the words whose kept/cut state the commit changed (§3.3); with none, as for Fix
+    /// cut edges, the offer and a selected cut's actions, no boundary touching a paid scope gets a key.</summary>
     public static Seating Seat(IReadOnlyList<TimedWord> words, IReadOnlySet<string> cutWordIds, AudioEnvelope envelope, double sampleRate,
-        Freeze? freeze = null, IReadOnlyDictionary<string, double>? existing = null, IReadOnlySet<string>? only = null)
+        Freeze? freeze = null, IReadOnlyDictionary<string, double>? existing = null, IReadOnlySet<string>? only = null,
+        IReadOnlySet<string>? changedWords = null)
     {
         var edges = new Dictionary<string, double>(StringComparer.Ordinal);
         var frozen = 0;
@@ -62,7 +66,7 @@ public static class CutEdges
             var b = words[index];
             if (!Qualifies(a, b, cutWordIds) || existing?.ContainsKey(b.Id) == true || only?.Contains(b.Id) == false ||
                 QuietPoint(a, b, analysis, sampleRate) is not { } point) continue;
-            if (Frozen(a, b, cutWordIds, point.Window, freeze, positions)) frozen++;
+            if (Frozen(a, b, cutWordIds, point.Window, freeze, positions, changedWords)) frozen++;
             else edges[b.Id] = point.Value;
         }
         return new(edges, frozen);
@@ -113,13 +117,15 @@ public static class CutEdges
         var was = CutSet(before);
         var cut = CutSet(after);
         var rate = ClockRate(after);
+        var flipped = new HashSet<string>(was, StringComparer.Ordinal);
+        flipped.SymmetricExceptWith(cut);
         var edges = new Dictionary<string, double>(after.Edits.CutEdges ?? new Dictionary<string, double>(), StringComparer.Ordinal);
         foreach (var recording in Recordings(after))
         {
             if (!envelopes.TryGetValue(recording.Key, out var envelope)) continue;
             var changed = ChangedBoundaries(recording.Words, was, cut);
             if (changed.Count == 0) continue;
-            var seated = Seat(recording.Words, cut, envelope, rate, freeze?.GetValueOrDefault(recording.Key), edges, changed);
+            var seated = Seat(recording.Words, cut, envelope, rate, freeze?.GetValueOrDefault(recording.Key), edges, changed, flipped);
             foreach (var (id, edge) in seated.Edges) edges[id] = edge;
         }
         return Normalize(after with { Edits = after.Edits with { CutEdges = edges.Count > 0 ? edges : null } });
@@ -131,7 +137,7 @@ public static class CutEdges
 
     /// <summary>§3.2 for the boundary between words[<paramref name="index"/> − 1] and words[<paramref name="index"/>] of one recording,
     /// read without levels: whether a key there would move the inputs of the paid work beside it. The editors check it before a
-    /// per-cut action pins a key or moves one back.</summary>
+    /// per-cut action pins a key or moves one back; nothing is being cut then, so a boundary touching a paid scope is frozen.</summary>
     public static bool IsFrozen(IReadOnlyList<TimedWord> words, int index, IReadOnlySet<string> cutWordIds, Freeze freeze)
     {
         if (index < 1 || index >= words.Count) return false;
@@ -139,7 +145,7 @@ public static class CutEdges
         for (var at = 0; at < words.Count; at++) positions.TryAdd(words[at].Id, at);
         var a = words[index - 1];
         var b = words[index];
-        return Frozen(a, b, cutWordIds, Window(a, b), freeze, positions);
+        return Frozen(a, b, cutWordIds, Window(a, b), freeze, positions, null);
     }
 
     /// <summary>The word edge between <paramref name="a"/> and <paramref name="b"/>, sample-rounded at <paramref name="sampleRate"/> as a key
@@ -269,17 +275,25 @@ public static class CutEdges
         return new(lowTime, highTime);
     }
 
-    /// <summary>§3.2: a Voice Lab replace range overlaps the window, or the kept word lies inside a paid scope and the cut word outside
-    /// it.</summary>
+    /// <summary>§3.2: a Voice Lab replace range overlaps the window, or the boundary touches a paid scope, whose inputs count a key when
+    /// word i−1 or word i lies in it. It is frozen when the kept word lies inside and the cut word outside (rule b), and otherwise unless
+    /// one of <paramref name="changedWords"/> at this boundary lies inside the scope: a commit that cuts or restores a word in the scope
+    /// changes its cuts there anyway, and undoing that change drops the key with it.</summary>
     private static bool Frozen(TimedWord a, TimedWord b, IReadOnlySet<string> cutWordIds, TimeRange window, Freeze freeze,
-        IReadOnlyDictionary<string, int> positions)
+        IReadOnlyDictionary<string, int> positions, IReadOnlySet<string>? changedWords)
     {
         if (freeze.VoiceRanges.Any(range => range.Start < window.End && window.Start < range.End)) return true;
         var (kept, removed) = cutWordIds.Contains(a.Id) ? (b, a) : (a, b);
         return freeze.PaidScopes.Any(scope =>
-            positions.TryGetValue(scope.StartWordId, out var low) && positions.TryGetValue(scope.EndWordId, out var high) &&
-            positions.TryGetValue(kept.Id, out var keptIndex) && positions.TryGetValue(removed.Id, out var removedIndex) &&
-            low <= keptIndex && keptIndex <= high && !(low <= removedIndex && removedIndex <= high));
+        {
+            if (!positions.TryGetValue(scope.StartWordId, out var low) || !positions.TryGetValue(scope.EndWordId, out var high) ||
+                !positions.TryGetValue(kept.Id, out var keptIndex) || !positions.TryGetValue(removed.Id, out var removedIndex)) return false;
+            var keptInside = low <= keptIndex && keptIndex <= high;
+            var removedInside = low <= removedIndex && removedIndex <= high;
+            if (!keptInside && !removedInside) return false;
+            if (keptInside && !removedInside) return true;
+            return !(keptInside && changedWords?.Contains(kept.Id) == true || removedInside && changedWords?.Contains(removed.Id) == true);
+        });
     }
 
     /// <summary>The boundaries whose kept/cut state differs between two cut sets, named by the later word.</summary>

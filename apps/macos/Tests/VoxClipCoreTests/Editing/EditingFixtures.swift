@@ -305,7 +305,10 @@ struct FixtureValue {
         let cut = Set(input["cutWordIds"].array.map(\.string)), existing = edges(input["existing"])
         let freeze = CutEdges.Freeze(voiceRanges: input["freeze"]["voiceRanges"].array.map { TimeRange(start: $0.array[0].number, end: $0.array[1].number) },
                                      paidScopes: input["freeze"]["paidScopes"].array.map { ClipWordRange(startWordId: $0.array[0].string, endWordId: $0.array[1].string) })
-        let seated = CutEdges.seat(words: items, cutWordIds: cut, envelope: levelsEnvelope(input["envelope"]), sampleRate: rate, freeze: freeze, existing: existing)
+        // Fix cut edges and the offer cut nothing; a commit changed `changedWordIds`, by default the cut words.
+        let changed: Set<String> = input["mode"].string == "fix" ? [] : Set((input["changedWordIds"].isNull ? input["cutWordIds"] : input["changedWordIds"]).array.map(\.string))
+        let seated = CutEdges.seat(words: items, cutWordIds: cut, envelope: levelsEnvelope(input["envelope"]), sampleRate: rate, freeze: freeze,
+                                   existing: existing, changedWords: changed)
         let stored = CutEdges.normalized(existing.merging(seated.edges) { _, new in new }, words: items, cutWordIds: cut)
         #expect(stored == edges(expected["cutEdges"]), "cutEdges")
         #expect(seated.edges.count == expected["offerCount"].int, "offerCount")

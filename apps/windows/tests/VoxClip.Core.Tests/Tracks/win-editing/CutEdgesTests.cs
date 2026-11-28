@@ -79,8 +79,15 @@ public sealed class CutEdgesTests
         Assert.Empty(voice.Unloaded);
         var paid = CutEdges.Fix(project, Loaded(project), Frozen(project, new([], [new ClipWordRange("w3", "w3")])));
         Assert.Null(paid.Project.Edits.CutEdges);
-        var inside = CutEdges.Fix(project, Loaded(project), Frozen(project, new([], [new ClipWordRange("w2", "w3")])));
-        Assert.Equal(Sorted(new Dictionary<string, double> { ["w3"] = 1.205 }), Sorted(inside.Project.Edits.CutEdges));
+        // An old cut inside a paid scope: nothing is being cut, so a key at w3 would change the scope's inputs.
+        var insideScope = Frozen(project, new([], [new ClipWordRange("w2", "w3")]));
+        var insideOffer = CutEdges.Offer(project, Loaded(project), insideScope);
+        Assert.Equal((0, 1), (insideOffer.Count, insideOffer.Frozen));
+        Assert.Null(CutEdges.Fix(project, Loaded(project), insideScope).Project.Edits.CutEdges);
+        Assert.Null(CutEdges.Fix(project, Loaded(project), Frozen(project, new([], [new ClipWordRange("w2", "w2")]))).Project.Edits.CutEdges);
+        // The commit that cuts w2 inside that scope changes its cuts anyway, so it seats the edge.
+        var seated = CutEdges.Finalize(Fixture(), project, Loaded(project), insideScope);
+        Assert.Equal(Sorted(new Dictionary<string, double> { ["w3"] = 1.205 }), Sorted(seated.Edits.CutEdges));
     }
 
     /// <summary>The per-cut actions pin a key or move one back without levels to seat with: the same freeze decides.</summary>
@@ -94,7 +101,10 @@ public sealed class CutEdgesTests
         // w1|w2's window is 0.65–0.95 s, clear of the patch.
         Assert.False(CutEdges.IsFrozen(words, 1, cut, voice));
         Assert.True(CutEdges.IsFrozen(words, 2, cut, new([], [new ClipWordRange("w3", "w3")])));
-        Assert.False(CutEdges.IsFrozen(words, 2, cut, new([], [new ClipWordRange("w2", "w3")])));
+        // Both words inside a paid scope, or only the cut word: the key would count in it, and nothing is being cut.
+        Assert.True(CutEdges.IsFrozen(words, 2, cut, new([], [new ClipWordRange("w2", "w3")])));
+        Assert.True(CutEdges.IsFrozen(words, 2, cut, new([], [new ClipWordRange("w2", "w2")])));
+        Assert.False(CutEdges.IsFrozen(words, 2, cut, new([], [new ClipWordRange("w1", "w1")])));
         Assert.False(CutEdges.IsFrozen(words, 0, cut, voice));
         Assert.False(CutEdges.IsFrozen(words, 3, cut, voice));
     }

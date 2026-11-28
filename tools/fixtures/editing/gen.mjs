@@ -513,13 +513,16 @@ const edgePlan = (words, cut, edges, duration, sampleRate, mod) => {
   return built.cuts.map(c => [c.startSample, c.endSample])
 }
 const edgeTimeline = await timelineWith({ cutEdges: true })
-function cutEdges({ id, description, words = edgeWords(), cut = ['w2'], runs, sampleRate = 48000, freeze, existing }) {
+// `mode: 'fix'` seats as Fix cut edges and the offer do, with nothing being cut; otherwise as the commit that changed
+// `changedWordIds` (by default the cut words, just cut).
+function cutEdges({ id, description, words = edgeWords(), cut = ['w2'], runs, sampleRate = 48000, freeze, existing, mode, changedWordIds }) {
   const envelope = levelsInput(300, FLOOR, [speechRun, ...runs])
   const cutSet = new Set(cut)
-  const seated = ce.seat({ words, cut: cutSet, envelope: makeLevels(envelope), sampleRate, freeze, existing: existing ?? {} })
+  const changed = new Set(mode === 'fix' ? [] : changedWordIds ?? cut)
+  const seated = ce.seat({ words, cut: cutSet, envelope: makeLevels(envelope), sampleRate, freeze, existing: existing ?? {}, changed })
   const edges = ce.normalize(words, cutSet, { ...(existing ?? {}), ...seated.edges })
   add({ id, kind: 'cut-edges', origin: 'voxclip', source: SEAT_SOURCE, description,
-    input: { durationSeconds: 3, sampleRate, envelope, words, cutWordIds: cut, existing, freeze },
+    input: { durationSeconds: 3, sampleRate, envelope, words, cutWordIds: cut, existing, freeze, mode, changedWordIds },
     expected: { cutEdges: edges, offerCount: Object.keys(seated.edges).length, frozen: seated.frozen, cuts: edgePlan(words, cutSet, edges, 3, sampleRate, edgeTimeline) } })
   return edges
 }
@@ -540,6 +543,14 @@ const v1 = dips([79, 81], [119, 121])
     description: 'Cutting w2 and w3 together: keys only at the outer boundaries (w2 and w4); the w2|w3 boundary is cut on both sides.' })
   cutEdges({ id: 'cut-edges/existing-pin', runs: v1, existing: { w3: 1.30 }, description: 'A stored key is never recomputed: the word-edge pin at b = 1.30 stays against an envelope that has a dip, and the offer counts nothing.' })
   cutEdges({ id: 'cut-edges/paid-scope-edge', runs: v1, freeze: { paidScopes: [['w3', 'w3']] }, description: 'Rule (b): kept w3 is inside a paid scope and cut w2 outside it, so the w2|w3 edge keeps today\'s padding.' })
+  // A key counts in a scope's inputs when word i-1 or word i lies in it: only a commit that cuts or restores a word of the
+  // boundary inside the scope may seat there, because that commit changes the scope's cuts anyway.
+  const inside = { paidScopes: [['w2', 'w3']] }
+  const seatedInside = cutEdges({ id: 'cut-edges/paid-scope-new-cut-inside', runs: v1, freeze: inside, description: 'Cutting w2 inside a paid scope over w2-w3 changes its cuts anyway, so the commit seats the w2|w3 edge.' })
+  const fixInside = cutEdges({ id: 'cut-edges/paid-scope-old-cut-fix', runs: v1, freeze: inside, mode: 'fix', description: 'Fix cut edges on an old cut w2 inside a paid scope over w2-w3: nothing is being cut, so a key at w3 would change the scope\'s inputs and make its paid work stale; the edge keeps today\'s padding.' })
+  const fixCutWord = cutEdges({ id: 'cut-edges/paid-scope-cut-word-fix', runs: v1, freeze: { paidScopes: [['w2', 'w2']] }, mode: 'fix', description: 'Fix cut edges where the old cut w2 is the paid scope and kept w3 lies outside it: the w2|w3 key would count in the scope, so it is frozen.' })
+  const restored = cutEdges({ id: 'cut-edges/paid-scope-restore-beside', runs: v1, freeze: { paidScopes: [['w1', 'w2']] }, changedWordIds: ['w3'], description: 'Restoring w3 just outside a paid scope over w1-w2 whose last word w2 stays cut: the commit changes nothing inside the scope, so the w2|w3 edge keeps today\'s padding.' })
+  assert(isDeepStrictEqual([seatedInside, fixInside, fixCutWord, restored], [{ w3: 1.205 }, {}, {}, {}]), 'paid scopes freeze what the commit does not change')
   const tie = cutEdges({ id: 'cut-edges/late-boundary-44k', runs: v1, sampleRate: 44100, description: 'V1 on a 44.1 kHz clock: t = 1.205 s is the half-sample 53140.5 in exact arithmetic, and jsRound in binary64 pins the stored value.' })
   assert(tie.w3 === Math.round(1.205 * 44100) / 44100, '44.1 kHz tie')
 }
@@ -553,7 +564,7 @@ function edgeSession({ id, description, runs, ops, words = edgeWords(), startVer
   for (const op of ops) {
     const next = new Set(cut)
     if (next.has(op.id)) next.delete(op.id); else next.add(op.id)
-    const seated = ce.seat({ words, cut: next, envelope: levels, sampleRate: 48000, existing: edges, only: ce.changed(words, cut, next) })
+    const seated = ce.seat({ words, cut: next, envelope: levels, sampleRate: 48000, existing: edges, only: ce.changed(words, cut, next), changed: new Set([op.id]) })
     cut = next
     edges = ce.normalize(words, cut, { ...edges, ...seated.edges })
     version = ce.writtenVersion({ schemaVersion: version, edits: { cutEdges: edges }, media: {} })
