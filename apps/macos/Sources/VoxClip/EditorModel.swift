@@ -155,6 +155,8 @@ struct EditorRenderSnapshot {
     /// Opening one tells the shell, which pins the session's preview tab (V2).
     var openRewrite: RewriteSession? {
         didSet {
+            // Its scope keeps its edges while it is open, and a close may leave paid work saved beside the project.
+            cutEdgeOfferMemo = nil; savedPaidRewriteScopesMemo = nil
             if let session = openRewrite, session.isOpen { onRewriteSessionOpen?(session.project.edits.activeClipId) }
         }
     }
@@ -647,9 +649,30 @@ struct EditorRenderSnapshot {
         await beforeWaveformLoad()
         #endif
         let value = if let key { await WaveformCache.shared.load(key) } else { nil as WaveformData? }
+        // Each recording's own levels too, in its local seconds, for the cut edge seat (editing §5.10); the clock load
+        // has just read them, so these come from the cache.
+        var recordings: [String: WaveformData] = [:]
+        switch key {
+        case .single(let single): if let value { recordings[single.contentKey] = value }
+        case .clock(_, _, let regions):
+            for region in regions {
+                if let loaded = await WaveformCache.shared.load(region.key) { recordings[region.key.contentKey] = loaded }
+            }
+        case nil: break
+        }
         guard !Task.isCancelled, key == waveformKey else { return }
         waveform = value
+        recordingWaveforms = recordings
     }
+    /// The loaded waveform of each recording by its key (the project's content key, a spoken recording's source key):
+    /// what `CutEdges` seats a cut on. Empty until a load finishes.
+    var recordingWaveforms: [String: WaveformData] = [:]
+    /// The inline offer as last counted, for the edits, waveforms and Rewrite it was counted over (EditorModel+CutEdges).
+    @ObservationIgnored var cutEdgeOfferMemo: CutEdgeOfferMemo?
+    /// The Rewrite scopes with paid takes saved beside the project, read once per project change (EditorModel+CutEdges).
+    @ObservationIgnored var savedPaidRewriteScopesMemo: [String]?
+    /// "Moved N cut edges into the quiet", shown in the edit bar while the edits are the ones Fix cut edges made.
+    var cutEdgeResult: (edits: ProjectEdits, text: String)?
     /// Loads the waveform when the project's media is there to read, and again when it
     /// changes (impl-plan §3.1): the model owns it, so a hidden timeline never starves the
     /// audiogram stand-in or Rewrite.
@@ -962,6 +985,7 @@ struct EditorRenderSnapshot {
     }
     func refresh() {
         let project = project
+        cutEdgeOfferMemo = nil; savedPaidRewriteScopesMemo = nil
         if let route = timelineEditor, route.projectID != project.id || route.clipID != project.edits.activeClipId {
             resetTimelineEditor()
         }
@@ -1116,6 +1140,9 @@ struct EditorRenderSnapshot {
         // Undo and Redo never switch tabs (impl-plan §3.3): a restored snapshot keeps the
         // current scope while it still has that clip, else Full Take.
         if restoringSnapshot, !restoresRecordingScope { newProject.edits.activeClipId = scopeKept(in: newProject) }
+        // A new cut's edges move into the quiet in this same step (editing §5.10); Undo and Redo restore snapshots as
+        // they were.
+        if !restoringSnapshot { newProject = committingCutEdges(from: project, to: newProject) }
         guard newProject != project else { return }
         preview.pause(); isPlaying = false
         let previous = project
