@@ -184,6 +184,7 @@ public sealed partial class EditorPage : Page
         CaptionsHost.Children.Add(rightContent);
         InitializeIntegratedEditor();
         InitializeMakeIt();
+        InitializePicture();
         SelectionChanged(this, EventArgs.Empty);
         await captions.InitializeAsync();
 #if DEBUG
@@ -367,6 +368,7 @@ public sealed partial class EditorPage : Page
             sourceTime = endWord.End;
         var changed = Math.Abs(ViewModel.SourceTime - sourceTime) > 0.02;
         ViewModel.SourceTime = sourceTime;
+        PicturePositionChanged(position, changed);
         var (elapsed, total) = PreviewClockLabel.Parts(previewSpeed.Rendered(position.EditedTime), previewSpeed.Rendered(previewDuration));
         TransportElapsed.Text = elapsed;
         TransportTotal.Text = " / " + total;
@@ -1179,9 +1181,12 @@ public sealed partial class EditorPage : Page
             Timeline.ZoomItems(direction > 0 ? TimelineShortcut.ZoomIn : TimelineShortcut.ZoomOut);
         else Transcript.Zoom(direction);
     }
+    /// <summary>Releasing the backslash key ends Picture's Compare.</summary>
+    private void EditorKeyUp(object sender, KeyRoutedEventArgs args) => PictureCompareKey(args, false);
     private async void EditorKeyDown(object sender, KeyRoutedEventArgs args)
     {
         if (!ready || args.Handled || args.Key == VirtualKey.F6) return;
+        if (PictureCompareKey(args, true)) return;
         if (ViewModel.PartPickRecording is not null && !InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)))
         {
             if (args.Key == VirtualKey.Escape && !CaptionDrag.IsDragging && ViewModel.FinishPartPick()) { args.Handled = true; return; }

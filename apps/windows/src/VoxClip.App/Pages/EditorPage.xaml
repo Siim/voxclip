@@ -1,5 +1,5 @@
 <Page x:Class="VoxClip.App.Pages.EditorPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="using:VoxClip.App.Controls" xmlns:local="using:VoxClip.App.Pages" xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
-    <Grid x:Name="EditorRoot" KeyDown="EditorKeyDown" SizeChanged="EditorSizeChanged">
+    <Grid x:Name="EditorRoot" KeyDown="EditorKeyDown" KeyUp="EditorKeyUp" SizeChanged="EditorSizeChanged">
         <Grid.RowDefinitions><RowDefinition Height="Auto" MinHeight="34"/><RowDefinition Height="*"/><RowDefinition x:Name="TimelineRow" Height="Auto" MinHeight="0"/></Grid.RowDefinitions>
         <Grid x:Name="ClipBarHost" Padding="8,0" ColumnSpacing="{StaticResource VcSpacingRowGap}" Background="{ThemeResource VcBgSurfaceBrush}" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="0,0,0,1">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -203,6 +203,13 @@
                                 </ResourceDictionary>
                             </Grid.Resources>
                             <Image x:Name="PreviewImage" Stretch="Uniform" AutomationProperties.AutomationId="PreviewImage" AutomationProperties.Name="Video preview, full take"/>
+                            <!-- Picture's previews (looks spec §3.4): a hovered look, Compare's As filmed or a dragged value, drawn over the paused player. -->
+                            <Image x:Name="PicturePreviewImage" Stretch="Uniform" Visibility="Collapsed" IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw"/>
+                            <Border x:Name="PicturePreviewBadge" Visibility="Collapsed" IsHitTestVisible="False" Margin="8" Padding="6,2" CornerRadius="4"
+                                HorizontalAlignment="Left" VerticalAlignment="Top" Background="{ThemeResource VcChipMediaBackgroundBrush}"
+                                BorderBrush="{ThemeResource VcChipMediaStrokeBrush}" BorderThickness="1" AutomationProperties.AutomationId="Picture.PreviewBadge">
+                                <TextBlock x:Name="PicturePreviewBadgeText" FontSize="12" Foreground="{ThemeResource VcChipMediaForegroundBrush}"/>
+                            </Border>
                             <StackPanel x:Name="PreviewStandIn" Margin="20" Spacing="{StaticResource VcSpacingRowGap}" VerticalAlignment="Top" HorizontalAlignment="Center" IsHitTestVisible="False"
                                 Background="{ThemeResource StageMessagePlateBrush}" BorderBrush="{ThemeResource StageMessageEdgeBrush}" BorderThickness="{ThemeResource StageMessageEdgeThickness}"
                                 Padding="{ThemeResource StageMessagePadding}" CornerRadius="{ThemeResource StageMessageCornerRadius}">
