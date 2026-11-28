@@ -424,7 +424,8 @@ public enum VoiceLabWindowPlanner {
             let pauses = try editing { try detectPauses(words, thresholdSeconds: edits.pauseThresholdSeconds) }
             let state = EditState(transcript: take.transcript, pauses: pauses, pauseThresholdSeconds: edits.pauseThresholdSeconds,
                                   pauseKeepSeconds: edits.pauseKeepSeconds, cutWordIds: Set(edits.cutWordIds),
-                                  cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections, clips: edits.clips)
+                                  cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections, clips: edits.clips,
+                                  cutEdges: edits.cutEdges)
             var activeClip: ClipRange?, clipRange: TimeRange?, clipBounds: ClosedRange<Int>?
             if case .clip(let id) = scope {
                 guard let clip = edits.clips.first(where: { $0.id == id }), let indices = clipIndices(clip, words: words) else {

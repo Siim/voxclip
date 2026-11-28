@@ -3,7 +3,7 @@ import VoxClipCore
 
 extension Project {
     /// Inputs shared by opening, consent, edit following and successful-reply acceptance. The source transcript, media,
-    /// pause settings and Voice Lab replacement segments remain; cuts, corrections and clip bounds are scoped. A selection
+    /// pause settings and Voice Lab replacement segments remain; cuts, cut edges, corrections and clip bounds are scoped. A selection
     /// includes its enclosing clip's placement context and both edge pauses. Save metadata, tab/title, schema/extensions,
     /// captions/clip style/export/share, Motion, Demo and the Voice Lab asset/voice catalogs do not change a text proposal.
     func rewriteInputs(scope: RewriteScope, enclosingClipID: String?) -> Project {
@@ -54,6 +54,10 @@ extension Project {
             pausePositions[id].map { $0 >= pauseLower && $0 <= pauseUpper } ?? true
         }
         project.edits.corrections = edits.corrections.filter { positions[$0.key].map(words.contains) ?? true }
+        // A cut edge (editing §5.10) sits between word i−1 and word i, so it counts when either is in scope.
+        project.edits.cutEdges = edits.cutEdges.filter { key, _ in
+            positions[key].map { words.contains($0) || words.contains($0 - 1) } ?? true
+        }
         project.captions = CaptionSettings()
         // The clip style (its caption picks, preset, music, shapes and tone) is read by a new run's instruction and by
         // Claude mode, never by an open proposal or its takes: Claude's caption picks are an edit outside the scope.

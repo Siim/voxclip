@@ -1,6 +1,6 @@
 {
   "schema": "voxclip-voice-take-identity/1",
-  "caseCount": 32,
+  "caseCount": 36,
   "project": "fixtures/music/music-project.voxclip",
   "base": [
     {
@@ -653,6 +653,107 @@
       "sameIdentity": true,
       "sameRewriteInputs": true,
       "why": "The selection keeps the clip it opened in."
+    },
+    {
+      "id": "cut-edge-outside-clip",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/edits/cutWordIds",
+          "value": [
+            "w2"
+          ]
+        },
+        {
+          "path": "/edits/cutEdges",
+          "value": {
+            "w2": 0.66
+          }
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "A cut edge whose two words are both outside the clip is outside what its takes are made from, as the cut is."
+    },
+    {
+      "id": "cut-edge-at-clip-edge",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/edits/cutWordIds",
+          "value": [
+            "w2"
+          ]
+        },
+        {
+          "path": "/edits/cutEdges",
+          "value": {
+            "w2": 0.66,
+            "w3": 1.04
+          }
+        }
+      ],
+      "sameIdentity": false,
+      "sameRewriteInputs": false,
+      "why": "A cut edge on the clip's first word moves the clip's own edge, so it counts even though the cut word is outside the clip."
+    },
+    {
+      "id": "cut-edge-inside-clip",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/schemaVersion",
+          "value": 8
+        },
+        {
+          "path": "/edits/cutWordIds",
+          "value": [
+            "w4"
+          ]
+        },
+        {
+          "path": "/edits/cutEdges",
+          "value": {
+            "w5": 2.78
+          }
+        }
+      ],
+      "sameIdentity": false,
+      "sameRewriteInputs": false,
+      "why": "A cut inside the clip and its seated edge change what takes are made from."
+    },
+    {
+      "id": "cut-edge-cut-then-restore",
+      "scope": {
+        "kind": "clip",
+        "clipId": "clip-main"
+      },
+      "set": [
+        {
+          "path": "/schemaVersion",
+          "value": 6
+        }
+      ],
+      "sameIdentity": true,
+      "sameRewriteInputs": true,
+      "why": "Cutting a word and restoring it leaves the edits as they were; only the written version moved, from 4 through 8 to 6."
     }
   ]
 }

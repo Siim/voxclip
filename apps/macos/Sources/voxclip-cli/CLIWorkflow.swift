@@ -73,7 +73,7 @@ enum CLIWorkflow {
         return EditState(transcript: transcript, pauses: pauses,
                          pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds,
                          cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections,
-                         clips: edits.clips, activeClipId: edits.activeClipId)
+                         clips: edits.clips, activeClipId: edits.activeClipId, cutEdges: edits.cutEdges)
     }
 
     static func plan(_ project: Project, state supplied: EditState? = nil) throws -> EditPlan {

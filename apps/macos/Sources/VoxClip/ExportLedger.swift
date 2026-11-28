@@ -165,7 +165,8 @@ struct ExportRecord: Codable, Equatable {
             let pauses = try detectPauses(transcript.words, thresholdSeconds: edits.pauseThresholdSeconds)
             let state = EditState(transcript: transcript, pauses: pauses, pauseThresholdSeconds: edits.pauseThresholdSeconds,
                                   pauseKeepSeconds: edits.pauseKeepSeconds, cutWordIds: Set(edits.cutWordIds),
-                                  cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections, clips: edits.clips)
+                                  cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections, clips: edits.clips,
+                                  cutEdges: edits.cutEdges)
             segments = try buildSegments(state, activeClip: clip)
             let rate: Double = Double(project.media.source.audio?.sampleRate ?? 48_000)
             plan = try EditPlan.build(transcript: transcript, editState: state, activeClip: clip, duration: duration, sampleRate: rate)

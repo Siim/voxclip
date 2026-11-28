@@ -22,7 +22,7 @@ extension RewriteSession {
                 pauses: try detectPauses(transcript.words, thresholdSeconds: edits.pauseThresholdSeconds),
                 pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds,
                 cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds),
-                corrections: edits.corrections, clips: edits.clips, activeClipId: clipID)
+                corrections: edits.corrections, clips: edits.clips, activeClipId: clipID, cutEdges: edits.cutEdges)
             let snapshot = EditorRenderSnapshot(project: proposed, state: state, plan: nil)
             let request = try await editor.renderRequest(target: target, snapshot: snapshot)
             try Task.checkCancellation()

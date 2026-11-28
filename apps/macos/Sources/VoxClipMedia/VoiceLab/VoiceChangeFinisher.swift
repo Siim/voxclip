@@ -200,7 +200,7 @@ public enum VoiceChangeFinisher {
         let state = EditState(transcript: transcript, pauses: try detectPauses(transcript.words, thresholdSeconds: edits.pauseThresholdSeconds),
             pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds,
             cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections,
-            clips: edits.clips, activeClipId: nil)
+            clips: edits.clips, activeClipId: nil, cutEdges: edits.cutEdges)
         let clip: ClipRange?
         switch input.scope {
         case .full: clip = nil

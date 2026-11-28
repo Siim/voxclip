@@ -56,7 +56,7 @@ public enum VoiceLabRenderPreflight {
         let state = EditState(transcript: transcript, pauses: pauses,
                               pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds,
                               cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds),
-                              corrections: edits.corrections, clips: edits.clips, activeClipId: nil)
+                              corrections: edits.corrections, clips: edits.clips, activeClipId: nil, cutEdges: edits.cutEdges)
         let clip: ClipRange?
         switch input.scope {
         case .full: clip = nil
