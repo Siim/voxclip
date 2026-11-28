@@ -176,6 +176,42 @@ final class SentFrames: Sendable {
         #expect((ClipControlsProject.controls(for: "clip-main", in: editor.project)?.colorState ?? ClipColorState()) == before)
     }
 
+    /// Looks spec §9.6 and §11.6, the regression with a measured Fix: a clip already graded by hand (a base look,
+    /// fine-tuning, a grade at 80% and its own Fix) gets Claude's Warm Print at 70% with the Fix measured on its sheet
+    /// frames, which replaces the old Fix; the row's Undo puts back the whole colour state byte for byte, and nothing else.
+    @Test func claudesMeasuredFixReplacesAGradedClipsFixAndUndoRestoresItByteForByte() async throws {
+        var plan = Self.plan()
+        plan.look = .init(id: "warmPrint", amount: 70, fix: true, alternatives: ["goldenHour"], reason: "Soft light for a memory")
+        let fixture = try fixture(plan: plan, color: [0.54, 0.5, 0.475])
+        defer { close(fixture) }
+        let editor = fixture.editor
+        var before = ClipControlsProject.controls(for: "clip-main", in: editor.project) ?? ProjectClipControls(clipId: "clip-main")
+        before.look = .muted
+        before.colorAdjustments = ClipColorAdjustments(brightness: 12, contrast: -8, saturation: 0, warmth: 20)
+        before.colorGrade = ClipColorGrade(amount: 80, exposure: 15, temperature: 10, tint: 5, highlights: -20, vibrance: 30, fade: 10)
+        let tuned = try ClipControlsProject.setting(before, in: editor.project)
+        step(fixture.undo) { editor.replace(tuned, name: "Fine-tune") }
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        let savedGrade = try encoder.encode(before.colorGrade), savedAdjustments = try encoder.encode(before.colorAdjustments)
+        let run = try await run(fixture)
+        let grade = try #require(ClipControlsProject.controls(for: "clip-main", in: editor.project)?.colorGrade)
+        #expect(grade.preset == "warmPrint" && grade.amount == 70)
+        #expect(grade.fix != before.colorGrade?.fix && (-30 ... -12).contains(grade.fix.temperature), "\(grade.fix)")
+        let row = try #require(run.rows.first { $0.id == "look" })
+        #expect(row.text == "Claude chose Warm Print at 70%" && row.undoable)
+        #expect(row.detail == "Soft light for a memory · Fix: " + grade.fix.summary)
+        let ran = editor.project
+        step(fixture.undo) { editor.makeItUndo("look", in: run) }
+        var expected = ran
+        let index = try #require(expected.clipControls.firstIndex { $0.clipId == "clip-main" })
+        expected.clipControls[index].colorState = before.colorState
+        expected.modifiedAt = editor.project.modifiedAt
+        #expect(try ProjectJSON.encode(editor.project) == ProjectJSON.encode(expected), "the look, fine-tuning, grade and Fix go back, nothing else")
+        let restored = try #require(ClipControlsProject.controls(for: "clip-main", in: editor.project))
+        #expect(restored.look == .muted)
+        #expect(try encoder.encode(restored.colorGrade) == savedGrade && encoder.encode(restored.colorAdjustments) == savedAdjustments)
+    }
+
     @Test(arguments: ["frames-opening", "frames-face", "frames-blur-B1", "frames-cover"])
     func eachRowUndoesOnItsOwnByteExactlyAndTheProjectSavesIt(_ rowID: String) async throws {
         let fixture = try fixture()
