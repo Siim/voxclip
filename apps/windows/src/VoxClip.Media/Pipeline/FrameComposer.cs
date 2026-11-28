@@ -311,10 +311,8 @@ public sealed class FrameComposer : IFrameComposer
         var look = timedLook?.Look switch { "warm" => ClipLook.Warm, "muted" => ClipLook.Muted, "bw" => ClipLook.Bw,
             "original" => ClipLook.Original, _ => baseLook };
         var adjustments = clip?.Controls?.ColorAdjustments;
-        void Grade(PixelBuffer frame, ClipLook value)
-        {
-            if (value != ClipLook.Original || adjustments is not null) ClipPicture.Grade(frame, value, adjustments, ct);
-        }
+        var grade = clip?.Controls?.ColorGrade;
+        void Grade(PixelBuffer frame, ClipLook value) => ClipPicture.Grade(frame, new ClipGradeRecipe(value, adjustments, grade), ct);
         if (look != baseLook && timedLook is { } effect && (effect.FadeInSeconds.HasValue || effect.FadeOutSeconds.HasValue))
             DrawBlended(output, effect.ExplicitFadeOpacityAt(sourceTime), frame => Grade(frame, look), frame => Grade(frame, baseLook));
         else Grade(output, look);
