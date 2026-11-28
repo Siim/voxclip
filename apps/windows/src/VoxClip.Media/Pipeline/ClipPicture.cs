@@ -52,8 +52,8 @@ internal static class ClipPicture
     /// <summary>Rows per parallel block of the grade and the finish.</summary>
     private const int BlockRows = 32;
 
-    /// <summary>Byte to encoded value, v/255 in double rounded once to float.</summary>
-    private static readonly float[] Unit = Enumerable.Range(0, 256).Select(value => (float)(value / 255.0)).ToArray();
+    /// <summary>Byte to encoded value, v/255 in float, as four pixels at a time divide.</summary>
+    private static readonly float[] Unit = Enumerable.Range(0, 256).Select(value => value / 255f).ToArray();
 
     /// <summary>Grades <paramref name="frame"/> (BGRA) in place with a clip's whole colour grade (looks spec §5 and §6; design §6.9),
     /// reading 8-bit once and writing 8-bit once. The Fix (stage P) is a function of each input byte, so it folds into the nine
@@ -85,7 +85,8 @@ internal static class ClipPicture
     /// <summary>Stage F on the finished frame (looks spec §5.7): the vignette, then grain, in one pass after the motion crop and the
     /// companion footage, so neither zooms and both carry on across a cutaway. The vignette's ellipse is a sum of a column and a row
     /// term; grain is the shared integer field of the rendered frame <paramref name="frameHash"/> (<see cref="ClipGrainField"/>),
-    /// left out of the context demo's <paramref name="hole"/>. Tiles ask for no grain. Reads the graded bytes and writes bytes once.</summary>
+    /// left out of the context demo's <paramref name="hole"/>. Tiles ask for no grain. Reads the graded bytes and writes bytes once,
+    /// four pixels at a time.</summary>
     internal static void Finish(PixelBuffer frame, ClipGradeRecipe recipe, uint frameHash, ClipGrain.Hole? hole, CancellationToken ct, bool grain = true)
     {
         var vignette = (float)recipe.Vignette;
@@ -94,8 +95,13 @@ internal static class ClipPicture
         var width = frame.Width;
         var height = frame.Height;
         double w = width, h = height;
-        var across = vignette > 0 ? Enumerable.Range(0, width).Select(x => { var n = (2 * x + 1 - w) / w; return (float)(n * n * w / (w + h)); }).ToArray() : null;
-        var down = vignette > 0 ? Enumerable.Range(0, height).Select(y => { var n = (2 * y + 1 - h) / h; return (float)(n * n * h / (w + h)); }).ToArray() : null;
+        var across = new float[Padded(width)];
+        var down = new float[height];
+        if (vignette > 0)
+        {
+            for (var x = 0; x < width; x++) { var n = (2 * x + 1 - w) / w; across[x] = (float)(n * n * w / (w + h)); }
+            for (var y = 0; y < height; y++) { var n = (2 * y + 1 - h) / h; down[y] = (float)(n * n * h / (w + h)); }
+        }
         using var field = strength > 0 ? new ClipGrainField(width, height, frameHash, ct) : null;
         // A pixel is in the hole when its centre is: x + 0.5 in [MinX, MaxX).
         static int Edge(double value, int limit) => (int)Math.Clamp(Math.Ceiling(value - 0.5), 0, limit);
@@ -103,60 +109,128 @@ internal static class ClipPicture
             ? (Edge(rect.MinX, width), Edge(rect.MinY, height), Edge(rect.MaxX, width), Edge(rect.MaxY, height)) : (0, 0, 0, 0);
         var memory = frame.Pixels;
         var stride = frame.Stride;
+        var finish = new FinishRow(vignette, strength);
         Parallel.For(0, (height + BlockRows - 1) / BlockRows, new ParallelOptions { CancellationToken = ct }, block =>
         {
-            var totals = field is null ? null : ArrayPool<int>.Shared.Rent(width);
+            var totals = ArrayPool<int>.Shared.Rent(Padded(width));
             try
             {
+                if (field is null) Array.Clear(totals);
                 for (var row = block * BlockRows; row < Math.Min(height, (block + 1) * BlockRows); row++)
                 {
-                    var line = memory.Span.Slice(row * stride, width * 4);
-                    if (totals is not null) field!.Row(row, totals.AsSpan(0, width));
-                    var vertical = down?[row] ?? 0;
+                    field?.Row(row, totals.AsSpan(0, width));
                     var holed = row >= top && row < bottom;
-                    for (var x = 0; x < width; x++)
-                    {
-                        var offset = x * 4;
-                        float red = Unit[line[offset + 2]], green = Unit[line[offset + 1]], blue = Unit[line[offset]];
-                        if (across is not null)
-                        {
-                            var t = Math.Clamp((across[x] + vertical - 0.16f) / 0.84f, 0, 1);
-                            var factor = 1 - vignette * (t * t * (3 - 2 * t));
-                            red *= factor; green *= factor; blue *= factor;
-                        }
-                        if (totals is not null && !(holed && x >= left && x < right))
-                        {
-                            var luma = 0.2126f * red + 0.7152f * green + 0.0722f * blue;
-                            var add = strength * (0.25f + 3 * luma * (1 - luma)) * (totals[x] / 1048576f);
-                            red += add; green += add; blue += add;
-                        }
-                        line[offset + 2] = Encode(red);
-                        line[offset + 1] = Encode(green);
-                        line[offset] = Encode(blue);
-                    }
+                    finish.Run(MemoryMarshal.Cast<byte, uint>(memory.Span.Slice(row * stride, width * 4)), across, down[row], totals,
+                        holed ? left : 0, holed ? right : 0);
                 }
             }
-            finally { if (totals is not null) ArrayPool<int>.Shared.Return(totals); }
+            finally { ArrayPool<int>.Shared.Return(totals); }
         });
+    }
+
+    /// <summary>One row of stage F: each pixel times 1 − V·smoothstep of its ellipse distance, then plus N·(¼ + 3ℓ(1 − ℓ))·G,
+    /// G the integer total / 2^20; no grain in [<c>holeLeft</c>, <c>holeRight</c>).</summary>
+    private readonly struct FinishRow(float vignette, float strength)
+    {
+        internal void Run(Span<uint> line, float[] across, float vertical, int[] totals, int holeLeft, int holeRight)
+        {
+            var width = line.Length;
+            var x = 0;
+            ref var words = ref MemoryMarshal.GetReference(line);
+            ref var columns = ref MemoryMarshal.GetArrayDataReference(across);
+            ref var grains = ref MemoryMarshal.GetArrayDataReference(totals);
+            var lanes = Vector128.Create(0, 1, 2, 3);
+            for (; x + 4 <= width; x += 4)
+            {
+                var pixels = Vector128.LoadUnsafe(ref words, (nuint)x);
+                var (r, g, b) = Unpack(pixels);
+                if (vignette > 0)
+                {
+                    var t = Clamp01((Vector128.LoadUnsafe(ref columns, (nuint)x) + Vector128.Create(vertical) - Vector128.Create(0.16f)) / Vector128.Create(0.84f));
+                    var factor = Vector128<float>.One - Vector128.Create(vignette) * (t * t * (Vector128.Create(3f) - Vector128.Create(2f) * t));
+                    r *= factor; g *= factor; b *= factor;
+                }
+                if (strength > 0)
+                {
+                    var luma = Luma(r, g, b);
+                    var value = Vector128.ConvertToSingle(Vector128.LoadUnsafe(ref grains, (nuint)x)) / Vector128.Create(1048576f);
+                    var add = Vector128.Create(strength) * (Vector128.Create(0.25f) + Vector128.Create(3f) * luma * (Vector128<float>.One - luma)) * value;
+                    var index = lanes + Vector128.Create(x);
+                    var inside = Vector128.GreaterThanOrEqual(index, Vector128.Create(holeLeft)) & Vector128.LessThan(index, Vector128.Create(holeRight));
+                    add = Vector128.ConditionalSelect(inside.AsSingle(), Vector128<float>.Zero, add);
+                    r += add; g += add; b += add;
+                }
+                Pack(r, g, b, pixels).StoreUnsafe(ref words, (nuint)x);
+            }
+            for (; x < width; x++)
+            {
+                var pixel = line[x];
+                float red = Unit[(pixel >> 16) & 0xFF], green = Unit[(pixel >> 8) & 0xFF], blue = Unit[pixel & 0xFF];
+                if (vignette > 0)
+                {
+                    var t = Math.Clamp((across[x] + vertical - 0.16f) / 0.84f, 0, 1);
+                    var factor = 1 - vignette * (t * t * (3 - 2 * t));
+                    red *= factor; green *= factor; blue *= factor;
+                }
+                if (strength > 0 && !(x >= holeLeft && x < holeRight))
+                {
+                    var luma = 0.2126f * red + 0.7152f * green + 0.0722f * blue;
+                    var add = strength * (0.25f + 3 * luma * (1 - luma)) * (totals[x] / 1048576f);
+                    red += add; green += add; blue += add;
+                }
+                line[x] = (pixel & 0xFF000000) | (uint)Encode(red) << 16 | (uint)Encode(green) << 8 | Encode(blue);
+            }
+        }
     }
 
     /// <summary>The stored byte: round(255·clamp01(v)), halves away from zero.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte Encode(float value) => (byte)MathF.Round(Math.Clamp(value, 0, 1) * 255, MidpointRounding.AwayFromZero);
 
+    /// <summary>Four BGRA pixels as encoded red, green and blue.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (Vector128<float> R, Vector128<float> G, Vector128<float> B) Unpack(Vector128<uint> pixels)
+    {
+        var mask = Vector128.Create(0xFFu);
+        var scale = Vector128.Create(255f);
+        return (Vector128.ConvertToSingle(((pixels >> 16) & mask).AsInt32()) / scale, Vector128.ConvertToSingle(((pixels >> 8) & mask).AsInt32()) / scale,
+            Vector128.ConvertToSingle((pixels & mask).AsInt32()) / scale);
+    }
+
+    /// <summary>Four pixels' values as BGRA words with <paramref name="pixels"/>' alpha: <see cref="Encode"/> four at a time, the
+    /// half added just below ½ and truncated, which rounds halves away from zero.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Vector128<uint> Pack(Vector128<float> r, Vector128<float> g, Vector128<float> b, Vector128<uint> pixels)
+    {
+        var scale = Vector128.Create(255f);
+        var half = Vector128.Create(0.49999997f);
+        var red = Vector128.ConvertToInt32(Clamp01(r) * scale + half).AsUInt32();
+        var green = Vector128.ConvertToInt32(Clamp01(g) * scale + half).AsUInt32();
+        var blue = Vector128.ConvertToInt32(Clamp01(b) * scale + half).AsUInt32();
+        return (pixels & Vector128.Create(0xFF000000u)) | (red << 16) | (green << 8) | blue;
+    }
+
+    private static Vector128<float> Luma(Vector128<float> r, Vector128<float> g, Vector128<float> b) =>
+        Vector128.Create(0.2126f) * r + Vector128.Create(0.7152f) * g + Vector128.Create(0.0722f) * b;
+
+    private static Vector128<float> Clamp01(Vector128<float> value) =>
+        Vector128.Min(Vector128<float>.One, Vector128.Max(Vector128<float>.Zero, value));
+
     /// <summary>A row's float scratch length: whole groups of four.</summary>
     private static int Padded(int width) => (width + 3) & ~3;
 
-    /// <summary>A grade's per-frame constants in float: the nine tables with the Fix folded in, the first recipe's bias and B&amp;W
-    /// cubic, the adjustments' matrix when both a look and adjustments apply, f's tables for the mix, and stage T.</summary>
+    /// <summary>A grade's per-frame constants in float: the nine tables with the Fix folded in (one flat array, 256 entries each),
+    /// the first recipe's bias and B&amp;W cubic, the adjustments' matrix when both a look and adjustments apply, f's tables for the
+    /// mix, and stage T.</summary>
     private sealed class GradePlan
     {
-        private readonly float[][] tables = new float[9][];
+        private readonly float[] tables = new float[9 * 256];
+        private readonly bool diagonal;
         private readonly float[] bias;
         private readonly float[]? curve;
-        private readonly float[][]? after;
+        private readonly float[]? after;
         private readonly float[]? afterBias;
-        private readonly float[][]? fixedTables;
+        private readonly float[]? fixedTables;
         private readonly ToneKernel? tone;
         private readonly float amount;
 
@@ -176,19 +250,19 @@ internal static class ClipPicture
                 for (var column = 0; column < 3; column++)
                 {
                     var coefficient = first?.Matrix[row][column] ?? (row == column ? 1 : 0);
-                    var table = new float[256];
                     // Without a Fix, today's arithmetic: matrix × byte / 255.
                     for (var value = 0; value < 256; value++)
-                        table[value] = (float)(primary is null ? coefficient * value / 255.0 : coefficient * fixedValues[column][value]);
-                    tables[row * 3 + column] = table;
+                        tables[(row * 3 + column) * 256 + value] = (float)(primary is null ? coefficient * value / 255.0 : coefficient * fixedValues[column][value]);
                 }
+            // Only the Fix (or nothing) before stage T: adding the zero tables changes no bit, so they are skipped.
+            diagonal = first is null;
             bias = (first?.Bias ?? [0, 0, 0]).Select(value => (float)value).ToArray();
             curve = first?.Curve?.Select(value => (float)value).ToArray();
-            after = second?.Matrix.Select(row => row.Select(value => (float)value).ToArray()).ToArray();
+            after = second?.Matrix.SelectMany(row => row.Select(value => (float)value)).ToArray();
             afterBias = second?.Bias.Select(value => (float)value).ToArray();
             amount = (float)recipe.Amount;
             Mixes = recipe.Amount is > 0 and < 1;
-            if (Mixes) fixedTables = fixedValues.Select(channel => channel.Select(value => (float)value).ToArray()).ToArray();
+            if (Mixes) fixedTables = fixedValues.SelectMany(channel => channel.Select(value => (float)value)).ToArray();
             if (recipe.Amount > 0 && recipe.Tone is { } steps) tone = new ToneKernel(steps);
         }
 
@@ -227,19 +301,29 @@ internal static class ClipPicture
                 First(r, g, b, out red[x], out green[x], out blue[x]);
                 if (fixedTables is not null)
                 {
-                    fixedRed[x] = fixedTables[0][r];
-                    fixedGreen[x] = fixedTables[1][g];
-                    fixedBlue[x] = fixedTables[2][b];
+                    ref var f = ref MemoryMarshal.GetArrayDataReference(fixedTables);
+                    fixedRed[x] = Unsafe.Add(ref f, r);
+                    fixedGreen[x] = Unsafe.Add(ref f, 256 + g);
+                    fixedBlue[x] = Unsafe.Add(ref f, 512 + b);
                 }
             }
             for (var x = width; x < padded; x++) red[x] = green[x] = blue[x] = fixedRed[x] = fixedGreen[x] = fixedBlue[x] = 0;
             ToneKernel.Run(red, green, blue, fixedRed, fixedGreen, fixedBlue, tone, Mixes ? amount : 1);
-            for (var x = 0; x < width; x++)
+            var words = MemoryMarshal.Cast<byte, uint>(line);
+            ref var word = ref MemoryMarshal.GetReference(words);
+            var x4 = 0;
+            for (; x4 + 4 <= width; x4 += 4)
             {
-                var offset = x * 4;
-                line[offset + 2] = Encode(red[x]);
-                line[offset + 1] = Encode(green[x]);
-                line[offset] = Encode(blue[x]);
+                var at = (nuint)x4;
+                Pack(Vector128.Create(red.Slice(x4, 4)), Vector128.Create(green.Slice(x4, 4)), Vector128.Create(blue.Slice(x4, 4)),
+                    Vector128.LoadUnsafe(ref word, at)).StoreUnsafe(ref word, at);
+            }
+            for (; x4 < width; x4++)
+            {
+                var offset = x4 * 4;
+                line[offset + 2] = Encode(red[x4]);
+                line[offset + 1] = Encode(green[x4]);
+                line[offset] = Encode(blue[x4]);
             }
         }
 
@@ -247,19 +331,31 @@ internal static class ClipPicture
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void First(int red, int green, int blue, out float r, out float g, out float b)
         {
-            var v0 = Channel(0, red, green, blue);
-            var v1 = Channel(1, red, green, blue);
-            var v2 = Channel(2, red, green, blue);
+            ref var table = ref MemoryMarshal.GetArrayDataReference(tables);
+            float v0, v1, v2;
+            if (diagonal)
+            {
+                v0 = Unsafe.Add(ref table, red);
+                v1 = Unsafe.Add(ref table, 4 * 256 + green);
+                v2 = Unsafe.Add(ref table, 8 * 256 + blue);
+            }
+            else
+            {
+                v0 = Channel(ref table, 0, red, green, blue);
+                v1 = Channel(ref table, 1, red, green, blue);
+                v2 = Channel(ref table, 2, red, green, blue);
+            }
             if (after is null || afterBias is null) { r = v0; g = v1; b = v2; return; }
-            r = afterBias[0] + after[0][0] * v0 + after[0][1] * v1 + after[0][2] * v2;
-            g = afterBias[1] + after[1][0] * v0 + after[1][1] * v1 + after[1][2] * v2;
-            b = afterBias[2] + after[2][0] * v0 + after[2][1] * v1 + after[2][2] * v2;
+            r = afterBias[0] + after[0] * v0 + after[1] * v1 + after[2] * v2;
+            g = afterBias[1] + after[3] * v0 + after[4] * v1 + after[5] * v2;
+            b = afterBias[2] + after[6] * v0 + after[7] * v1 + after[8] * v2;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private float Channel(int channel, int red, int green, int blue)
+        private float Channel(ref float table, int channel, int red, int green, int blue)
         {
-            var value = bias[channel] + tables[channel * 3][red] + tables[channel * 3 + 1][green] + tables[channel * 3 + 2][blue];
+            var row = channel * 3 * 256;
+            var value = bias[channel] + Unsafe.Add(ref table, row + red) + Unsafe.Add(ref table, row + 256 + green) + Unsafe.Add(ref table, row + 512 + blue);
             if (curve is null) return value;
             value = Math.Clamp(value, 0, 1);
             var squared = value * value;
@@ -417,12 +513,6 @@ internal static class ClipPicture
                 Vector128.ConditionalSelect(third, c[8 + k], Vector128.ConditionalSelect(second, c[4 + k], c[k])));
             return Pick(0) + t * (Pick(1) + t * (Pick(2) + t * Pick(3)));
         }
-
-        private static Vector128<float> Luma(Vector128<float> r, Vector128<float> g, Vector128<float> b) =>
-            Vector128.Create(0.2126f) * r + Vector128.Create(0.7152f) * g + Vector128.Create(0.0722f) * b;
-
-        private static Vector128<float> Clamp01(Vector128<float> value) =>
-            Vector128.Min(Vector128<float>.One, Vector128.Max(Vector128<float>.Zero, value));
     }
 
     /// <summary>A motion cue's crop of the finished frame, scaled back to fill it (Mac CompositionFrameGeometry.fill with Lanczos;
