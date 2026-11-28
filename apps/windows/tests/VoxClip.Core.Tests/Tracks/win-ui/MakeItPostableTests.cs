@@ -65,6 +65,10 @@ public sealed class MakeItPostableTests
         internal string? Copied { get; private set; }
         internal List<(string Clip, IReadOnlyList<ExportAspect> Shapes)> Exports { get; } = [];
         internal string ExportFolder { get; } = Path.Combine(Path.GetTempPath(), "voxclip-make-it-" + Guid.NewGuid().ToString("N"));
+        /// <summary>The looks the look row applies and offers (shared/looks/clip-looks.json).</summary>
+        internal ClipLookLibrary Looks { get; set; } = ClipLookLibrary.Load(Root);
+        /// <summary>Whether the editor has a Picture tab for the "All looks in Picture ›" chip; not yet on Windows.</summary>
+        internal bool PictureTab { get; set; }
 
         /// <summary>The frames each plan was handed (null: text only, as before the picture).</summary>
         internal List<MakeItFrameSources?> FrameSources { get; } = [];
@@ -100,7 +104,7 @@ public sealed class MakeItPostableTests
                 return Task.FromResult<IReadOnlyList<string>>(files);
             },
             text => Copied = text)
-        { SharedRoot = Root, Prices = VoxClip.Core.Services.VoiceLab.VoiceLabPrices.Load(Root), Tones = RewriteToneCatalog.Load(Root) };
+        { SharedRoot = Root, Prices = VoxClip.Core.Services.VoiceLab.VoiceLabPrices.Load(Root), Tones = RewriteToneCatalog.Load(Root), Looks = Looks, PictureTab = PictureTab };
     }
 
     internal static async Task<MakeItRun> RunAsync(EditorViewModel editor, Stub stub, string clip = "c1")
@@ -135,7 +139,7 @@ public sealed class MakeItPostableTests
         Assert.Contains("Cut “word12”", texts);
         Assert.Contains("Corrected “word14” → “Coffee”", texts);
         Assert.Contains("Claude chose the title “Sleep wins”", texts);
-        Assert.Contains("Claude chose the warm look", texts);
+        Assert.Contains("Claude chose Warm", texts);
         Assert.Contains("Claude chose 1.1× speed", texts);
         Assert.Contains(texts, text => text.StartsWith("Claude chose vox-bold captions, UPPER, 3 per line", StringComparison.Ordinal));
         Assert.Contains("“much clearer” needs you", texts);
@@ -378,19 +382,90 @@ public sealed class MakeItPostableTests
         Assert.Equal("Change speed", editor.UndoActionName);
         Assert.Equal("You chose 1.25× speed", run.Rows.Single(row => row.Id == speed.Id).Text);
         var look = run.Rows.Single(row => row.Change == MakeItChange.Look);
-        // The original look is "as filmed", its one name on both platforms (looks spec §3.7).
-        Assert.Equal(["as filmed", "muted", "black and white"], look.Options);
-        Assert.True(editor.MakeItChoose("black and white", look.Id, run));
-        Assert.Equal(["as filmed", "muted", "warm"], run.Rows.Single(row => row.Id == look.Id).Options);
-        Assert.Equal(ClipLook.Bw, ClipControlsProject.Controls("c1", editor.Project)!.Look);
+        // Looks spec §9.6: same-category looks, As filmed (its one name on both platforms) and the other amounts; no Picture tab yet.
+        Assert.Equal(["Golden Hour", "Peach Tone", "As filmed", "50%", "70%", "85%"], look.Options);
+        Assert.True(editor.MakeItChoose("70%", look.Id, run));
+        Assert.Equal(("warm", 70), (ClipControlsProject.Controls("c1", editor.Project)!.ColorGrade?.Preset, ClipControlsProject.Controls("c1", editor.Project)!.ColorGrade?.Amount));
+        Assert.Equal("You chose Warm at 70%", run.Rows.Single(row => row.Id == look.Id).Text);
+        Assert.False(editor.MakeItChoose("Neon Dream", look.Id, run), "a look the library doesn't have is no choice");
+        Assert.True(editor.MakeItChoose("Golden Hour", look.Id, run));
+        Assert.Equal("goldenHour", ClipControlsProject.Controls("c1", editor.Project)!.ColorGrade?.Preset);
+        Assert.Equal(["Warm", "Peach Tone", "As filmed", "50%", "70%", "85%"], run.Rows.Single(row => row.Id == look.Id).Options);
         Assert.True(editor.MakeItUndo(speed.Id, run));
         Assert.Equal(1, ClipControlsProject.Controls("c1", editor.Project)!.Speed);
-        Assert.Equal(ClipLook.Bw, ClipControlsProject.Controls("c1", editor.Project)!.Look);
+        Assert.Equal("goldenHour", ClipControlsProject.Controls("c1", editor.Project)!.ColorGrade?.Preset);
         // The original look at 1× adds no row.
         var plain = Editor();
         var stub = new Stub { Series = _ => new([Plan() with { ClipLookChoice = ClipAutopilotPlan.Look.Original, SpeedChoice = new(1, "fine") }], [], []) };
         var quiet = await RunAsync(plain, stub);
         Assert.DoesNotContain(quiet.Rows, row => row.Change is MakeItChange.Look or MakeItChange.Speed);
+    }
+
+    /// <summary>Looks spec §9.6 and §11.6, the regression (twin of the Mac test): Claude's Warm Print at 70% with the Fix replaces the
+    /// clip's whole colour state, the row names it with Claude's alternatives first under Change, and the row's Undo puts back the
+    /// clip's look, fine-tuning and grade byte for byte. With no frames there is no measurement, so the clip's own Fix stays.</summary>
+    [Fact]
+    public async Task UndoAfterClaudesLookRestoresTheWholeColourState()
+    {
+        var editor = Editor();
+        var tuned = ClipControlsProject.Controls("c1", editor.Project)! with
+        {
+            Look = ClipLook.Muted, ColorAdjustments = new(12, -8, 0, 20),
+            ColorGrade = new() { Amount = 80, Exposure = 15, Temperature = -10, Highlights = -20, Vibrance = 30, Fade = 10 },
+        };
+        Assert.True(editor.ReplaceProject(ClipControlsProject.Setting(tuned, editor.Project), "Fine-tune"));
+        var before = ClipColorState.Of(ClipControlsProject.Controls("c1", editor.Project)!);
+        var saved = ProjectSerialization.Serialize(editor.Project);
+        var stub = new Stub
+        {
+            PictureTab = true,
+            Series = _ => new([Plan() with
+            {
+                ClipLookChoice = new("warmPrint", "Soft window light suits a memory") { Amount = 70, Fix = true, Alternatives = ["goldenHour", "bw"] },
+            }], [], []),
+        };
+        var run = await RunAsync(editor, stub);
+        var after = ClipControlsProject.Controls("c1", editor.Project)!;
+        Assert.Equal(new ClipLookMatch(stub.Looks.Look("warmPrint")!, false), stub.Looks.Match(after));
+        Assert.Equal(("warmPrint", 70), (after.ColorGrade?.Preset, after.ColorGrade?.Amount));
+        Assert.Equal(new ClipColorFix(15, -10, 0), after.ColorGrade!.Fix);
+        var row = run.Rows.Single(item => item.Change == MakeItChange.Look);
+        Assert.Equal(("Claude chose Warm Print at 70%", "Soft window light suits a memory", true), (row.Text, row.Detail, row.Undoable));
+        Assert.Equal(["✦ Golden Hour", "✦ B&W", "Vintage Fade"], row.Options.Take(3));
+        Assert.Equal(MakeItController.AllLooks, row.Options[^1]);
+        Assert.Contains("As filmed", row.Options);
+        Assert.Contains("100%", row.Options);
+        Assert.DoesNotContain("70%", row.Options);
+        var ran = editor.Project;
+        Assert.True(editor.MakeItUndo(row.Id, run));
+        // Only the colour goes back, and it is the clip's colour before the run, byte for byte.
+        var expected = ClipControlsProject.Setting(before.Applied(ClipControlsProject.Controls("c1", ran)!), ran) with { ModifiedAt = editor.Project.ModifiedAt };
+        Assert.Equal(ProjectSerialization.Serialize(expected), ProjectSerialization.Serialize(editor.Project));
+        var original = ClipControlsProject.Controls("c1", ProjectSerialization.Deserialize(saved))!;
+        var restored = ClipControlsProject.Controls("c1", editor.Project)!;
+        Assert.Equal(ClipColorState.Of(original), ClipColorState.Of(restored));
+        Assert.Equal(before, ClipColorState.Of(restored));
+        Assert.Equal(System.Text.Json.JsonSerializer.Serialize(original.ColorAdjustments), System.Text.Json.JsonSerializer.Serialize(restored.ColorAdjustments));
+        Assert.Equal(System.Text.Json.JsonSerializer.Serialize(original.ColorGrade), System.Text.Json.JsonSerializer.Serialize(restored.ColorGrade));
+    }
+
+    /// <summary>Looks spec §9.4: a look this build doesn't have comes back as As filmed, and the row says so.</summary>
+    [Fact]
+    public async Task AnUnavailableLookIsKeptAsFilmedAndSaysSo()
+    {
+        var editor = Editor();
+        var stub = new Stub
+        {
+            Series = _ => new([Plan() with
+            {
+                ClipLookChoice = ClipAutopilotPlan.Look.Original,
+                Repairs = [new("look", false, "unknown look “Neon”; original")],
+            }], [], []),
+        };
+        var run = await RunAsync(editor, stub);
+        var row = run.Rows.Single(item => item.Change == MakeItChange.Look);
+        Assert.Equal(("Claude's look wasn't available; kept as filmed", false), (row.Text, row.Undoable));
+        Assert.Equal(new ClipColorState(), ClipColorState.Of(ClipControlsProject.Controls("c1", editor.Project)!));
     }
 
     [Fact]

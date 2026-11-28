@@ -8,6 +8,7 @@ using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Project;
+using VoxClip.Media.Frames;
 
 namespace VoxClip.App.ViewModels;
 
@@ -37,6 +38,8 @@ public sealed partial class EditorViewModel
     public event EventHandler<double>? MakeItPlayRequested;
     /// <summary>Change on a row the page owns (captions, rename, a phrase): the page opens that control.</summary>
     public event EventHandler<(MakeItRun Run, MakeItRow Row)>? MakeItChangeRequested;
+    /// <summary>The look row's "All looks in Picture ›": the page shows the clip's Picture tab (looks spec §9.6).</summary>
+    public event EventHandler<string>? MakeItShowPictureRequested;
     /// <summary>A question's other answer for the next request, sent once.</summary>
     private string? makeItNote;
 
@@ -461,7 +464,7 @@ public sealed partial class EditorViewModel
         {
             MakeItRow? row;
             MakeItInverse? inverse;
-            try { (inverse, row) = MakeItStep(operation, plan, run.ClipId, ref next, style); }
+            try { (inverse, row) = MakeItStep(operation, plan, run, ref next, style); }
             catch (Exception exception) when (exception is VoxClipException or VoiceLabException or HarnessException) { continue; }
             if (inverse is not null) run.Inverses[operation.Id] = inverse;
             if (operation.Decision == ClipAutopilotDecision.Hook) hookRow = row;
@@ -524,8 +527,9 @@ public sealed partial class EditorViewModel
 
     /// <summary>One pure operation applied to <paramref name="next"/>, with how to take it back and its review row; nothing for the
     /// operations a later step owns (rewrites, music).</summary>
-    private (MakeItInverse? Inverse, MakeItRow? Row) MakeItStep(ClipAutopilotOperation operation, ClipAutopilotPlan plan, string clipId, ref Project next, MakeItStyle style)
+    private (MakeItInverse? Inverse, MakeItRow? Row) MakeItStep(ClipAutopilotOperation operation, ClipAutopilotPlan plan, MakeItRun run, ref Project next, MakeItStyle style)
     {
+        var clipId = run.ClipId;
         var words = next.Transcript?.Words ?? [];
         double? Start(IEnumerable<string> ids) => ids.Select(id => words.FirstOrDefault(word => word.Id == id)?.Start).OfType<double>().DefaultIfEmpty(double.NaN).Min() is var start && double.IsFinite(start) ? start : null;
         switch (operation.Action)
@@ -623,14 +627,25 @@ public sealed partial class EditorViewModel
             }
             case ClipAutopilotAction.Look look:
             {
-                // The clip's look (design §6.9), set by the clip controls' own rule in this same step.
-                var previous = ClipControlsProject.Controls(look.ClipId, next)?.Look ?? ClipLook.Original;
-                if (look.Choice.Id == ClipLook.Original && previous == ClipLook.Original) return (null, null);
-                next = ClipControlsProject.SettingLook(look.Choice.Id, look.ClipId, next);
-                var applied = previous != look.Choice.Id;
-                return (applied ? new MakeItInverse.Look(look.ClipId, previous) : null,
-                    new(operation.Id, $"Claude chose the {MakeItController.LookName(look.Choice.Id)} look")
-                    { Kind = MakeItRowKind.Choice, Detail = look.Choice.Reason, Play = ClipPlay(look.ClipId, next), Undoable = applied, Change = MakeItChange.Look, Options = MakeItController.LookOptions(look.Choice.Id) });
+                // The clip's look from the looks file at Claude's amount, with the Fix measured on the clip's sheet frames when Claude
+                // asked for it (looks spec §9.6), set by the clip controls' own rule in this same step.
+                if (MakeIt.Services?.Looks is not { } looks || looks.Look(look.Choice.Id) is not { } preset
+                    || ClipControlsProject.Controls(look.ClipId, next) is not { } before) return (null, null);
+                var unavailable = look.Choice.Id == ClipLook.Original.Name() && plan.Repairs.Any(repair => repair.Field == "look");
+                var fix = plan.ClipLookChoice.Fix && run.Frames is { } frames ? FrameLightSampling.Fix(frames.Sent.Frames, looks.Measure) : null;
+                var changed = ClipControlsProject.SettingLookPreset(preset.Id, look.Choice.Amount, fix, look.ClipId, next, looks);
+                if (ClipControlsProject.Controls(look.ClipId, changed) is not { } after) return (null, null);
+                var applied = ClipColorState.Of(after) != ClipColorState.Of(before);
+                if (!applied && !unavailable && preset.Id == ClipLook.Original.Name()) return (null, null);
+                next = changed;
+                var fixLine = fix is { } measured && measured.Summary() is { Length: > 0 } summary ? "Fix: " + summary : null;
+                return (applied ? new MakeItInverse.Look(look.ClipId, ClipColorState.Of(before)) : null,
+                    new(operation.Id, unavailable ? "Claude's look wasn't available; kept as filmed" : "Claude chose " + MakeItController.LookName(preset, look.Choice.Amount))
+                    {
+                        Kind = MakeItRowKind.Choice, Detail = string.Join(" · ", new[] { look.Choice.Reason, fixLine }.Where(text => !string.IsNullOrEmpty(text))),
+                        Play = ClipPlay(look.ClipId, next), Undoable = applied, Change = MakeItChange.Look,
+                        Options = MakeItController.LookOptions(after, plan.ClipLookChoice.Alternatives, looks, MakeIt.Services.PictureTab),
+                    });
             }
             case ClipAutopilotAction.Speed speed:
             {
@@ -887,7 +902,7 @@ public sealed partial class EditorViewModel
                     foreach (var id in voice.Segments) any |= ApplyVoiceLab(new VoiceLabEditCommand.SetEnabled(id, false));
                     return any;
                 case MakeItInverse.Look look:
-                    return ReplaceProject(ClipControlsProject.SettingLook(look.Previous, look.ClipId, project), "Undo look") || true;
+                    return ReplaceProject(look.Previous.SettingOn(look.ClipId, project), "Undo look") || true;
                 case MakeItInverse.Speed speed:
                     return ReplaceProject(ClipControlsProject.SettingSpeed(speed.Previous, speed.ClipId, project), "Undo speed") || true;
                 case MakeItInverse.Effect effect:
@@ -962,11 +977,24 @@ public sealed partial class EditorViewModel
                 return MakeItChoosePicture(option, row, run);
             case MakeItChange.Look:
             {
-                if (Enum.GetValues<ClipLook>().Where(look => MakeItController.LookName(look) == option).Cast<ClipLook?>().FirstOrDefault() is not { } look) return false;
-                var previous = controls?.Look ?? ClipLook.Original;
-                if (!ReplaceProject(ClipControlsProject.SettingLook(look, run.ClipId, project), "Change look")) return false;
+                if (option == MakeItController.AllLooks)
+                {
+                    run.OpenChoice = null;
+                    MakeItShowPictureRequested?.Invoke(this, run.ClipId);
+                    MakeItNotify();
+                    return true;
+                }
+                var alternatives = run.Plan?.ClipLookChoice.Alternatives ?? [];
+                if (MakeIt.Services?.Looks is not { } looks || MakeItController.LookChoice(option, controls, alternatives, looks) is not { } choice) return false;
+                var previous = controls is null ? new ClipColorState() : ClipColorState.Of(controls);
+                if (!ReplaceProject(ClipControlsProject.SettingLookPreset(choice.Look.Id, choice.Amount, null, run.ClipId, project, looks), "Change look")) return false;
                 run.Inverses.TryAdd(rowId, new MakeItInverse.Look(run.ClipId, previous));
-                run.Rows[index] = row with { Text = $"You chose the {option} look", Options = MakeItController.LookOptions(look), Undoable = true, Detail = "" };
+                run.Rows[index] = row with
+                {
+                    Text = "You chose " + MakeItController.LookName(choice.Look, choice.Amount),
+                    Options = MakeItController.LookOptions(ClipControlsProject.Controls(run.ClipId, project), alternatives, looks, MakeIt.Services.PictureTab),
+                    Undoable = true, Detail = "",
+                };
                 break;
             }
             case MakeItChange.Speed:
