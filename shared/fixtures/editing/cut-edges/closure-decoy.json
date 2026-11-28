@@ -1,0 +1,22 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "cut-edges/closure-decoy",
+  "kind": "cut-edges",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §5.10 (CutEdges.seat, normalize, the planner override)",
+  "description": "V4. Nearest beats deepest: the shallow dip 5 frames away wins over a deeper stop closure 7 frames away (a deepest-in-window rule would pick 1.40).",
+  "input": {
+    "durationSeconds": 3,
+    "sampleRate": 48000,
+    "envelope": {
+      "generator": "levels-v1",
+      "frames": 300,
+      "sampleRate": 16000,
+      "base": 0.001953125,
+      "runs": [[30, 189, 0.5], [79, 81, 0.0625], [124, 125, 0.0625], [137, 142, 0.001953125]]
+    },
+    "words": [{"id": "w1", "start": 0.3, "end": 0.8}, {"id": "w2", "start": 0.8, "end": 1.3}, {"id": "w3", "start": 1.3, "end": 1.9}],
+    "cutWordIds": ["w2"]
+  },
+  "expected": {"cutEdges": {"w3": 1.25}, "offerCount": 1, "frozen": 0, "cuts": [[38400, 60000]]}
+}

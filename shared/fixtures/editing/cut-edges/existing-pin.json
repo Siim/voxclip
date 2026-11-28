@@ -1,0 +1,23 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "cut-edges/existing-pin",
+  "kind": "cut-edges",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §5.10 (CutEdges.seat, normalize, the planner override)",
+  "description": "A stored key is never recomputed: the word-edge pin at b = 1.30 stays against an envelope that has a dip, and the offer counts nothing.",
+  "input": {
+    "durationSeconds": 3,
+    "sampleRate": 48000,
+    "envelope": {
+      "generator": "levels-v1",
+      "frames": 300,
+      "sampleRate": 16000,
+      "base": 0.001953125,
+      "runs": [[30, 189, 0.5], [79, 81, 0.0625], [119, 121, 0.0625]]
+    },
+    "words": [{"id": "w1", "start": 0.3, "end": 0.8}, {"id": "w2", "start": 0.8, "end": 1.3}, {"id": "w3", "start": 1.3, "end": 1.9}],
+    "cutWordIds": ["w2"],
+    "existing": {"w3": 1.3}
+  },
+  "expected": {"cutEdges": {"w3": 1.3}, "offerCount": 0, "frozen": 0, "cuts": [[38400, 62400]]}
+}

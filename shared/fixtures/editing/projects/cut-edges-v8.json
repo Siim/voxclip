@@ -1,0 +1,17 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "projects/cut-edges-v8",
+  "kind": "cut-edge-project",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §5.10 and §10.1 (the v8 frame)",
+  "description": "A v8 file with cut edges and no agent thread is valid and stays v8.",
+  "input": {
+    "projectPath": "shared/fixtures/music/music-project.voxclip",
+    "set": [
+      {"path": "/schemaVersion", "value": 8},
+      {"path": "/edits/cutWordIds", "value": ["w2"]},
+      {"path": "/edits/cutEdges", "value": {"w2": 0.66, "w3": 1.04}}
+    ]
+  },
+  "expected": {"valid": true, "writtenVersion": 8, "edgeSamples": [31680, 49920]}
+}

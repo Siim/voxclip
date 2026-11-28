@@ -1,0 +1,19 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "projects/cut-edges-across-recordings",
+  "kind": "cut-edge-project",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §5.10 and §10.1 (the v8 frame)",
+  "description": "A key on a recording's first word, at the boundary with the previous recording, is refused.",
+  "input": {
+    "projectPath": "shared/fixtures/recordings/two-recordings.voxclip",
+    "set": [
+      {"path": "/schemaVersion", "value": 8},
+      {"path": "/media/spokenSources/0/transcript/words/1/start", "value": 0.2},
+      {"path": "/edits/cutPauseIds", "value": []},
+      {"path": "/edits/cutWordIds", "value": ["r2.w1"]},
+      {"path": "/edits/cutEdges", "value": {"r2.w1": 0.05}}
+    ]
+  },
+  "expected": {"valid": false, "reason": "r2.w1 is the first word of its recording"}
+}

@@ -1,0 +1,18 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "projects/cut-edges-second-recording",
+  "kind": "cut-edge-project",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §5.10 and §10.1 (the v8 frame)",
+  "description": "A key in the second recording names the clock id r2.w2 and stores r2's local seconds; the cut starts at the clock sample offset + 0.15 s.",
+  "input": {
+    "projectPath": "shared/fixtures/recordings/two-recordings.voxclip",
+    "set": [
+      {"path": "/schemaVersion", "value": 8},
+      {"path": "/media/spokenSources/0/transcript/words/1/start", "value": 0.2},
+      {"path": "/edits/cutPauseIds", "value": []},
+      {"path": "/edits/cutEdges", "value": {"r2.w2": 0.15}}
+    ]
+  },
+  "expected": {"valid": true, "writtenVersion": 8, "edgeSamples": [199200]}
+}

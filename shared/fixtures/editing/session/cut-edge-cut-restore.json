@@ -1,0 +1,35 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "session/cut-edge-cut-restore",
+  "kind": "cut-edge-session",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §5.10 (CutEdges.seat, normalize, the planner override)",
+  "description": "V3: cutting w2 seats both edges and opens the v8 frame; restoring it drops both keys, so the edits equal the original and the file leaves v8.",
+  "input": {
+    "durationSeconds": 3,
+    "sampleRate": 48000,
+    "startVersion": 6,
+    "envelope": {
+      "generator": "levels-v1",
+      "frames": 300,
+      "sampleRate": 16000,
+      "base": 0.001953125,
+      "runs": [[30, 189, 0.5], [69, 71, 0.0625], [119, 121, 0.0625]]
+    },
+    "words": [{"id": "w1", "start": 0.3, "end": 0.8}, {"id": "w2", "start": 0.8, "end": 1.3}, {"id": "w3", "start": 1.3, "end": 1.9}],
+    "ops": [{"op": "toggle", "id": "w2"}, {"op": "toggle", "id": "w2"}]
+  },
+  "expected": {
+    "steps": [
+      {"after": {"op": "initial"}, "cutWords": [], "cutEdges": {}, "schemaVersion": 6, "editsEqualInitial": true},
+      {
+        "after": {"op": "toggle", "id": "w2"},
+        "cutWords": ["w2"],
+        "cutEdges": {"w2": 0.705, "w3": 1.205},
+        "schemaVersion": 8,
+        "editsEqualInitial": false
+      },
+      {"after": {"op": "toggle", "id": "w2"}, "cutWords": [], "cutEdges": {}, "schemaVersion": 6, "editsEqualInitial": true}
+    ]
+  }
+}

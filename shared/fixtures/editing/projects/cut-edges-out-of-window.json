@@ -1,0 +1,17 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "projects/cut-edges-out-of-window",
+  "kind": "cut-edge-project",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §5.10 and §10.1 (the v8 frame)",
+  "description": "A value more than 0.15 s + one sample from the word edge is refused.",
+  "input": {
+    "projectPath": "shared/fixtures/music/music-project.voxclip",
+    "set": [
+      {"path": "/schemaVersion", "value": 8},
+      {"path": "/edits/cutWordIds", "value": ["w2"]},
+      {"path": "/edits/cutEdges", "value": {"w2": 0.85}}
+    ]
+  },
+  "expected": {"valid": false, "reason": "w2 is outside its window"}
+}

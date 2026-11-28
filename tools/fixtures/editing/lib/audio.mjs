@@ -16,3 +16,16 @@ export function makeTake(seconds, sections, rate = TAKE_RATE) {
 }
 
 export const takeInput = (seconds, sections) => ({ generator: 'vox-take-v1', sampleRate: TAKE_RATE, seconds, sections })
+
+// Envelope "levels-v1" (editing §5.10, cut edges): the 10 ms RMS envelope itself, built from exact binary32 levels so
+// that no decoder or noise drift enters. Every frame starts at `base`; each run [fromFrame, toFrame, level] then sets
+// frames fromFrame..toFrame inclusive, in order, so a later run overrides an earlier one.
+export const LEVELS_RATE = 16000
+
+export function makeLevels({ frames, sampleRate, base, runs }) {
+  const levels = new Float32Array(frames).fill(base)
+  for (const [from, to, level] of runs) for (let frame = from; frame <= to; frame++) levels[frame] = level
+  return { sampleRate, levels }
+}
+
+export const levelsInput = (frames, base, runs) => ({ generator: 'levels-v1', frames, sampleRate: LEVELS_RATE, base, runs })

@@ -1,0 +1,22 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "cut-edges/late-boundary-head-heard",
+  "kind": "cut-edges",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §5.10 (CutEdges.seat, normalize, the planner override)",
+  "description": "V2. Today w2's head is heard after w1; the w1|w2 edge moves forward into the dip at frames 69-71.",
+  "input": {
+    "durationSeconds": 3,
+    "sampleRate": 48000,
+    "envelope": {
+      "generator": "levels-v1",
+      "frames": 300,
+      "sampleRate": 16000,
+      "base": 0.001953125,
+      "runs": [[30, 189, 0.5], [69, 71, 0.0625], [129, 131, 0.0625]]
+    },
+    "words": [{"id": "w1", "start": 0.3, "end": 0.8}, {"id": "w2", "start": 0.8, "end": 1.3}, {"id": "w3", "start": 1.3, "end": 1.9}],
+    "cutWordIds": ["w2"]
+  },
+  "expected": {"cutEdges": {"w2": 0.705}, "offerCount": 1, "frozen": 0, "cuts": [[33840, 62400]]}
+}

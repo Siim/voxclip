@@ -54,9 +54,15 @@ function patch(code, from, to) {
 const url = code => 'data:text/javascript;base64,' + Buffer.from(code).toString('base64')
 
 // mediaTimeline.ts keeps cutRange private; export it so segmentCuts can show pre-rounding values.
-function timelineCode({ wordReach, pauseKeep } = {}) {
+// cutEdges: a word's stored cut edges (editing §5.10, the VoxClip segment's cutStart and cutEnd) replace its padded
+// start and end, as VoxClip's rawCutRange does; VoxConvo has no such field.
+function timelineCode({ wordReach, pauseKeep, cutEdges } = {}) {
   let code = source('mediaTimeline.ts') + '\nexport { cutRange }\n'
   if (wordReach !== undefined) code = patch(code, 'const WORD_REACH = 0.1', `const WORD_REACH = ${wordReach}`)
+  if (cutEdges) {
+    code = patch(code, 'return [segment.start - reach(segment.start - earlierEnd), segment.end + reach(nextStart - segment.end)]',
+      'return [segment.voxclip?.cutStart ?? (segment.start - reach(segment.start - earlierEnd)), segment.voxclip?.cutEnd ?? (segment.end + reach(nextStart - segment.end))]')
+  }
   if (pauseKeep !== undefined) {
     code = patch(code, 'const PAUSE_KEEP_AFTER_WORD = 0.15', `const PAUSE_KEEP_AFTER_WORD = ${pauseKeep}`)
     code = patch(code, 'const PAUSE_KEEP_BEFORE_WORD = 0.15', `const PAUSE_KEEP_BEFORE_WORD = ${pauseKeep}`)
