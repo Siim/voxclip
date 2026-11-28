@@ -144,20 +144,7 @@ public actor AVExporter: Exporter {
 
     /// The export's frame at `seconds` of its output, rendered by the export's own composition and compositor, as a JPEG.
     private func coverImage(_ graph: RenderGraph, cover: ExportCover) async throws -> Data {
-        guard let composition = graph.composition.copy() as? AVComposition else { throw VoxClipError.exportFailed("Cannot copy the cover's composition") }
-        let generator = AVAssetImageGenerator(asset: composition)
-        generator.videoComposition = graph.videoComposition
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
-        let time = CMTime(seconds: max(0, cover.seconds), preferredTimescale: 600)
-        let frame: CGImage = try await withCheckedThrowingContinuation { continuation in
-            generator.generateCGImageAsynchronously(for: time) { image, _, error in
-                if let image { continuation.resume(returning: image) }
-                else { continuation.resume(throwing: error ?? VoxClipError.exportFailed("Cannot render the cover")) }
-            }
-        }
-        withExtendedLifetime(generator) {}
-        let image = Self.coverTitle(cover.title, on: frame)
+        let image = Self.coverTitle(cover.title, on: try await coverFrame(graph, seconds: cover.seconds))
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else {
             throw VoxClipError.exportFailed("Cannot encode the cover")
@@ -167,6 +154,32 @@ public actor AVExporter: Exporter {
             throw VoxClipError.exportFailed("Cannot encode the cover")
         }
         return data as Data
+    }
+
+    /// The export's frame `n` that shows at `seconds` of its output: asked for at `n` on the frame grid, so the compositor
+    /// draws it at the export's own time and its grain, captions and fades are frame `n`'s, not a time between frames.
+    func coverFrame(_ graph: RenderGraph, seconds: Double) async throws -> CGImage {
+        guard let composition = graph.composition.copy() as? AVComposition else { throw VoxClipError.exportFailed("Cannot copy the cover's composition") }
+        let generator = AVAssetImageGenerator(asset: composition)
+        generator.videoComposition = graph.videoComposition
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        let frameDuration = graph.videoComposition.frameDuration
+        let time: CMTime
+        if frameDuration.isValid, frameDuration.seconds > 0 {
+            let index = (max(0, seconds) / frameDuration.seconds + 1e-6).rounded(.down)
+            time = CMTimeMultiply(frameDuration, multiplier: Int32(min(index, Double(Int32.max))))
+        } else {
+            time = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
+        }
+        let frame: CGImage = try await withCheckedThrowingContinuation { continuation in
+            generator.generateCGImageAsynchronously(for: time) { image, _, error in
+                if let image { continuation.resume(returning: image) }
+                else { continuation.resume(throwing: error ?? VoxClipError.exportFailed("Cannot render the cover")) }
+            }
+        }
+        withExtendedLifetime(generator) {}
+        return frame
     }
 
     static func coverTitle(_ title: String?, on frame: CGImage) -> CGImage {

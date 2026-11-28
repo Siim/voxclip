@@ -287,6 +287,41 @@ private let gradeClipRoot: URL = {
         return url
     }
 
+    /// The cover is the export's frame of its time, grain included: at a time late in frame 15's interval the cover is frame
+    /// 15, its picture and its grain, not frame 15's picture with frame 16's grain.
+    @Test(.timeLimit(.minutes(3))) func theCoverIsTheExportFrameOfItsTime() async throws {
+        let controls = try Self.warmPrint()
+        #expect(ClipGradeRecipe(controls: controls).grain > 0)
+        let graph = try await CompositionBuilder().build(Self.request(try await Self.clip(), controls: controls))
+        let exported = try await Self.exportFrames(graph, [15])
+        let expected = try #require(exported[15])
+        let cover = try Self.redrawn(try await AVExporter(appVersion: "0.1.0").coverFrame(graph, seconds: 15.7 / 30))
+        #expect(cover.width == expected.width && cover.height == expected.height)
+        var worst = 0, off = 0
+        for y in 0..<Self.height {
+            for x in 0..<Self.width {
+                let difference = zip(cover.rgb(x, y), expected.rgb(x, y)).map { abs($0 - $1) }.max() ?? 0
+                worst = max(worst, difference)
+                if difference > 1 { off += 1 }
+            }
+        }
+        #expect(worst <= 1 && off == 0, "cover against export frame 15: worst \(worst), \(off) pixels off by more than 1")
+    }
+
+    /// `image` drawn into tight BGRA rows in its own colour space, so the bytes are its own.
+    static func redrawn(_ image: CGImage) throws -> Frame {
+        let space = image.colorSpace ?? CGColorSpace(name: CGColorSpace.itur_709)!
+        var bytes = [UInt8](repeating: 0, count: 4 * image.width * image.height)
+        try bytes.withUnsafeMutableBytes { target in
+            let graphics = try #require(CGContext(data: target.baseAddress, width: image.width, height: image.height, bitsPerComponent: 8,
+                bytesPerRow: 4 * image.width, space: space,
+                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue))
+            graphics.interpolationQuality = .none
+            graphics.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        }
+        return Frame(width: image.width, height: image.height, bytes: bytes)
+    }
+
     /// Amount 0 with no Fix is as filmed: the export takes the source-only path; a Fix alone, or a look above 0, doesn't.
     @Test func amountZeroWithoutAFixKeepsTheSourceOnlyPath() throws {
         let source = URL(fileURLWithPath: "/tmp/voxclip-grade-gate.mov")
