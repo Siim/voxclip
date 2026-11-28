@@ -568,6 +568,13 @@ public sealed class PicturePanelTests
         Assert.Contains("Ui.EffectsChanged -= EffectsChanged", panel);
         // The bubbled PointerExited of a tile doesn't end the hover preview; leaving the grid's bounds does.
         Assert.Contains("args.GetCurrentPoint(tiles).Position", panel);
+        // Looks spec §3.1 and §3.8: the header is pinned while the panel is at least 300 epx tall; below that it scrolls and the
+        // column's header carries the look and Compare.
+        Assert.Contains("internal const double PinnedHeaderMinimum = 300;", panel);
+        Assert.Contains("SizeChanged += (_, args) => Pin(args.NewSize.Height >= PinnedHeaderMinimum);", panel);
+        Assert.Contains("WireCompare(titleCompare);", panel);
+        Assert.Contains("titleAccessory.Child = panel.TitleCompare;", column);
+        Assert.Contains("picture!.TitleLook", column);
         // A blocked tab's tiles and Use it stay in view, disabled with the reason.
         Assert.Contains("tiles.IsEnabled = model.Blocked is null;", panel);
         Assert.Contains("useIt.IsEnabled = line.CanUse;", panel);

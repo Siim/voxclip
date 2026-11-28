@@ -16,17 +16,25 @@ using Windows.System;
 
 namespace VoxClip.App.Controls;
 
-/// <summary>The Picture tab (looks spec §3.7, mockup frame 4): a <see cref="ScrollViewer"/> with 16 epx padding holding Claude's line, the Look row with
-/// Compare, Amount, the category chips, the look tiles of the clip's own frame, the Fine-tune fold with its four groups, the toning
-/// row and Clear all color. Every control stays visible; a disabled one shows its reason on an inline tertiary line and as its
-/// Narrator help. It renders <see cref="PicturePanelModel"/> and changes the project only through it.</summary>
+/// <summary>The Picture tab (looks spec §3.7, mockup frame 4): Claude's line, the Look row with Compare and Amount, pinned while the panel
+/// is at least 300 epx tall (§3.1, §3.8), over a <see cref="ScrollViewer"/> with 16 epx padding holding the category chips, the look tiles
+/// of the clip's own frame, the Fine-tune fold with its four groups, the toning row and Clear all color. In a shorter panel the header
+/// scrolls with the body and the column's header carries the look and Compare (<see cref="TitleLook"/>, <see cref="TitleCompare"/>).
+/// Every control stays visible; a disabled one shows its reason on an inline tertiary line and as its Narrator help.
+/// It renders <see cref="PicturePanelModel"/> and changes the project only through it.</summary>
 internal sealed class PicturePanel : Grid
 {
     private const double TileMinimum = 56;
     private const double TileGap = 6;
+    /// <summary>The panel is at least this tall (epx) for its header to stay pinned above the scrolling body (looks spec §3.1).</summary>
+    internal const double PinnedHeaderMinimum = 300;
 
     private readonly EditorViewModel editor;
     private readonly StackPanel body = Ui.Stack(12);
+    private readonly StackPanel header = Ui.Stack(12);
+    private readonly Border pinnedHeader = new() { Padding = new(16, 16, 16, 12), BorderThickness = new(0, 0, 0, 1) };
+    private readonly ToggleButton titleCompare = new() { Content = "◐", Width = 32, Height = 32, MinWidth = 0, Padding = new(0) };
+    private bool pinned = true;
     private readonly Grid claude = new() { ColumnSpacing = 8 };
     private readonly TextBlock claudeText = Ui.Text("");
     private readonly HyperlinkButton useIt = new() { Content = "Use it", Padding = new(0) };
@@ -86,6 +94,14 @@ internal sealed class PicturePanel : Grid
 
     internal Control FocusTarget => tiles.IsEnabled && tiles.Items.Count > 0 ? tiles : compare;
 
+    /// <summary>The header scrolls with the body or stops scrolling (the column's header shows <see cref="TitleLook"/> and Compare), or the
+    /// look changed while it scrolls.</summary>
+    internal event EventHandler? TitleChanged;
+    /// <summary>"Warm Print, edited · 70%" for the column's header while the panel is too short to pin its header; null otherwise.</summary>
+    internal string? TitleLook => pinned || Model.ClipId is null ? null : Model.LookText;
+    /// <summary>Compare for the column's header, shown with <see cref="TitleLook"/> (mockup frame 5's title row).</summary>
+    internal UIElement TitleCompare => titleCompare;
+
     internal PicturePanel(EditorViewModel editor)
     {
         this.editor = editor;
@@ -100,7 +116,7 @@ internal sealed class PicturePanel : Grid
         rest.IsRepeating = false;
         rest.Tick += (_, _) => { thumbnailKey = null; _ = RefreshThumbnailsAsync(); };
 
-        body.Children.Add(blocked);
+        header.Children.Add(blocked);
         BuildClaude();
         BuildHeader();
         BuildChips();
@@ -111,9 +127,17 @@ internal sealed class PicturePanel : Grid
         clear.Click += (_, _) => Model.Clear();
         AutomationProperties.SetAutomationId(clear, "Picture.Clear");
         scroller.Content = body;
+        RowDefinitions.Add(new() { Height = GridLength.Auto });
+        RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
+        pinnedHeader.BorderBrush = (Brush)Application.Current.Resources["VcLineDefaultBrush"];
+        pinnedHeader.Child = header;
+        Children.Add(pinnedHeader);
+        Grid.SetRow(scroller, 1);
         Children.Add(scroller);
+        SizeChanged += (_, args) => Pin(args.NewSize.Height >= PinnedHeaderMinimum);
 
-        LosingFocus += (_, args) => { if (args.NewFocusedElement is not DependencyObject next || !InputState.DescendsFrom(next, this)) EndCompareForFocus(); };
+        LosingFocus += (_, args) => LeavingFocus(args);
+        titleCompare.LosingFocus += (_, args) => LeavingFocus(args);
         Loaded += (_, _) => { Subscribe(true); shown = true; Model.Opened(); Render(); _ = RefreshThumbnailsAsync(); };
         Unloaded += (_, _) =>
         {
@@ -124,6 +148,22 @@ internal sealed class PicturePanel : Grid
             ResetThumbnails();
             UpdateThumbnails();
         };
+    }
+
+    /// <summary>Compare switches off when focus leaves the panel and the column header's Compare (looks spec §3.4).</summary>
+    private void LeavingFocus(LosingFocusEventArgs args)
+    {
+        if (args.NewFocusedElement is not DependencyObject next || (!InputState.DescendsFrom(next, this) && !ReferenceEquals(next, titleCompare))) EndCompareForFocus();
+    }
+
+    /// <summary>Pins the header above the scrolling body, or (in a panel under 300 epx) puts it at the top of the body.</summary>
+    private void Pin(bool next)
+    {
+        if (next == pinned) return;
+        pinned = next;
+        if (pinned) { body.Children.Remove(header); pinnedHeader.Child = header; pinnedHeader.Visibility = Visibility.Visible; }
+        else { pinnedHeader.Child = null; pinnedHeader.Visibility = Visibility.Collapsed; body.Children.Insert(0, header); }
+        TitleChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>The model, editor and system effects events, held only while the panel is loaded (Ui.EffectsChanged is static).</summary>
@@ -170,7 +210,7 @@ internal sealed class PicturePanel : Grid
         useIt.Click += (_, _) => Model.UseClaudeLook();
         AutomationProperties.SetAutomationId(useIt, "Picture.UseClaudesLook");
         AutomationProperties.SetName(useIt, "Use Claude's look");
-        body.Children.Add(claude);
+        header.Children.Add(claude);
     }
 
     private void BuildHeader()
@@ -185,24 +225,10 @@ internal sealed class PicturePanel : Grid
         AutomationProperties.SetAutomationId(lookValue, "Picture.Look");
         Grid.SetColumn(compare, 2); look.Children.Add(compare);
         AutomationProperties.SetAutomationId(compare, "Picture.Compare");
-        AutomationProperties.SetName(compare, PicturePanelModel.CompareName);
-        ToolTipService.SetToolTip(compare, "Hold to compare with as filmed (\\)");
-        // A press shows As filmed until release; a click without a press (Narrator's toggle, Enter) switches it.
-        compare.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => { compareByPointer = true; _ = Hold(true); }), true);
-        compare.AddHandler(PointerReleasedEvent, new PointerEventHandler((_, _) => _ = Hold(false)), true);
-        compare.AddHandler(PointerCaptureLostEvent, new PointerEventHandler((_, _) => { if (compareByPointer) _ = Hold(false); }), true);
-        compare.AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
-        {
-            if (args.Key != VirtualKey.Space) return;
-            if (!args.KeyStatus.WasKeyDown) { compareByPointer = true; _ = Hold(true); }
-            args.Handled = true;
-        }), true);
-        compare.AddHandler(KeyUpEvent, new KeyEventHandler((_, args) => { if (args.Key == VirtualKey.Space) { _ = Hold(false); args.Handled = true; } }), true);
-        // Narrator's Toggle and Enter switch it on until switched off; after a hold, the button's own toggle is put back.
-        compare.Checked += (_, _) => _ = CompareToggledAsync(true);
-        compare.Unchecked += (_, _) => _ = CompareToggledAsync(false);
-        compare.Click += (_, _) => compareByPointer = false;
-        body.Children.Add(Stacked(look, compareWhy));
+        WireCompare(compare);
+        AutomationProperties.SetAutomationId(titleCompare, "Picture.TitleCompare");
+        WireCompare(titleCompare);
+        header.Children.Add(Stacked(look, compareWhy));
 
         var row = new Grid { ColumnSpacing = 8 };
         row.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
@@ -228,7 +254,29 @@ internal sealed class PicturePanel : Grid
         amount.PreviewKeyDown += (_, args) => SliderKey(args, amount, Model.StepAmount, () => Model.SetAmount(100));
         amount.DoubleTapped += (_, _) => Model.SetAmount(100);
         CommitOnEnter(amountBox, text => PicturePanelModel.ParseAmount(text) is { } value && Model.SetAmount(value));
-        body.Children.Add(Stacked(row, amountWhy));
+        header.Children.Add(Stacked(row, amountWhy));
+    }
+
+    /// <summary>Compare's input, for the Look row's button and the column header's: a press shows As filmed until release; a click
+    /// without a press (Narrator's toggle, Enter) switches it.</summary>
+    private void WireCompare(ToggleButton button)
+    {
+        AutomationProperties.SetName(button, PicturePanelModel.CompareName);
+        ToolTipService.SetToolTip(button, "Hold to compare with as filmed (\\)");
+        button.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => { compareByPointer = true; _ = Hold(true); }), true);
+        button.AddHandler(PointerReleasedEvent, new PointerEventHandler((_, _) => _ = Hold(false)), true);
+        button.AddHandler(PointerCaptureLostEvent, new PointerEventHandler((_, _) => { if (compareByPointer) _ = Hold(false); }), true);
+        button.AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
+        {
+            if (args.Key != VirtualKey.Space) return;
+            if (!args.KeyStatus.WasKeyDown) { compareByPointer = true; _ = Hold(true); }
+            args.Handled = true;
+        }), true);
+        button.AddHandler(KeyUpEvent, new KeyEventHandler((_, args) => { if (args.Key == VirtualKey.Space) { _ = Hold(false); args.Handled = true; } }), true);
+        // Narrator's Toggle and Enter switch it on until switched off; after a hold, the button's own toggle is put back.
+        button.Checked += (_, _) => _ = CompareToggledAsync(button, true);
+        button.Unchecked += (_, _) => _ = CompareToggledAsync(button, false);
+        button.Click += (_, _) => compareByPointer = false;
     }
 
     private void BuildChips()
@@ -278,19 +326,19 @@ internal sealed class PicturePanel : Grid
 
     private void BuildFineTune()
     {
-        var header = new Grid { ColumnSpacing = 8 };
-        header.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
-        header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        var foldRow = new Grid { ColumnSpacing = 8 };
+        foldRow.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+        foldRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         fold.Click += (_, _) => Model.ToggleFineTune();
         AutomationProperties.SetAutomationId(fold, "Picture.FineTune");
-        header.Children.Add(fold);
+        foldRow.Children.Add(fold);
         var back = Stacked(backTo, backToWhy);
         back.HorizontalAlignment = HorizontalAlignment.Right;
         backToWhy.TextAlignment = TextAlignment.Right;
-        Grid.SetColumn(back, 1); header.Children.Add(back);
+        Grid.SetColumn(back, 1); foldRow.Children.Add(back);
         backTo.Click += (_, _) => Model.BackTo();
         AutomationProperties.SetAutomationId(backTo, "Picture.BackTo");
-        body.Children.Add(header);
+        body.Children.Add(foldRow);
 
         foreach (var group in Model.Groups)
         {
@@ -448,10 +496,12 @@ internal sealed class PicturePanel : Grid
             // The Look row and Compare.
             lookValue.Text = model.LookText;
             AutomationProperties.SetName(lookValue, "Look " + model.LookText);
-            compare.IsEnabled = model.CompareReason is null;
-            compare.IsChecked = model.Comparing;
+            compare.IsEnabled = titleCompare.IsEnabled = model.CompareReason is null;
+            compare.IsChecked = titleCompare.IsChecked = model.Comparing;
             AutomationProperties.SetItemStatus(compare, model.CompareStatus);
+            AutomationProperties.SetItemStatus(titleCompare, model.CompareStatus);
             Disabled(compare, compareWhy, model.CompareReason, null);
+            AutomationProperties.SetHelpText(titleCompare, model.CompareReason ?? "");
             // Amount.
             amount.IsEnabled = model.AmountReason is null;
             if (!amountDragging) amount.Value = model.Amount;
@@ -468,6 +518,7 @@ internal sealed class PicturePanel : Grid
             Disabled(clear, clearWhy, model.ClearReason, null);
         }
         finally { syncing = false; }
+        if (!pinned) TitleChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private static void Show(TextBlock text, string? value)
@@ -738,13 +789,13 @@ internal sealed class PicturePanel : Grid
         if (!down) Render();
     }
 
-    private async Task CompareToggledAsync(bool on)
+    private async Task CompareToggledAsync(ToggleButton button, bool on)
     {
         if (syncing) return;
         if (compareByPointer) { DispatcherQueue.TryEnqueue(Render); return; }
         if (on != Model.Comparing) await Hold(on);
         Render();
-        Ui.Announce(compare, Model.CompareStatus, "Picture.Compare");
+        Ui.Announce(button, Model.CompareStatus, "Picture.Compare");
     }
 
     private void EndCompareForFocus()
