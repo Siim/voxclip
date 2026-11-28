@@ -15,6 +15,13 @@ doc/design.md section 6.9.
   `grade` (`highlights`, `shadows`, `vibrance`, `fade`, `vignette`, `grain`, an optional `curve` and `splitTone`). A
   missing number means 0. Ranges match a project's `colorAdjustments` and `colorGrade`.
 
+## The test card
+
+`test-card.png` is the synthetic picture looks are shown on before a clip's own frame is ready, or while its source is
+offline: a sky, a skin ramp through the spec's skin swatches, sixteen neutral greys, eight saturated hues, and a dark corner
+beside the grade vectors' swatches. Goldens, mockups and screenshots use it too; footage never stands in for it. Regenerate
+it with `python3 tools/looks/make_test_card.py` (check_drift.py checks its decoded pixels). Do not edit it by hand.
+
 ## Rules the Cores enforce
 
 - A look never sets the Fix: `exposure`, `temperature` and `tint` belong to the clip, never to a preset.

@@ -20,7 +20,9 @@ from pathlib import Path
 TOLERANT = ['shared/fixtures/voice-lab/audio-math-cases.json',
             'shared/fixtures/voice-lab/accept-all-cases.json',
             # The tone match (voice-lab section 8.7 item 2b): libm tan/pow/cos/sin/log10 in its coefficients and FFT.
-            'shared/fixtures/voice-lab/tilt-cases.json']
+            'shared/fixtures/voice-lab/tilt-cases.json',
+            # The colour grade and Auto (looks spec 2026-11-28, section 11.1): pow in the Fix's gains, log2 in Auto.
+            'shared/fixtures/clip-render/clip-grade-cases.json']
 EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab/dialogue-cases.json', 'shared/fixtures/voice-lab/continuity-cases.json', 'shared/fixtures/voice-lab/scope-rewrite-plan-cases.json',
          'shared/fixtures/voice-lab/autofit-cases.json',
          'shared/fixtures/voice-lab/lipsync-window-cases.json',
@@ -161,6 +163,8 @@ def main():
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_tone_match_schema.py")], check=True)
     # The renderer decisions both platforms reproduce for clip controls and effects (design.md sections 6.8, 6.9).
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-render/generate_clip_render.py")], check=True)
+    # The colour grade, the finish and Auto both Cores replay (looks spec 2026-11-28, section 11.1), from shared/looks.
+    subprocess.run([sys.executable, str(root / "tools/fixtures/clip-render/generate_clip_grade.py")], check=True)
     # Claude mode's settings vectors (doc/design.md section 6.6), replayed by both Cores.
     subprocess.run([sys.executable, str(root / "tools/fixtures/clips-mode/generate_clips_mode.py")], check=True)
     # The export self-check's rules on measured inputs (ADR-R49), replayed by the Mac Core; the Windows twin is owed.
@@ -177,6 +181,9 @@ def main():
     failed = sounds.returncode != 0
     if failed:
         print('::error::shared/data/sfx differs from tools/media/sfx/gen_sfx.py; run it and commit the files')
+    # The looks test card (looks spec section 7): decoded pixels, since zlib builds compress differently.
+    if subprocess.run([sys.executable, str(root / "tools/looks/make_test_card.py"), "--check"]).returncode != 0:
+        failed = True
     for path in EXACT:
         committed_bytes = subprocess.run(['git', 'show', f'HEAD:{path}'], check=True, capture_output=True).stdout
         with open(path, 'rb') as file:
