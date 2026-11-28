@@ -384,6 +384,16 @@ public sealed class PicturePanelModel(EditorViewModel editor)
         return new((width - side) / 2, (height - side) / 2, side, side);
     }
 
+    /// <summary>What the tiles' pictures depend on besides their looks (looks spec §7.5–§7.6): the clip, its framing and Fix, and whether
+    /// the source is online. The tiles are drawn again when it changes; choosing a look, Amount or a look value leaves it. Null without a
+    /// clip.</summary>
+    public string? ThumbnailSource => Controls is { } controls
+        ? controls.ClipId + "|" + (new ClipColorState().Applied(controls) with
+        {
+            ColorGrade = controls.ColorGrade?.Fix is { IsNeutral: false } fix ? ClipColorGrade.Neutral.WithFix(fix) : null,
+        }).GetHashCode().ToString(CultureInfo.InvariantCulture) + "|" + (editor.IsReadOnly ? "offline" : "online")
+        : null;
+
     /// <summary>The colour a tile and its hover preview show: the look at 100% with the clip's Fix (looks spec §7.4).</summary>
     public ProjectClipControls? TileColour(ClipLookPreset look) => Controls?.WithLook(look);
 

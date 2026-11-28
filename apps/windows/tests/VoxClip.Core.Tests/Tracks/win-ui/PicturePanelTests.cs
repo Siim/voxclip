@@ -350,6 +350,36 @@ public sealed class PicturePanelTests
         Assert.True(changes >= 6);
     }
 
+    /// <summary>Looks spec §7.6: the tiles are drawn again when the Fix or the source changes (Auto, a Fix slider, Reset fix, a relink),
+    /// never for choosing a look, its amount or a look value.</summary>
+    [Fact]
+    public async Task TheTilesFollowTheFixAndTheSourceButNotTheLook()
+    {
+        var (editor, picture, measure) = Open();
+        var start = picture.ThumbnailSource;
+        Assert.NotNull(start);
+        picture.Apply("warmPrint");
+        picture.SetAmount(70);
+        picture.SetValue(PictureControl.Vibrance, 20);
+        Assert.Equal(start, picture.ThumbnailSource);
+        picture.SetValue(PictureControl.Exposure, 20);
+        var exposed = picture.ThumbnailSource;
+        Assert.NotEqual(start, exposed);
+        Assert.True(picture.ResetGroup(PictureGroupId.Fix));
+        Assert.Equal(start, picture.ThumbnailSource);
+        picture.Opened();
+        measure.Result.SetResult(new ClipColorFix(10, -6, 0));
+        await picture.Measuring;
+        Assert.True(picture.Auto());
+        Assert.NotEqual(start, picture.ThumbnailSource);
+        var fixedUp = picture.ThumbnailSource;
+        editor.SetMediaUnavailable(true);
+        Assert.NotEqual(fixedUp, picture.ThumbnailSource);
+        editor.SetMediaUnavailable(false);
+        Assert.Equal(fixedUp, picture.ThumbnailSource);
+        Assert.StartsWith("c1|", fixedUp, StringComparison.Ordinal);
+    }
+
     /// <summary>A frame read while the source was offline leaves Offline behind; once the video is relinked, hover, Compare and the
     /// note follow the editor at once, before the tiles read the frame again.</summary>
     [Fact]

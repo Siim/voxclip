@@ -488,7 +488,7 @@ internal sealed class PicturePanel : Grid
         AutomationProperties.SetName(tiles, model.TilesName);
         AutomationProperties.SetItemStatus(tiles, model.TilesStatus);
         var key = model.Category + "|" + string.Join(",", list.Select(tile => tile.Look.Id + tile.Status)) + "|" + Ui.HighContrast + "|" + model.Playing + "|" + model.HoverReason;
-        if (key == tilesKey) { UpdateThumbnails(); return; }
+        if (key == tilesKey) { UpdateThumbnails(); _ = RefreshThumbnailsAsync(); return; }
         tilesKey = key;
         // The same looks keep their items, so keyboard focus stays on the tile just applied.
         if (!tiles.Items.OfType<GridViewItem>().Select(item => item.Tag as string).SequenceEqual(list.Select(tile => tile.Look.Id)))
@@ -701,14 +701,13 @@ internal sealed class PicturePanel : Grid
         rest.Stop(); rest.Start();
     }
 
-    private string ThumbnailKey(PicturePanelModel model, int edge)
-    {
-        var controls = model.Controls;
-        var framing = controls is null ? "" : (new ClipColorState().Applied(controls) with { ColorGrade = controls.ColorGrade?.Fix is { IsNeutral: false } fix ? ClipColorGrade.Neutral.WithFix(fix) : null }).GetHashCode().ToString(System.Globalization.CultureInfo.InvariantCulture);
-        // The source going offline or coming back reads the frame again (the test card, or the relinked video).
-        return model.ClipId + "|" + framing + "|" + edge.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + editor.IsReadOnly;
-    }
+    /// <summary>The tiles' pictures for the clip, its framing, Fix and source (<see cref="PicturePanelModel.ThumbnailSource"/>) at this
+    /// pixel size.</summary>
+    private static string ThumbnailKey(PicturePanelModel model, int edge) =>
+        model.ThumbnailSource + "|" + edge.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
+    /// <summary>Runs on every render: cheap while the key holds and the tiles are drawn or drawing; a new Fix, framing or source starts
+    /// again (looks spec §7.5–§7.6).</summary>
     private async Task RefreshThumbnailsAsync()
     {
         var model = Model;
@@ -718,28 +717,41 @@ internal sealed class PicturePanel : Grid
         var size = first is { Width: > 0 } ? first.Width : TileMinimum;
         var edge = (int)Math.Clamp(Math.Round(size * scale), 32, 144);
         var key = ThumbnailKey(model, edge);
-        if (key == thumbnailKey) { await RenderMissingAsync(edge); return; }
-        thumbnailKey = key;
-        thumbnails.Clear();
-        still = null;
-        thumbnailWork?.Cancel();
-        thumbnailWork = new();
+        if (key != thumbnailKey)
+        {
+            thumbnailKey = key;
+            ResetThumbnails();
+        }
         await RenderMissingAsync(edge);
     }
 
-    private PixelBuffer? still;
+    /// <summary>Drops the tiles' pictures and the frame, and cancels the work drawing them.</summary>
+    private void ResetThumbnails()
+    {
+        thumbnails.Clear();
+        drawing.Clear();
+        still = null;
+        thumbnailWork?.Cancel();
+        thumbnailWork?.Dispose();
+        thumbnailWork = null;
+    }
+
+    private Task<PixelBuffer?>? still;
+    private readonly HashSet<string> drawing = new(StringComparer.Ordinal);
 
     private async Task RenderMissingAsync(int edge)
     {
         var model = Model;
-        thumbnailWork ??= new();
-        var token = thumbnailWork.Token;
-        var wanted = model.Tiles.Where(tile => !thumbnails.ContainsKey(tile.Look.Id)).ToArray();
+        var work = thumbnailWork ??= new();
+        var token = work.Token;
+        // A tile already being drawn for this key isn't drawn twice, and the frame is read once.
+        var wanted = model.Tiles.Where(tile => !thumbnails.ContainsKey(tile.Look.Id) && !drawing.Contains(tile.Look.Id)).ToArray();
         if (wanted.Length == 0) { UpdateThumbnails(); return; }
+        foreach (var tile in wanted) drawing.Add(tile.Look.Id);
+        var read = still ??= ReadStillAsync(token);
         try
         {
-            still ??= await ReadStillAsync(token);
-            if (still is not { } source || token.IsCancellationRequested) return;
+            if (await read is not { } source || token.IsCancellationRequested) return;
             var square = PicturePanelModel.TileSquare(source.Width, source.Height);
             foreach (var tile in wanted)
             {
@@ -751,7 +763,16 @@ internal sealed class PicturePanel : Grid
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception exception) when (exception is not OutOfMemoryException) { UiError.WriteFailure(exception, "Look tiles"); }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            UiError.WriteFailure(exception, "Look tiles");
+            // A frame that failed to read is read again next time.
+            if (ReferenceEquals(still, read) && read.IsFaulted) still = null;
+        }
+        finally
+        {
+            if (ReferenceEquals(work, thumbnailWork)) foreach (var tile in wanted) drawing.Remove(tile.Look.Id);
+        }
     }
 
     /// <summary>The paused frame before the grade, or the test card with the reason line when it can't be read (looks spec §7.7).</summary>
