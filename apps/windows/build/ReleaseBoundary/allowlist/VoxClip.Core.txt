@@ -506,6 +506,7 @@ attribute VoxClip.Core.Domain.Shared.Project :: property PersistedMusic @ System
 attribute VoxClip.Core.Domain.Shared.Project :: property PersistedMusic @ System.Text.Json.Serialization.JsonPropertyNameAttribute("music")
 attribute VoxClip.Core.Domain.Shared.Project :: property Title @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.Project @ System.Text.Json.Serialization.JsonUnmappedMemberHandlingAttribute(1)
+attribute VoxClip.Core.Domain.Shared.ProjectEdits :: property CutEdges @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.ProjectFootage :: property ClipId @ System.Text.Json.Serialization.JsonPropertyNameAttribute("clipID")
 attribute VoxClip.Core.Domain.Shared.ProjectFootage :: property FadeInSeconds @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.ProjectFootage :: property FadeOutSeconds @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
@@ -11285,6 +11286,7 @@ member VoxClip.Core.Domain.Shared.ProjectEdits :: method public ToString()
 member VoxClip.Core.Domain.Shared.ProjectEdits :: method public get_ActiveClipId()
 member VoxClip.Core.Domain.Shared.ProjectEdits :: method public get_Clips()
 member VoxClip.Core.Domain.Shared.ProjectEdits :: method public get_Corrections()
+member VoxClip.Core.Domain.Shared.ProjectEdits :: method public get_CutEdges()
 member VoxClip.Core.Domain.Shared.ProjectEdits :: method public get_CutPauseIds()
 member VoxClip.Core.Domain.Shared.ProjectEdits :: method public get_CutWordIds()
 member VoxClip.Core.Domain.Shared.ProjectEdits :: method public get_PauseKeepSeconds()
@@ -11294,6 +11296,7 @@ member VoxClip.Core.Domain.Shared.ProjectEdits :: method public op_Inequality(Vo
 member VoxClip.Core.Domain.Shared.ProjectEdits :: method public set_ActiveClipId(string)
 member VoxClip.Core.Domain.Shared.ProjectEdits :: method public set_Clips(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.ClipRange>)
 member VoxClip.Core.Domain.Shared.ProjectEdits :: method public set_Corrections(System.Collections.Generic.IReadOnlyDictionary`2<string,string>)
+member VoxClip.Core.Domain.Shared.ProjectEdits :: method public set_CutEdges(System.Collections.Generic.IReadOnlyDictionary`2<string,double>)
 member VoxClip.Core.Domain.Shared.ProjectEdits :: method public set_CutPauseIds(System.Collections.Generic.IReadOnlyList`1<string>)
 member VoxClip.Core.Domain.Shared.ProjectEdits :: method public set_CutWordIds(System.Collections.Generic.IReadOnlyList`1<string>)
 member VoxClip.Core.Domain.Shared.ProjectEdits :: method public set_PauseKeepSeconds(double)
@@ -11369,9 +11372,13 @@ member VoxClip.Core.Domain.Shared.ProjectMedia :: method public set_Source(VoxCl
 member VoxClip.Core.Domain.Shared.ProjectMedia :: method public set_SpokenSources(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.SpokenSource>)
 member VoxClip.Core.Domain.Shared.ProjectSerialization :: field internal AgentThreadVersion
 member VoxClip.Core.Domain.Shared.ProjectSerialization :: field internal CurrentVersion
+member VoxClip.Core.Domain.Shared.ProjectSerialization :: field internal FrameVersion
 member VoxClip.Core.Domain.Shared.ProjectSerialization :: field internal SpokenSourcesVersion
 member VoxClip.Core.Domain.Shared.ProjectSerialization :: method internal Deserialize(string,int)
 member VoxClip.Core.Domain.Shared.ProjectSerialization :: method internal ForWriting(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Shared.ProjectSerialization :: method internal Framed(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Shared.ProjectSerialization :: method internal RequiredVersion(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Shared.ProjectSerialization :: method internal WrittenVersion(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Shared.ProjectSerialization :: method private Normalize(VoxClip.Core.Domain.Transcript.Transcript)
 member VoxClip.Core.Domain.Shared.ProjectSerialization :: method private ValidateV3EnumWire(System.Text.Json.JsonElement)
 member VoxClip.Core.Domain.Shared.ProjectSerialization :: method public Deserialize(string)
