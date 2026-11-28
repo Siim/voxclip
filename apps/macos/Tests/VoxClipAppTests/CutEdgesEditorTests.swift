@@ -197,6 +197,12 @@ private actor CutEdgeTestSettings: SettingsStore {
         let revoiced = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/whole-clip-revoice-project.voxclip")))
         var segment = try #require(revoiced.voiceLab.segments.first)
         segment.replace = VoiceLabReplacement(start: 1.30, end: 1.90, firstWordId: "w3", lastWordId: "w3")
+        // Its takes play the source video: a lip sync would hold every edge of the take (`oldCutsInsidePaidWorkKeepTheirEdges`).
+        segment.candidates = segment.candidates.map { candidate in
+            var candidate = candidate
+            candidate.recipe?.video.mode = .source
+            return candidate
+        }
         project.voiceLab.segments = [segment]
         let (model, undo) = editor(app, project: project)
         defer { model.close(); try? FileManager.default.removeItem(at: app.locations.root) }
@@ -205,6 +211,64 @@ private actor CutEdgeTestSettings: SettingsStore {
         step(undo) { model.fixCutEdges() }
         #expect(model.project.edits.cutEdges == ["w2": 0.705])
         #expect(model.cutEdgeBarRow == CutEdgeBarRow(text: "Moved 1 cut edge into the quiet · 1 kept beside voice patches"))
+    }
+
+    /// Saves a Rewrite proposal with one paid take beside `project` for `scope`, with the inputs digest the session
+    /// compares on reopening, and returns that digest's reader.
+    private func savePaidProposal(_ app: AppModel, _ project: Project, scope: String, rewriteScope: RewriteScope, clip: String?) throws -> (URL, (Project) -> String?) {
+        let url = try #require(RewriteSavedProposalStore.url(paidRoot: app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true),
+                                                             projectId: project.id, scope: scope))
+        let digest: (Project) -> String? = { RewriteSession.inputsDigest(RewriteSession.asReopened($0).rewriteInputs(scope: rewriteScope, enclosingClipID: clip)) }
+        let saved = RewriteSavedProposal(projectId: project.id, scope: scope, inputs: try #require(digest(project)), instruction: "", changes: [], kept: [],
+                                         pricedAnyway: [], voiceRecordID: nil, patchTakes: 1, patchUSD: 0, patchRequests: [], wholeClip: nil, savedAt: Date())
+        try RewriteSavedProposalStore.write(RewriteSavedProposalStore.encode(saved), to: url)
+        return (url, digest)
+    }
+
+    /// An old cut inside paid work (both words of the edge in a clip with paid takes saved, or anywhere under a full-take
+    /// proposal): Fix cut edges and the selected cut's action leave it alone, so the saved proposal still restores.
+    @Test func oldCutsInsidePaidWorkKeepTheirEdges() throws {
+        let app = try app()
+        defer { try? FileManager.default.removeItem(at: app.locations.root) }
+        var project = try Self.project(cut: ["w2"])
+        project.edits.clips = [ClipRange(id: "c23", startWordId: "w2", endWordId: "w3")]
+        let (url, digest) = try savePaidProposal(app, project, scope: "clip:c23", rewriteScope: .clip("c23"), clip: "c23")
+        let before = digest(project)
+        let (model, undo) = editor(app, project: project, levels: Self.lateBoundary)
+        defer { model.close() }
+        #expect(model.cutEdgeOffer == CutEdges.Offer(count: 0, frozen: 1, unloaded: []))
+        #expect(!model.canFixCutEdges && model.cutEdgeBarRow == nil)
+        let steps = model.undoSteps
+        step(undo) { model.fixCutEdges() }
+        model.selectedWordIDs = ["w2"]
+        #expect(model.cutEdgeBarRow == CutEdgeBarRow(text: "Cut edge: word edge", action: "Use quiet point", reason: "Kept beside a voice patch"))
+        step(undo) { model.runCutEdgeBarAction() }
+        #expect(model.undoSteps == steps && model.project.edits.cutEdges.isEmpty && digest(model.project) == before)
+        RewriteSavedProposalStore.remove(url)
+        // A full-take proposal holds every edge of the first recording.
+        let plain = try Self.project(cut: ["w2"])
+        let (fullURL, fullDigest) = try savePaidProposal(app, plain, scope: "full", rewriteScope: .fullTake, clip: nil)
+        defer { RewriteSavedProposalStore.remove(fullURL) }
+        let (whole, wholeUndo) = editor(app, project: plain)
+        defer { whole.close() }
+        #expect(whole.cutEdgeOffer == CutEdges.Offer(count: 0, frozen: 2, unloaded: []))
+        step(wholeUndo) { whole.fixCutEdges() }
+        #expect(whole.project.edits.cutEdges.isEmpty && fullDigest(whole.project) == fullDigest(plain))
+        // So does a lip sync outside every clip, even with its patch clear of both edges.
+        let shared = try SharedResources.locate()
+        let revoiced = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/whole-clip-revoice-project.voxclip")))
+        var segment = try #require(revoiced.voiceLab.segments.first)
+        segment.replace = VoiceLabReplacement(start: 0.30, end: 0.50, firstWordId: "w1", lastWordId: "w1")
+        segment.candidates = segment.candidates.map { candidate in
+            var candidate = candidate
+            candidate.recipe?.video.mode = .lipsync
+            return candidate
+        }
+        var lipSynced = try Self.project(cut: ["w2"])
+        lipSynced.voiceLab.segments = [segment]
+        let (synced, _) = editor(app, project: lipSynced)
+        defer { synced.close() }
+        #expect(synced.cutEdgeOffer == CutEdges.Offer(count: 0, frozen: 2, unloaded: []))
     }
 
     @Test func fixCutEdgesSaysWhyItCannotRun() throws {

@@ -25,7 +25,8 @@ extension EditorModel {
 
     /// What keeps a boundary at today's padding (editing §5.10 "Frozen boundaries"), by recording key:
     /// - every Voice Lab segment's replace range, enabled or not, in its recording's local seconds;
-    /// - the word ranges of paid work (`paidCutEdgeScopes`) in the first recording, the one Rewrite voices;
+    /// - the word ranges of paid work (`paidCutEdgeScopes`) in the first recording, the one Rewrite voices, a full take
+    ///   as every word of it;
     /// - while any paid work is held, every later recording: its words have no position in Rewrite's scoped inputs, so its
     ///   cuts and edges count in every scope (`Project.rewriteInputs`).
     func cutEdgeFreeze(_ project: Project) -> [String: CutEdges.Freeze] {
@@ -41,9 +42,11 @@ extension EditorModel {
                 TimeRange(start: segment.replace.start - offset, end: segment.replace.end - offset))
         }
         let scopes = paidCutEdgeScopes(project)
-        for case let scope? in scopes {
+        for scope in scopes {
+            guard let range = scope ?? (primary.words.isEmpty ? nil : 0...(primary.words.count - 1)),
+                  range.upperBound < primary.words.count else { continue }
             result[primary.key, default: CutEdges.Freeze()].paidScopes.append(
-                ClipWordRange(startWordId: primary.words[scope.lowerBound].id, endWordId: primary.words[scope.upperBound].id))
+                ClipWordRange(startWordId: primary.words[range.lowerBound].id, endWordId: primary.words[range.upperBound].id))
         }
         if !scopes.isEmpty {
             for recording in recordings.dropFirst() {
