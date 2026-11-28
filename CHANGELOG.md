@@ -4,7 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
-- On Mac, the Pan and zoom panel follows Undo and timeline edits to its cue, says why Apply is unavailable, and shows the edited keyframe in the paused viewer.
+- On Mac, the Pan and zoom panel follows Undo and timeline edits to its cue, says why Apply is unavailable, and shows the edited keyframe in the paused viewer (without pan or zoom under Reduce Motion).
 - On Mac, Put Back shows leading and consecutive skipped lines and restores each in recording order.
 - On Mac, alternate versions and uninserted lines play in place without changing the clip.
 - On Mac, the timeline can open a line's other versions even when the transcript shows a single recording.
