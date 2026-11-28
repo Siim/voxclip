@@ -107,6 +107,9 @@ struct FixtureValue {
             compare(.init(.array(keys)), expected["contentKeys"])
         case "edit-session": try runSession(input, expected, tolerance: tolerance)
         case "project-plan": try runProject(input, expected, root: root, tolerance: tolerance)
+        case "cut-edges": try runCutEdges(input, expected)
+        case "cut-edge-session": try runCutEdgeSession(input, expected)
+        case "cut-edge-project": try runCutEdgeProject(input, expected, root: root)
         default: Issue.record("Unknown editing fixture kind: \(fixture["kind"].string)")
         }
     }
@@ -153,8 +156,13 @@ struct FixtureValue {
         .object(["id": .string(pause.id), "start": .number(pause.start), "end": .number(pause.end), "duration": .number(pause.duration), "label": .string(pause.label)])
     }
     func segments(_ input: FixtureValue) -> [EditSegment] {
-        input["segments"].array.map { EditSegment(id: $0["id"].string, kind: EditSegmentKind(rawValue: $0["kind"].string)!, wordKind: WordKind(rawValue: $0["wordKind"].string) ?? .word,
-                                                text: $0["text"].string, start: $0["start"].number, end: $0["end"].number, cut: $0["cut"].bool) }
+        input["segments"].array.map {
+            var segment = EditSegment(id: $0["id"].string, kind: EditSegmentKind(rawValue: $0["kind"].string)!, wordKind: WordKind(rawValue: $0["wordKind"].string) ?? .word,
+                                      text: $0["text"].string, start: $0["start"].number, end: $0["end"].number, cut: $0["cut"].bool)
+            segment.cutStart = $0["cutStart"].isNull ? nil : $0["cutStart"].number
+            segment.cutEnd = $0["cutEnd"].isNull ? nil : $0["cutEnd"].number
+            return segment
+        }
     }
     func intervals(_ intervals: [MediaInterval]) -> JSONValue { .array(intervals.map { .array([.number(Double($0.startSample)), .number(Double($0.endSample))]) }) }
 
@@ -278,6 +286,92 @@ struct FixtureValue {
             return .object(actual)
         }
         compare(.init(.array(clips)), expected["clips"], tolerance: tolerance)
+    }
+
+    /// levels-v1 (editing fixtures README): every frame at `base`, then each inclusive run in order, as exact binary32 levels.
+    func levelsEnvelope(_ value: FixtureValue) -> AudioEnvelope {
+        var levels = [Float](repeating: Float(value["base"].number), count: value["frames"].int)
+        for run in value["runs"].array {
+            for frame in run.array[0].int...run.array[1].int { levels[frame] = Float(run.array[2].number) }
+        }
+        let rate = value["sampleRate"].number
+        return AudioEnvelope(sampleRate: rate, frameSeconds: max(1, EditingPrimitives.jsRound(rate * 0.01)) / rate, levels: levels)
+    }
+
+    func edges(_ value: FixtureValue) -> [String: Double] { value.object.mapValues { FixtureValue($0).number } }
+
+    func runCutEdges(_ input: FixtureValue, _ expected: FixtureValue) throws {
+        let items = words(input["words"]), rate = input["sampleRate"].number, duration = input["durationSeconds"].number
+        let cut = Set(input["cutWordIds"].array.map(\.string)), existing = edges(input["existing"])
+        let freeze = CutEdges.Freeze(voiceRanges: input["freeze"]["voiceRanges"].array.map { TimeRange(start: $0.array[0].number, end: $0.array[1].number) },
+                                     paidScopes: input["freeze"]["paidScopes"].array.map { ClipWordRange(startWordId: $0.array[0].string, endWordId: $0.array[1].string) })
+        let seated = CutEdges.seat(words: items, cutWordIds: cut, envelope: levelsEnvelope(input["envelope"]), sampleRate: rate, freeze: freeze, existing: existing)
+        let stored = CutEdges.normalized(existing.merging(seated.edges) { _, new in new }, words: items, cutWordIds: cut)
+        #expect(stored == edges(expected["cutEdges"]), "cutEdges")
+        #expect(seated.edges.count == expected["offerCount"].int, "offerCount")
+        #expect(seated.frozen == expected["frozen"].int, "frozen")
+        let state = EditState(transcript: transcript(items, duration: duration), cutWordIds: cut, cutEdges: stored)
+        let plan = try buildEditPlan(buildSegments(state, activeClip: nil), duration: duration, sampleRate: rate, pauseKeepSeconds: state.pauseKeepSeconds)
+        compare(.init(intervals(plan.cuts)), expected["cuts"])
+    }
+
+    func runCutEdgeSession(_ input: FixtureValue, _ expected: FixtureValue) throws {
+        let items = words(input["words"]), duration = input["durationSeconds"].number, envelope = levelsEnvelope(input["envelope"])
+        var initial = try ContextDemoProject.upgradeToV4(JSONProjectStore.decode(FixtureLoader.data("fixtures/projects/interview-take.voxclip")))
+        initial.schemaVersion = input["startVersion"].int
+        initial.transcript = transcript(items, duration: duration)
+        initial.media.source.durationSeconds = duration
+        initial.edits = ProjectEdits(pauseThresholdSeconds: 0.8)
+        #expect(initial.media.source.audio?.sampleRate == input["sampleRate"].int)
+        let envelopes = [initial.media.source.contentKey: envelope]
+        let originalEdits = try ProjectJSON.encoder().encode(initial.edits)
+        var project = initial
+        let steps = expected["steps"].array, operations = input["ops"].array
+        #expect(steps.count == operations.count + 1)
+        for (index, step) in steps.enumerated() {
+            if index > 0 {
+                var next = project
+                try next.applyEditing(.toggle(id: operations[index - 1]["id"].string))
+                project = try CutEdges.finalize(before: project, after: next, envelopes: envelopes)
+            }
+            #expect(project.edits.cutWordIds == step["cutWords"].array.map(\.string), "step \(index) cutWords")
+            #expect(project.edits.cutEdges == edges(step["cutEdges"]), "step \(index) cutEdges")
+            #expect(project.schemaVersion == step["schemaVersion"].int, "step \(index) schemaVersion")
+            #expect((try ProjectJSON.encoder().encode(project.edits) == originalEdits) == step["editsEqualInitial"].bool, "step \(index) edits")
+        }
+    }
+
+    func runCutEdgeProject(_ input: FixtureValue, _ expected: FixtureValue, root: URL) throws {
+        func setting(_ value: JSONValue, _ keys: ArraySlice<String>, to replacement: JSONValue) -> JSONValue {
+            guard let key = keys.first else { return replacement }
+            switch value {
+            case .object(var object):
+                object[key] = setting(object[key] ?? .null, keys.dropFirst(), to: replacement)
+                return .object(object)
+            case .array(var array):
+                guard let index = Int(key), array.indices.contains(index) else { return value }
+                array[index] = setting(array[index], keys.dropFirst(), to: replacement)
+                return .array(array)
+            default: return value
+            }
+        }
+        let url = root.deletingLastPathComponent().appendingPathComponent(input["projectPath"].string)
+        var document = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
+        for operation in input["set"].array {
+            document = setting(document, operation["path"].string.split(separator: "/").map(String.init)[...], to: operation["value"].value)
+        }
+        let data = try JSONEncoder().encode(document)
+        guard expected["valid"].bool else {
+            #expect(throws: (any Error).self, "refused: \(expected["reason"].string)") { try ProjectJSON.decode(data) }
+            return
+        }
+        let project = try ProjectJSON.decode(data)
+        #expect(try ProjectJSON.decode(ProjectJSON.encode(project)).schemaVersion == expected["writtenVersion"].int)
+        let state = try #require(try EditState(project: project))
+        let rate = Double(project.media.source.audio?.sampleRate ?? 48000)
+        let plan = try EditPlan.build(transcript: state.transcript, editState: state, activeClip: nil, duration: project.media.source.durationSeconds, sampleRate: rate)
+        let boundaries = Set(plan.cuts.flatMap { [$0.startSample, $0.endSample] })
+        for sample in expected["edgeSamples"].array { #expect(boundaries.contains(Int64(sample.int)), "edge sample \(sample.int)") }
     }
 
     func syntheticEnvelope(_ audio: FixtureValue) -> AudioEnvelope {

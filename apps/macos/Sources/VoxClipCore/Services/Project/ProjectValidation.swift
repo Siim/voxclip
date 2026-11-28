@@ -394,6 +394,7 @@ enum ProjectValidation {
         try require(Set(edits.cutWordIds).count == edits.cutWordIds.count && Set(edits.cutPauseIds).count == edits.cutPauseIds.count, "Duplicate cut ids")
         for id in edits.cutWordIds { try text(id, pattern: idPattern) }
         for id in edits.cutPauseIds { try text(id, pattern: "pause-after-" + idPattern) }
+        for id in edits.cutEdges.keys { try text(id, pattern: idPattern, at: "edits/cutEdges") }
         for (id, correction) in edits.corrections { try text(id, pattern: idPattern, at: "edits/corrections"); try validateWordText(correction) }
         try text(edits.activeClipId, pattern: idPattern)
         try require(Set(edits.clips.map(\.id)).count == edits.clips.count, "Duplicate clip ids")
