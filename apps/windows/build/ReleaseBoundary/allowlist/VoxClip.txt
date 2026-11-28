@@ -1103,6 +1103,10 @@ member VoxClip.App.Controls.TimelineView :: field private clockPrefix
 member VoxClip.App.Controls.TimelineView :: field private cueBackgrounds
 member VoxClip.App.Controls.TimelineView :: field private cueBlocks
 member VoxClip.App.Controls.TimelineView :: field private cueCuts
+member VoxClip.App.Controls.TimelineView :: field private cutEdgeAction
+member VoxClip.App.Controls.TimelineView :: field private cutEdgeReason
+member VoxClip.App.Controls.TimelineView :: field private cutEdgeRow
+member VoxClip.App.Controls.TimelineView :: field private cutEdgeText
 member VoxClip.App.Controls.TimelineView :: field private disposed
 member VoxClip.App.Controls.TimelineView :: field private editBar
 member VoxClip.App.Controls.TimelineView :: field private editBarActions
@@ -1301,6 +1305,7 @@ member VoxClip.App.Controls.TimelineView :: method private Command(string,string
 member VoxClip.App.Controls.TimelineView :: method private CommitItems(VoxClip.Core.Domain.Editing.TimelineEdit)
 member VoxClip.App.Controls.TimelineView :: method private ConfigureTrim(VoxClip.App.Controls.TimelineRangeControl,bool)
 member VoxClip.App.Controls.TimelineView :: method private CreateRetained(int)
+member VoxClip.App.Controls.TimelineView :: method private CutEdgesChanged(object,System.EventArgs)
 member VoxClip.App.Controls.TimelineView :: method private DragRect(Windows.Foundation.Point,Windows.Foundation.Point)
 member VoxClip.App.Controls.TimelineView :: method private Draw()
 member VoxClip.App.Controls.TimelineView :: method private DrawAskRange(double)
@@ -1328,6 +1333,7 @@ member VoxClip.App.Controls.TimelineView :: method private FromDisplay(double)
 member VoxClip.App.Controls.TimelineView :: method private Geometry(System.Collections.Generic.IEnumerable`1<VoxClip.App.ViewModels.TimelineMark>,bool,bool)
 member VoxClip.App.Controls.TimelineView :: method private HandleItemKey(VoxClip.App.ViewModels.TimelineShortcut)
 member VoxClip.App.Controls.TimelineView :: method private HitItem(Windows.Foundation.Point)
+member VoxClip.App.Controls.TimelineView :: method private InitializeCutEdgeRow(Microsoft.UI.Xaml.Controls.Panel)
 member VoxClip.App.Controls.TimelineView :: method private InitializeEditBar(Microsoft.UI.Xaml.Controls.Grid)
 member VoxClip.App.Controls.TimelineView :: method private InitializeItemBar(Microsoft.UI.Xaml.Controls.Grid)
 member VoxClip.App.Controls.TimelineView :: method private InitializeItemEditing(Microsoft.UI.Xaml.Controls.Grid)
@@ -1362,6 +1368,7 @@ member VoxClip.App.Controls.TimelineView :: method private ReadTrim(bool)
 member VoxClip.App.Controls.TimelineView :: method private Rebuild(bool)
 member VoxClip.App.Controls.TimelineView :: method private RedrawItems()
 member VoxClip.App.Controls.TimelineView :: method private RefreshCues()
+member VoxClip.App.Controls.TimelineView :: method private RefreshCutEdgeRow()
 member VoxClip.App.Controls.TimelineView :: method private RefreshEditBar()
 member VoxClip.App.Controls.TimelineView :: method private RefreshItemActions(bool)
 member VoxClip.App.Controls.TimelineView :: method private RefreshItemAudio()
@@ -2288,6 +2295,7 @@ member VoxClip.App.Pages.EditorPage :: method private AskBeforeReplacingRewrite(
 member VoxClip.App.Pages.EditorPage :: method private AskClaudeSendAsync(VoxClip.App.ViewModels.AskClaudeAsk,System.Threading.CancellationToken)
 member VoxClip.App.Pages.EditorPage :: method private AspectChanged(object,Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private AspectLoaded(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private AttachCutEdges()
 member VoxClip.App.Pages.EditorPage :: method private AttachRewriteProposal(VoxClip.App.ViewModels.RewriteSession)
 member VoxClip.App.Pages.EditorPage :: method private AudioStatusChanged(object,VoxClip.Core.Services.Media.PreviewAudioStatus)
 member VoxClip.App.Pages.EditorPage :: method private BackClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -2299,9 +2307,12 @@ member VoxClip.App.Pages.EditorPage :: method private ConfigureRewriteMicrophone
 member VoxClip.App.Pages.EditorPage :: method private ConfigureWholeClip(VoxClip.App.ViewModels.RewriteSession)
 member VoxClip.App.Pages.EditorPage :: method private CorrectClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private CreateRewriteGeneration(VoxClip.App.ViewModels.RewriteSession,int)
+member VoxClip.App.Pages.EditorPage :: method private CutEdgeLevelsUnreadable(string,System.Threading.CancellationTokenSource)
+member VoxClip.App.Pages.EditorPage :: method private CutEdgesChanged(object,System.EventArgs)
 member VoxClip.App.Pages.EditorPage :: method private CutMatchesClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private CutSelectionClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private DefaultRightWidth()
+member VoxClip.App.Pages.EditorPage :: method private DetachCutEdges()
 member VoxClip.App.Pages.EditorPage :: method private DisplayChanged(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private EditorKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private EditorSettingsChanged(object,System.EventArgs)
@@ -2314,6 +2325,7 @@ member VoxClip.App.Pages.EditorPage :: method private FillersClicked(object,Micr
 member VoxClip.App.Pages.EditorPage :: method private FindClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private FindClipsClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private FitViewer(double)
+member VoxClip.App.Pages.EditorPage :: method private FixCutEdgesClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private ForwardClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private FrameAi(VoxClip.App.Services.ProviderEntry,VoxClip.Core.Services.LLM.LlmConnector,VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentationKind)
 member VoxClip.App.Pages.EditorPage :: method private HandleShellAskKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
@@ -2340,6 +2352,7 @@ member VoxClip.App.Pages.EditorPage :: method private IntegratedJobAvailable(Vox
 member VoxClip.App.Pages.EditorPage :: method private IntegratedStatus()
 member VoxClip.App.Pages.EditorPage :: method private IsHarnessPath(string)
 member VoxClip.App.Pages.EditorPage :: method private LedgerChanged(object,System.EventArgs)
+member VoxClip.App.Pages.EditorPage :: method private LoadCutEdgeLevelsAsync(VoxClip.Core.Domain.Shared.MediaInfo,string,System.Threading.CancellationTokenSource)
 member VoxClip.App.Pages.EditorPage :: method private LoadWaveformAsync(VoxClip.Core.Domain.Shared.MediaInfo,VoxClip.Core.Domain.Shared.Project,System.Threading.CancellationTokenSource,System.Threading.Tasks.Task)
 member VoxClip.App.Pages.EditorPage :: method private LocateClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private MakeClipAndReveal()
@@ -2459,6 +2472,7 @@ member VoxClip.App.Pages.EditorPage :: method private Unhook(VoxClip.Core.Servic
 member VoxClip.App.Pages.EditorPage :: method private UpdateAiTag()
 member VoxClip.App.Pages.EditorPage :: method private UpdateExport()
 member VoxClip.App.Pages.EditorPage :: method private UpdateFindClips()
+member VoxClip.App.Pages.EditorPage :: method private UpdateFixCutEdgesCommand()
 member VoxClip.App.Pages.EditorPage :: method private UpdateHarnessButtons()
 member VoxClip.App.Pages.EditorPage :: method private UpdateMakeItCommand()
 member VoxClip.App.Pages.EditorPage :: method private UpdatePreviewAsync()
@@ -3944,6 +3958,42 @@ member VoxClip.App.ViewModels.CreateVoiceSession :: method private set_Verificat
 member VoxClip.App.ViewModels.CreateVoiceSession :: method private set_Verified(bool)
 member VoxClip.App.ViewModels.CreateVoiceSession :: method public .ctor(VoxClip.App.ViewModels.IVoiceStatementBackend,VoxClip.App.ViewModels.IVoiceStatementCapture,System.Func`2<System.Action,System.Threading.Tasks.Task>,System.TimeProvider)
 member VoxClip.App.ViewModels.CreateVoiceSession :: method public DisposeAsync()
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method private .ctor(VoxClip.App.ViewModels.CutEdgeBarRow)
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method public .ctor(string,string,string)
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method public Deconstruct(string&,string&,string&)
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method public Equals(VoxClip.App.ViewModels.CutEdgeBarRow)
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method public Equals(object)
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method public GetHashCode()
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method public ToString()
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method public get_Action()
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method public get_Reason()
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method public get_Text()
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method public op_Equality(VoxClip.App.ViewModels.CutEdgeBarRow,VoxClip.App.ViewModels.CutEdgeBarRow)
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method public op_Inequality(VoxClip.App.ViewModels.CutEdgeBarRow,VoxClip.App.ViewModels.CutEdgeBarRow)
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method public set_Action(string)
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method public set_Reason(string)
+member VoxClip.App.ViewModels.CutEdgeBarRow :: method public set_Text(string)
+member VoxClip.App.ViewModels.CutEdgeChoice :: method private .ctor(VoxClip.App.ViewModels.CutEdgeChoice)
+member VoxClip.App.ViewModels.CutEdgeChoice :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.CutEdgeChoice :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public .ctor(bool,System.Collections.Generic.IReadOnlyDictionary`2<string,double>,string)
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public Deconstruct(bool&,System.Collections.Generic.IReadOnlyDictionary`2<string,double>&,string&)
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public Equals(VoxClip.App.ViewModels.CutEdgeChoice)
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public Equals(object)
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public GetHashCode()
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public ToString()
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public get_Action()
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public get_Quiet()
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public get_Reason()
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public get_Status()
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public get_Writes()
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public op_Equality(VoxClip.App.ViewModels.CutEdgeChoice,VoxClip.App.ViewModels.CutEdgeChoice)
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public op_Inequality(VoxClip.App.ViewModels.CutEdgeChoice,VoxClip.App.ViewModels.CutEdgeChoice)
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public set_Quiet(bool)
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public set_Reason(string)
+member VoxClip.App.ViewModels.CutEdgeChoice :: method public set_Writes(System.Collections.Generic.IReadOnlyDictionary`2<string,double>)
 member VoxClip.App.ViewModels.DirectorTask :: field private Changed
 member VoxClip.App.ViewModels.DirectorTask :: field private approving
 member VoxClip.App.ViewModels.DirectorTask :: field private session
@@ -4063,6 +4113,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: field private AskClaudePlayRequ
 member VoxClip.App.ViewModels.EditorViewModel :: field private AskClaudeShown
 member VoxClip.App.ViewModels.EditorViewModel :: field private Changed
 member VoxClip.App.ViewModels.EditorViewModel :: field private CorrectionChanged
+member VoxClip.App.ViewModels.EditorViewModel :: field private CutEdgesChanged
 member VoxClip.App.ViewModels.EditorViewModel :: field private ExportStatesChanged
 member VoxClip.App.ViewModels.EditorViewModel :: field private FindRetrySeconds
 member VoxClip.App.ViewModels.EditorViewModel :: field private MakeItChangeRequested
@@ -4079,6 +4130,13 @@ member VoxClip.App.ViewModels.EditorViewModel :: field private applyingVoiceLab
 member VoxClip.App.ViewModels.EditorViewModel :: field private busy
 member VoxClip.App.ViewModels.EditorViewModel :: field private cachedRecordingLines
 member VoxClip.App.ViewModels.EditorViewModel :: field private clipStyleReopened
+member VoxClip.App.ViewModels.EditorViewModel :: field private cutEdgeChoiceMemo
+member VoxClip.App.ViewModels.EditorViewModel :: field private cutEdgeLevels
+member VoxClip.App.ViewModels.EditorViewModel :: field private cutEdgeOfferMemo
+member VoxClip.App.ViewModels.EditorViewModel :: field private cutEdgePaidRoot
+member VoxClip.App.ViewModels.EditorViewModel :: field private cutEdgeResult
+member VoxClip.App.ViewModels.EditorViewModel :: field private cutEdgeRevision
+member VoxClip.App.ViewModels.EditorViewModel :: field private cutEdgeUnreachable
 member VoxClip.App.ViewModels.EditorViewModel :: field private exactRange
 member VoxClip.App.ViewModels.EditorViewModel :: field private exactRangeScope
 member VoxClip.App.ViewModels.EditorViewModel :: field private exportActivity
@@ -4093,6 +4151,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: field private music
 member VoxClip.App.ViewModels.EditorViewModel :: field private notice
 member VoxClip.App.ViewModels.EditorViewModel :: field private now
 member VoxClip.App.ViewModels.EditorViewModel :: field private openRecordingVersions
+member VoxClip.App.ViewModels.EditorViewModel :: field private openRewrites
 member VoxClip.App.ViewModels.EditorViewModel :: field private partPickKey
 member VoxClip.App.ViewModels.EditorViewModel :: field private project
 member VoxClip.App.ViewModels.EditorViewModel :: field private recordingMatches
@@ -4100,6 +4159,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: field private recordingView
 member VoxClip.App.ViewModels.EditorViewModel :: field private redo
 member VoxClip.App.ViewModels.EditorViewModel :: field private reduce
 member VoxClip.App.ViewModels.EditorViewModel :: field private savedJson
+member VoxClip.App.ViewModels.EditorViewModel :: field private savedPaidScopesMemo
 member VoxClip.App.ViewModels.EditorViewModel :: field private savedProject
 member VoxClip.App.ViewModels.EditorViewModel :: field private selectedPartId
 member VoxClip.App.ViewModels.EditorViewModel :: field private selectionAnchor
@@ -4134,11 +4194,13 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal BeginUndoGroup(
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ChooseRecordingShortcut(int)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ChooseRecordingView(VoxClip.App.ViewModels.RecordingView,bool,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ClampProjectTime(double)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal ClearCutEdgeLevels()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ClearExactRange()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ClearSelection()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal CloseRecordingVersions()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal CompleteCaptionDrag(VoxClip.Core.Domain.Shared.CaptionPosition)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ContainsAiSpeech(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal CutEdgeFreeze(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal DescribeHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string,int,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal DismissHarnessProposal(VoxClip.Core.Services.Project.HarnessProposal,string,int)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal EndUndoGroup()
@@ -4161,6 +4223,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal MoveCaptionAnch
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MoveCaptionPosition(int)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MovePart(string,int)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal OpenRecordingVersions(VoxClip.App.ViewModels.RecordingClipLine)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal PaidCutEdgeScopes(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal PartDropIndex(string,string,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal PickPartFrom(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal PlayTimelineRange()
@@ -4204,10 +4267,14 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal RequireLegacyRe
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RestoreExactRange(VoxClip.App.ViewModels.TimelineExactRange)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ResumeEditing()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RewriteCaretChanged()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal RewriteClosed(VoxClip.App.ViewModels.RewriteSession)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal RewriteOpened(VoxClip.App.ViewModels.RewriteSession)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SavableCorrection(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ScopedProject(VoxClip.Core.Domain.Editing.EditState)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SelectPart(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SelectRecordingVersion(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal SetCutEdgeLevels(string,VoxClip.Core.Domain.Transcript.AudioEnvelope)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal SetCutEdgePaidRoot(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SetExactRange(double,double,double)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SetExactRangeEdge(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SetExportActivity(VoxClip.Core.Domain.Shared.ExportTarget,VoxClip.App.ViewModels.ClipExportState,System.Nullable`1<double>)
@@ -4231,6 +4298,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal UseRecordingVer
 member VoxClip.App.ViewModels.EditorViewModel :: method internal UseWholeRecordingAsPart(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal VoiceLabAssetReferences(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Shared.Project>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal WithRecordingReference(VoxClip.Core.Domain.Shared.MediaReference)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal add_CutEdgesChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal add_ExportStatesChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal add_TimelineRangePlayRequested(System.EventHandler`1<VoxClip.Core.Domain.Shared.TimeRange>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_ActiveClip()
@@ -4242,6 +4310,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal get_CanEditPart
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_CanRemovePart()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_CaptionDrag()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_ClipParts()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal get_CutEdgeOffer()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_ExactRange()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_ExactRangeReadout()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_ExactRangeReadoutParts()
@@ -4287,6 +4356,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal get_TimelineSel
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_TimelineTrimToRangeReason()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_TranscriptRecordingView()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_UndoGroupName()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal remove_CutEdgesChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal remove_ExportStatesChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal remove_TimelineRangePlayRequested(System.EventHandler`1<VoxClip.Core.Domain.Shared.TimeRange>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal set_IsRecordingMissing(System.Func`2<VoxClip.Core.Domain.Shared.MediaReference,bool>)
@@ -4311,6 +4381,8 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private Clamp(double)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ClaudeModeContinueAsync(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ClipPlay(string,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ClipSpan(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method private CommittingCutEdges(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.App.ViewModels.EditorViewModel :: method private CutEdgeInputsChanged()
 member VoxClip.App.ViewModels.EditorViewModel :: method private DescribeCut(System.Text.Json.JsonElement)
 member VoxClip.App.ViewModels.EditorViewModel :: method private DirtyIdentity(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.EditorViewModel :: method private DropExactRange()
@@ -4354,10 +4426,13 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private PerformSeriesAsy
 member VoxClip.App.ViewModels.EditorViewModel :: method private Plural(int,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Progress(System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.MakeItRun>)
 member VoxClip.App.ViewModels.EditorViewModel :: method private PushHistory(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method private ReadCutEdgeChoice(System.Collections.Generic.IReadOnlySet`1<string>)
+member VoxClip.App.ViewModels.EditorViewModel :: method private ReadCutEdgeOffer()
 member VoxClip.App.ViewModels.EditorViewModel :: method private RecordCaptionLook(VoxClip.Core.Domain.Shared.ProjectCaptions)
 member VoxClip.App.ViewModels.EditorViewModel :: method private RecordCaptions(VoxClip.Core.Domain.Shared.ProjectCaptions)
 member VoxClip.App.ViewModels.EditorViewModel :: method private RecordClipStyle(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.EditorViewModel :: method private RecordingCopyReason(VoxClip.App.ViewModels.ClipPartRow,VoxClip.Core.Domain.Editing.RecordingEdit)
+member VoxClip.App.ViewModels.EditorViewModel :: method private RecordingLabel(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private RecordingLineEdit(VoxClip.App.ViewModels.RecordingClipLine,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private RecordingMatches()
 member VoxClip.App.ViewModels.EditorViewModel :: method private RecordingSoloEdit(VoxClip.Core.Domain.Editing.TakeMatch+SoloRun,bool)
@@ -4368,7 +4443,9 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private RefreshTranscrip
 member VoxClip.App.ViewModels.EditorViewModel :: method private Refuse(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Request(VoxClip.App.ViewModels.RewriteStripItem,VoxClip.App.ViewModels.RewriteAsRequest)
 member VoxClip.App.ViewModels.EditorViewModel :: method private SameCaptions(VoxClip.Core.Domain.Shared.ProjectCaptions,VoxClip.Core.Domain.Shared.ProjectCaptions)
+member VoxClip.App.ViewModels.EditorViewModel :: method private SavedPaidRewriteScopes(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ScopeKeepsWords(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method private SeatCutEdges(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.EditorViewModel :: method private SelectWordsInside(VoxClip.Core.Domain.Shared.TimeRange)
 member VoxClip.App.ViewModels.EditorViewModel :: method private SetSelectionIndices(int,int)
 member VoxClip.App.ViewModels.EditorViewModel :: method private SnapToScopeWords(VoxClip.Core.Domain.Shared.TimeRange)
@@ -4381,12 +4458,14 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private TrimPart(VoxClip
 member VoxClip.App.ViewModels.EditorViewModel :: method private UndoInverse(VoxClip.App.ViewModels.MakeItInverse)
 member VoxClip.App.ViewModels.EditorViewModel :: method private UndoPicture(VoxClip.App.ViewModels.MakeItInverse,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Unique(VoxClip.Core.Domain.Music.ProjectMusic)
+member VoxClip.App.ViewModels.EditorViewModel :: method private UnloadedLevelsReason(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private UpdateSummaryLine(double)
 member VoxClip.App.ViewModels.EditorViewModel :: method private VersionEdit(string,string,VoxClip.App.ViewModels.RecordingVersion)
 member VoxClip.App.ViewModels.EditorViewModel :: method private VoiceStepAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Rewrite,VoxClip.App.ViewModels.MakeItRun,VoxClip.App.ViewModels.MakeItServices,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private WaitAtCapAsync(VoxClip.App.ViewModels.MakeItRun,VoxClip.App.ViewModels.MakeItBudget,System.Decimal)
 member VoxClip.App.ViewModels.EditorViewModel :: method private WithRecordingGain(VoxClip.Core.Domain.Shared.Project,string,double)
 member VoxClip.App.ViewModels.EditorViewModel :: method private WordStates(int,bool)
+member VoxClip.App.ViewModels.EditorViewModel :: method private get_CanEditCutEdges()
 member VoxClip.App.ViewModels.EditorViewModel :: method private get_CanEditTimeline()
 member VoxClip.App.ViewModels.EditorViewModel :: method private get_ClipsAutopilot()
 member VoxClip.App.ViewModels.EditorViewModel :: method private get_PartInsertionAnchor()
@@ -4463,6 +4542,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public EndCorrection(boo
 member VoxClip.App.ViewModels.EditorViewModel :: method public ExportBlocked(bool,bool,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public FillAskClaude(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public FixClaudeModeBlocker()
+member VoxClip.App.ViewModels.EditorViewModel :: method public FixCutEdges()
 member VoxClip.App.ViewModels.EditorViewModel :: method public Index(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Keep(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public KeepAll()
@@ -4519,6 +4599,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public RewriteScopeAs(Vo
 member VoxClip.App.ViewModels.EditorViewModel :: method public RewriteSelectionAs(VoxClip.App.ViewModels.RewriteStripItem)
 member VoxClip.App.ViewModels.EditorViewModel :: method public RewriteShortcutItem(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public RewriteStripMatch(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public RunCutEdgeBarAction()
 member VoxClip.App.ViewModels.EditorViewModel :: method public RunPaidAskClaudeRow(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SaveCorrection(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SaveToneAsync(string,string)
@@ -4560,6 +4641,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public ToggleAskClaudeAd
 member VoxClip.App.ViewModels.EditorViewModel :: method public Undo()
 member VoxClip.App.ViewModels.EditorViewModel :: method public UndoAllAskClaude()
 member VoxClip.App.ViewModels.EditorViewModel :: method public UndoAskClaudeRow(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public UseSelectedCutEdge()
 member VoxClip.App.ViewModels.EditorViewModel :: method public WholeClipTitle(VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation)
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_Announcement(System.EventHandler`1<string>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_AskClaudeChanged(System.EventHandler)
@@ -4592,6 +4674,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanAskClaude(
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanClaudeExportAll()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanExport()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanFindClips()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanFixCutEdges()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanMakeTopPostable()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanPreviewCut()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanRedo()
@@ -4621,7 +4704,9 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClipStyleReop
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Clips()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CorrectionText()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CorrectionWordId()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_CutEdgeBarRow()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_FillerLabel()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_FixCutEdgesReason()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_FramePass()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_FullTakeDuration()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_HasSelection()
@@ -4644,6 +4729,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public get_RedoActionNam
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_RewriteEnd()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_RewriteStart()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_RewriteStripItems()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectedCutEdge()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionCaret()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionEnd()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionStart()
@@ -7262,6 +7348,8 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal get_HasRestoredP
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_Header()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_HoldsPaidWork()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_HoldsWholeClipWork()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_IdentityClipId()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_IdentityScope()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_IncludedHunks()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_InsertionAfter()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_Instruction()
@@ -10091,6 +10179,8 @@ type VoxClip.App.ViewModels.ConnectorConsentAction
 type VoxClip.App.ViewModels.ConnectorPreflight
 type VoxClip.App.ViewModels.ConnectorTestPresentation
 type VoxClip.App.ViewModels.CreateVoiceSession
+type VoxClip.App.ViewModels.CutEdgeBarRow
+type VoxClip.App.ViewModels.CutEdgeChoice
 type VoxClip.App.ViewModels.DirectorTask
 type VoxClip.App.ViewModels.DirectorTaskPhase
 type VoxClip.App.ViewModels.DirectorTaskSnapshot
