@@ -73,6 +73,16 @@ import Testing
         return (DebugRightColumn.markers(in: host), DebugRightColumn.texts(in: host))
     }
 
+    /// `name` drew `text` and shows it whole: on one line its frame is at least the text's own width, or it wrapped.
+    private func expectWhole(_ found: (markers: [String: CGRect], texts: [String: String]), _ name: String, _ text: String,
+                             font: NSFont, lineHeight: CGFloat, _ comment: String) {
+        #expect(found.texts[name] == text, Comment(rawValue: "\(name): \(found.texts[name] ?? "none") at \(comment)"))
+        guard let frame = found.markers[name] else { Issue.record(Comment(rawValue: "\(name) not drawn at \(comment)")); return }
+        let ideal = ceil((text as NSString).size(withAttributes: [.font: font]).width)
+        #expect(frame.width >= ideal - 1 || frame.height >= lineHeight * 2 - 1,
+                Comment(rawValue: "\(name) truncated at \(comment): \(frame) for \(ideal) pt of text"))
+    }
+
     private func expectInside(_ markers: [String: CGRect], width: CGFloat, _ comment: String) {
         for (name, frame) in markers where name.hasPrefix("picture.") || name.hasPrefix("panel.") {
             #expect(frame.minX >= -0.5 && frame.maxX <= width + 0.5, Comment(rawValue: "\(name) \(frame) past \(width): \(comment)"))
@@ -102,7 +112,10 @@ import Testing
                 let context = try #require(found.markers["panel.context"]), compare = try #require(found.markers["panel.compare"])
                 #expect(context.maxX <= compare.minX && context.width >= 140, Comment(rawValue: "\(context)"))
             }
-            #expect(found.texts["picture.look.value"] == "Warm Print, edited \u{00B7} 70%")
+            // "edited" is on screen at every width: the value never truncates.
+            expectWhole(found, "picture.look.value", "Warm Print, edited \u{00B7} 70%", font: VCType.callout.nsFont(.semibold),
+                        lineHeight: VCType.callout.lineHeight, name)
+            #expect(found.markers["picture.compare"] != nil, Comment(rawValue: "the Look row's Compare at \(name)"))
             expectInside(found.markers, width: size.width, name)
         }
     }
@@ -111,18 +124,39 @@ import Testing
         let (shell, editor) = try await openShell()
         defer { editor.close() }
         editor.app.settings.values["ui.pictureFineTuneOpen"] = .bool(true)
-        // As filmed: nothing to blend, compare or clear.
+        // As filmed: nothing to blend, compare, reset or clear. Each reason is its own drawn line (mockup frame 6), and
+        // the disabled actions keep their labels.
+        let small = VCType.small.nsFont(), line = VCType.small.lineHeight
         var found = try await layout(shell, editor, size: CGSize(width: 404, height: 1500), capture: "picture-as-filmed")
-        #expect(found.texts["picture.amount.reason"] == "As filmed has no look to blend")
-        #expect(found.texts["picture.clear"] == "Nothing to clear")
-        #expect(found.texts["picture.reset.light"] == "Nothing to reset")
-        #expect(found.texts["picture.auto.reason"] == "VoxClip couldn't read this video's frames", "a demo has no frames to measure")
-        // A black-and-white look mutes Vibrance and Saturation; Back to says the values match.
+        expectWhole(found, "picture.amount.reason", "As filmed has no look to blend", font: small, lineHeight: line, "as filmed")
+        expectWhole(found, "picture.compare.reason", "Nothing to compare: the clip is as filmed", font: small, lineHeight: line, "as filmed")
+        expectWhole(found, "picture.clear.reason", "Nothing to clear", font: small, lineHeight: line, "as filmed")
+        #expect(found.texts["picture.clear"] == "Clear all color")
+        for group in ["light", "color", "effects"] {
+            expectWhole(found, "picture.reset.\(group).reason", "Nothing to reset", font: small, lineHeight: line, "as filmed")
+            #expect(found.texts["picture.reset.\(group)"] == "Reset")
+        }
+        expectWhole(found, "picture.auto.reason", "VoxClip couldn't read this video's frames", font: small, lineHeight: line, "a demo has no frames to measure")
+        #expect(found.texts["picture.reset.fix.reason"] == nil, "the Fix heading shows Auto's reason")
+        #expect(found.markers["picture.playing"] == nil)
+        // A black-and-white look mutes Vibrance and Saturation; Back to says the values match, beside it.
         step(editor) { editor.chooseLook("softBW") == .changed }
         found = try await layout(shell, editor, size: CGSize(width: 404, height: 1500), capture: "picture-soft-bw")
         #expect(found.texts["picture.vibrance.reason"] == "No effect on black and white")
         #expect(found.texts["picture.saturation.reason"] == "No effect on black and white")
-        #expect(found.texts["picture.backto"] == "Matches Soft B&W")
+        #expect(found.texts["picture.backto"] == "Back to Soft B&W" && found.markers["picture.compare.reason"] == nil)
+        expectWhole(found, "picture.backto.reason", "Matches Soft B&W", font: small, lineHeight: line, "soft bw")
+        let backTo = try #require(found.markers["picture.backto"]), matches = try #require(found.markers["picture.backto.reason"])
+        #expect(matches.minX >= backTo.maxX && abs(matches.midY - backTo.midY) < 4, Comment(rawValue: "\(backTo) \(matches)"))
+        // At 296 pt "· Matches" still shows whole, on its own line where the row has no room.
+        found = try await layout(shell, editor, size: CGSize(width: 324, height: 1500))
+        expectWhole(found, "picture.backto.reason", "Matches Soft B&W", font: small, lineHeight: line, "soft bw at 296")
+        expectInside(found.markers, width: 324, "soft bw at 296")
+        // While playing, under the tiles: a click still applies.
+        editor.isPlaying = true
+        found = try await layout(shell, editor, size: CGSize(width: 404, height: 1500), capture: "picture-playing")
+        expectWhole(found, "picture.playing", "A click still applies the look.", font: small, lineHeight: line, "playing")
+        editor.isPlaying = false
         // A missing video disables everything with the editor's line.
         editor.mediaResolved = false
         found = try await layout(shell, editor, size: CGSize(width: 404, height: 800), capture: "picture-missing-video")

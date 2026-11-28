@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import VoxClipCore
 
@@ -51,6 +52,7 @@ import VoxClipCore
         ClipLookRow(model: model, panel: panel)
         ClipLookAmountRow(model: model, panel: panel, editReason: editReason)
         ClipLookTileGrid(model: model, panel: panel, looks: panel.suggestedLooks, oneRow: 6, editReason: editReason)
+        ClipLookPlayingNote(model: model, editReason: editReason, identifier: "voxclip.clip.look.playing")
         Button {
             model.looks.scrollTarget = panel.match?.look.id
             model.app.shell.showPicture(for: model)
@@ -74,6 +76,16 @@ import VoxClipCore
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier(identifier ?? "voxclip.picture.reason")
             .columnLayoutEvidence((identifier ?? "voxclip.picture.reason").replacingOccurrences(of: "voxclip.", with: ""), text: text)
+    }
+}
+
+/// While playing, under the tiles (mockup frame 6): hover previews nothing, and a click still applies.
+@MainActor struct ClipLookPlayingNote: View {
+    let model: EditorModel
+    let editReason: String?
+    let identifier: String
+    var body: some View {
+        if model.isPlaying, editReason == nil { ClipLookReason(text: "A click still applies the look.", identifier: identifier) }
     }
 }
 
@@ -106,19 +118,48 @@ import VoxClipCore
     }
 }
 
-/// The Look row: the look's name and amount, and Compare at its right.
+/// The Look row: the look's name and amount, and Compare at its right, then Compare's reason when it has one. Where the
+/// whole value doesn't fit beside the labelled Compare (296 pt with the header pinned), Compare drops its label; where it
+/// still doesn't, the value wraps to a second line. It never truncates "edited".
 @MainActor struct ClipLookRow: View {
     let model: EditorModel
     let panel: ClipLookPanel
+    @State private var width: CGFloat = 0
+
+    /// The labelled Compare's width: its symbol, the gap, "Compare" and the padding.
+    static let labelledCompareWidth: CGFloat = {
+        let symbol = NSImage(systemSymbolName: "square.split.2x1", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold))?.size.width ?? 14
+        let label = ("Compare" as NSString).size(withAttributes: [.font: VCType.small.nsFont()]).width
+        return ceil(symbol + 3 + label + 14)
+    }()
+
+    /// True when `value` fits on one line beside the labelled Compare in a row `width` wide.
+    static func fitsLabelledCompare(_ value: String, width: CGFloat) -> Bool {
+        let text = ceil((value as NSString).size(withAttributes: [.font: VCType.callout.nsFont(.semibold)]).width)
+        return CaptionsPanelMetrics.keyWidth + text + VCTokens.spacingLabelGap + labelledCompareWidth <= width
+    }
+
     var body: some View {
-        CaptionPropertyRow("Look", marker: "picture.look") {
-            Text(panel.lookValue).font(VCType.callout.font(.semibold)).foregroundStyle(DesignValues.color("text.primary"))
-                .lineLimit(1).truncationMode(.tail)
-                .accessibilityLabel("Look \(panel.lookValue)")
-                .accessibilityIdentifier("voxclip.picture.look.value")
-                .columnLayoutEvidence("picture.look.value", text: panel.lookValue)
-            Spacer(minLength: VCTokens.spacingLabelGap)
-            ClipLookCompareButton(model: model, panel: panel, iconOnly: false)
+        let iconOnly = width > 0 && !Self.fitsLabelledCompare(panel.lookValue, width: width)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                Text("Look").font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.tertiary")).lineLimit(1)
+                    .frame(width: CaptionsPanelMetrics.keyWidth, alignment: .leading).accessibilityHidden(true)
+                Text(panel.lookValue).font(VCType.callout.font(.semibold)).foregroundStyle(DesignValues.color("text.primary"))
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Look \(panel.lookValue)")
+                    .accessibilityIdentifier("voxclip.picture.look.value")
+                    .columnLayoutEvidence("picture.look.value", text: panel.lookValue)
+                Spacer(minLength: VCTokens.spacingLabelGap)
+                ClipLookCompareButton(model: model, panel: panel, iconOnly: iconOnly, marker: "picture.compare")
+            }
+            .frame(minHeight: CaptionsPanelMetrics.propertyRowHeight)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            .columnLayoutEvidence("captions.property.picture.look", text: "Look")
+            if let reason = panel.compareReason {
+                ClipLookReason(text: reason, identifier: "voxclip.picture.compare.reason").padding(.leading, CaptionsPanelMetrics.keyWidth)
+            }
         }
     }
 }
@@ -129,6 +170,8 @@ import VoxClipCore
     let model: EditorModel
     let panel: ClipLookPanel
     let iconOnly: Bool
+    /// The layout marker; the title row's icon-only Compare is "panel.compare".
+    var marker: String?
     var body: some View {
         let comparing = model.looks.comparing
         let reason = panel.compareReason ?? (model.lookPreviewsAvailable ? nil : "Previews need the source video. Looks still apply when it's back.")
@@ -159,7 +202,7 @@ import VoxClipCore
         .accessibilityAddTraits(.isToggle)
         .accessibilityAction { if reason == nil { model.setLookCompare(!comparing) } }
         .accessibilityIdentifier("voxclip.picture.compare")
-        .columnLayoutEvidence(iconOnly ? "panel.compare" : "picture.compare")
+        .columnLayoutEvidence(marker ?? (iconOnly ? "panel.compare" : "picture.compare"))
         .onDisappear { if model.looks.comparing { model.setLookCompare(false) } }
     }
 }
@@ -330,6 +373,7 @@ import VoxClipCore
             }
             ClipLookCategories(model: model, panel: panel)
             ClipLookTileGrid(model: model, panel: panel, looks: looks, oneRow: nil, editReason: editReason)
+            ClipLookPlayingNote(model: model, editReason: editReason, identifier: "voxclip.picture.playing")
             ClipLookFineTune(model: model, panel: panel, editReason: editReason)
             ClipLookTimedLooks(model: model, clipID: panel.controls.clipId, lookName: panel.lookName)
         }
@@ -576,6 +620,21 @@ import VoxClipCore
     let panel: ClipLookPanel
     let editReason: String?
     @State private var override: Bool?
+    @State private var width: CGFloat = 0
+
+    /// True when "Fine-tune ⌄", Back to and "· {reason}" share one row `width` wide.
+    static func reasonFits(label: String, reason: String, width: CGFloat) -> Bool {
+        func measure(_ text: String, _ font: NSFont) -> CGFloat { ceil((text as NSString).size(withAttributes: [.font: font]).width) }
+        let fold = measure("Fine-tune", VCType.callout.nsFont(.medium)) + VCTokens.spacingLabelGap + 10
+        let trailing = measure(label, VCType.callout.nsFont()) + VCTokens.spacingLabelGap + measure("\u{00B7} \(reason)", VCType.small.nsFont())
+        return fold + VCTokens.spacingLabelGap + trailing <= width
+    }
+
+    private func backToReason(_ reason: String) -> some View {
+        Text("\u{00B7} \(reason)").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary")).lineLimit(1)
+            .accessibilityHidden(true)
+            .columnLayoutEvidence("picture.backto.reason", text: reason)
+    }
 
     var body: some View {
         let open = override ?? (model.app.bool(Self.key) || panel.opensFineTune)
@@ -606,8 +665,17 @@ import VoxClipCore
                         .help(reason ?? "Every value but the fix back to the look's; Amount stays")
                         .accessibilityHint(reason ?? "")
                         .accessibilityIdentifier("voxclip.picture.backto")
-                        .columnLayoutEvidence("picture.backto", text: reason ?? label)
+                        .columnLayoutEvidence("picture.backto", text: label)
+                    if editReason == nil, let matches = panel.backToReason, Self.reasonFits(label: label, reason: matches, width: width) {
+                        backToReason(matches)
+                    }
                 }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            // "· Matches Warm Print" beside Back to (mockup frame 6), or under it where the row is too narrow.
+            if editReason == nil, let label = panel.backToLabel, let matches = panel.backToReason,
+               !Self.reasonFits(label: label, reason: matches, width: width) {
+                HStack { Spacer(minLength: 0); backToReason(matches) }
             }
             if open { groups }
         }
@@ -625,9 +693,10 @@ import VoxClipCore
                 .help(clearReason ?? "The look, the fine-tuning and the fix, all removed")
                 .accessibilityHint(clearReason ?? "Removes the fix too")
                 .accessibilityIdentifier("voxclip.picture.clear")
-                .columnLayoutEvidence("picture.clear", text: clearReason ?? "Clear all color")
+                .columnLayoutEvidence("picture.clear", text: "Clear all color")
             Spacer(minLength: 0)
             Text(panel.clearReason ?? "removes the Fix too").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
+                .columnLayoutEvidence("picture.clear.reason", text: panel.clearReason ?? "removes the Fix too")
         }
         .padding(.top, 4)
     }
@@ -643,15 +712,20 @@ import VoxClipCore
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             heading
-            if group == .fix, editReason == nil, let reason = model.autoReason(panel) {
-                ClipLookReason(text: reason, identifier: "voxclip.picture.auto.reason")
-            }
+            if let reason = headingReason { ClipLookReason(text: reason.text, identifier: reason.identifier) }
             ForEach(group.sliders, id: \.self) { slider in
                 ClipLookSliderRow(model: model, panel: panel, slider: slider, editReason: editReason)
             }
             if group == .effects, panel.hasToning { toning }
         }
         .padding(.top, 4)
+    }
+
+    /// The heading's inline reason (spec section 10, mockup frame 6): Auto's for the Fix while it has one, else Reset's.
+    private var headingReason: (text: String, identifier: String)? {
+        guard editReason == nil else { return nil }
+        if group == .fix, let reason = model.autoReason(panel) { return (reason, "voxclip.picture.auto.reason") }
+        return panel.resetReason(group).map { ($0, "voxclip.picture.reset.\(group.rawValue).reason") }
     }
 
     private var heading: some View {
@@ -676,7 +750,7 @@ import VoxClipCore
                     .accessibilityLabel("Auto fix light and color")
                     .accessibilityHint(reason ?? "")
                     .accessibilityIdentifier("voxclip.picture.auto")
-                    .columnLayoutEvidence("picture.auto", text: reason ?? "Auto")
+                    .columnLayoutEvidence("picture.auto", text: "Auto")
             }
             let reason = editReason ?? panel.resetReason(group)
             Button("Reset") { model.resetLookGroup(group) }
@@ -686,7 +760,7 @@ import VoxClipCore
                 .accessibilityLabel(group.resetName.capitalizedFirst)
                 .accessibilityHint(reason ?? "")
                 .accessibilityIdentifier("voxclip.picture.reset.\(group.rawValue)")
-                .columnLayoutEvidence("picture.reset.\(group.rawValue)", text: reason ?? "Reset")
+                .columnLayoutEvidence("picture.reset.\(group.rawValue)", text: "Reset")
         }
         .frame(height: 22)
     }
