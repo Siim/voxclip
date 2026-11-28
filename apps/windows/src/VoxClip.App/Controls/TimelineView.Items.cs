@@ -465,7 +465,7 @@ public sealed partial class TimelineView
         if (itemDrag is { Band: true } band) { audioBand = band.PreviousBand; audioBandItem = band.PreviousBandItem; }
         itemDrag?.Session.Cancel(); itemDrag = null; marquee = null; marqueeSelection = [];
         previousMarqueeSelection = [];
-        scrubbing = selecting = ranging = false; gestureReadout = null; itemGuide = null; itemFeedbackOrigin = null;
+        scrubbing = selecting = ranging = extendPending = false; gestureReadout = null; itemGuide = null; itemFeedbackOrigin = null;
         if (active) RedrawItems();
     }
 

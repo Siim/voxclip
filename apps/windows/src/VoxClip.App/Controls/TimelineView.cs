@@ -131,6 +131,8 @@ public sealed partial class TimelineView : UserControl
     private Point selectOrigin;
     private bool selectMoved;
     private bool wordAnchored;
+    /// <summary>A Shift+press with a range or words: a click extends them on release; a 3 epx move makes it the Shift+drag scrub.</summary>
+    private bool extendPending;
     private TimelineExactRange? scrubRange;
     private readonly TextBlock videoName = new() { FontSize = 9, IsHitTestVisible = false, TextTrimming = TextTrimming.CharacterEllipsis };
     private TimelineTrackGeometry metrics = TimelineLayout.Tracks(1);
@@ -343,6 +345,8 @@ public sealed partial class TimelineView : UserControl
         slider.PointerReleased += ScrubReleased;
         slider.PointerCanceled += (_, _) => EndTimelineCapture();
         slider.PointerCaptureLost += (_, _) => EndTimelineCapture();
+        // Ctrl+N opens a window. During a Ctrl+drag selection (or Ctrl+Shift FX range) N only suspends Snap, so the timeline keeps it.
+        slider.ProcessKeyboardAccelerators += (_, args) => { if ((selecting || ranging) && args.Key == VirtualKey.N) args.Handled = true; };
         slider.DoubleTapped += RestoreCut;
         ConfigureTrim(startHandle, true);
         ConfigureTrim(endHandle, false);
@@ -630,15 +634,11 @@ public sealed partial class TimelineView : UserControl
             return;
         }
         var ruler = point.Y < TimelineLayout.OverviewHeight + TimelineLayout.RulerHeight;
-        if (shift && !control && !ruler && model.TimelineActionRange is not null)
-        {
-            // Shift+click extends the range or the words to here: by frame with Snap off (or Alt or N held), else by word (issue #41).
-            model.ExtendTimelineSelection(PointerTime(args), exact: !SnapsSelection);
-            slider.Focus(FocusState.Pointer); args.Handled = true; Draw();
-            return;
-        }
+        // Shift+click extends the range or the words to here on release: by frame with Snap off (or Alt or N held), else by word
+        // (issue #41). Once the pointer moves 3 epx it is the Shift+drag scrub, snapped to word starts.
+        extendPending = shift && !control && !ruler && model.TimelineActionRange is not null;
         // A click clears a range dragged in the FX lane; the exact range stays, so I and O can follow a scrub.
-        if (model.AskClaude.TimeRange is not null && model.ExactRange is null) model.SetAskClaudeTimeRange(null);
+        if (!extendPending && model.AskClaude.TimeRange is not null && model.ExactRange is null) model.SetAskClaudeTimeRange(null);
         scrubOrigin = model.SourceTime;
         scrubSelection = model.HasSelection ? (model.SelectionStart, model.SelectionEnd) : null;
         scrubRange = model.ExactRange;
@@ -651,7 +651,8 @@ public sealed partial class TimelineView : UserControl
             if (SnapsSelection) { model.Select(TimelineLayout.WordAt(model.Words, PointerTime(args))); wordAnchored = true; }
             else model.ClearSelection();
         }
-        Scrub(args); args.Handled = true;
+        if (!extendPending) Scrub(args);
+        args.Handled = true;
     }
     /// <summary>Whether a selection gesture snaps to words now: Snap on, and neither Alt nor N held.</summary>
     private bool SnapsSelection => snapping.IsChecked == true && !InputState.Down(VirtualKey.Menu) && !InputState.Down(VirtualKey.N);
@@ -667,6 +668,11 @@ public sealed partial class TimelineView : UserControl
     }
     private void Scrub(PointerRoutedEventArgs args)
     {
+        if (extendPending)
+        {
+            if (Math.Abs(args.GetCurrentPoint(track).Position.X - selectOrigin.X) < 3) return;
+            extendPending = false;
+        }
         var source = PointerTime(args);
         // The scrub is exact unless Shift is held, which snaps it to word starts (design §5.2); Snap governs selection only.
         if (InputState.Down(VirtualKey.Shift) && !selecting && model is { Words.Count: > 0 }) source = model.Words[TimelineLayout.WordAt(model.Words, source)].Start;
@@ -710,7 +716,9 @@ public sealed partial class TimelineView : UserControl
             return;
         }
         if (!scrubbing) return;
-        Scrub(args); scrubbing = selecting = false; slider.ReleasePointerCapture(args.Pointer); args.Handled = true;
+        Scrub(args);
+        if (extendPending && model is not null) { extendPending = false; model.ExtendTimelineSelection(PointerTime(args), exact: !SnapsSelection); Draw(); }
+        scrubbing = selecting = false; slider.ReleasePointerCapture(args.Pointer); args.Handled = true;
     }
     private void RestoreCut(object sender, DoubleTappedRoutedEventArgs args)
     {

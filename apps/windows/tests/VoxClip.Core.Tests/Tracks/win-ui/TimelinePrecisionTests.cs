@@ -138,6 +138,30 @@ public sealed class TimelinePrecisionTests
     }
 
     [Fact]
+    public void AShiftPressExtendsOnReleaseAndCtrlNStaysWithTheTimelineDuringACtrlDrag()
+    {
+        // TimelineView needs WinUI, so its pointer wiring is checked in the source (CI's Windows run drives it).
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TimelineView.cs"));
+        string Body(string name)
+        {
+            var start = source.IndexOf($"private void {name}(", StringComparison.Ordinal);
+            Assert.True(start >= 0, name);
+            var end = source.IndexOf("\n    private ", start + 1, StringComparison.Ordinal);
+            return source[start..end];
+        }
+        // The press only marks a pending extend; the release extends unless the pointer moved 3 epx, which keeps the Shift+drag scrub.
+        Assert.DoesNotContain("ExtendTimelineSelection", Body("ScrubPressed"));
+        Assert.Contains("extendPending = shift && !control && !ruler", Body("ScrubPressed"));
+        Assert.Matches(@"if \(extendPending\)\s*\{\s*if \(Math\.Abs\(args\.GetCurrentPoint\(track\)\.Position\.X - selectOrigin\.X\) < 3\) return;", Body("Scrub"));
+        Assert.Matches(@"if \(extendPending && model is not null\) \{ extendPending = false; model\.ExtendTimelineSelection", Body("ScrubReleased"));
+        // Ctrl+N would open a window in the middle of a Ctrl+drag.
+        Assert.Matches(@"slider\.ProcessKeyboardAccelerators \+= \(_, args\) => \{ if \(\(selecting \|\| ranging\) && args\.Key == VirtualKey\.N\) args\.Handled = true; \};", source);
+        var design = File.ReadAllText(Path.Combine(root, "doc/design.md"));
+        Assert.DoesNotContain("Ctrl+drag with Snap off, or Alt or N held", design);
+    }
+
+    [Fact]
     public void SeveralRecordingsKeepTheRangeInTheRecordingItBeganIn()
     {
         var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/recordings/two-recordings.voxclip"));

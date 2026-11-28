@@ -6,7 +6,7 @@ using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.App.ViewModels;
 
-/// <summary>An exact stretch of the timeline (issue #41): what a Ctrl+drag with Snap off (or Alt or N held) leaves, or I and O set
+/// <summary>An exact stretch of the timeline (issue #41): what a Ctrl+drag with Snap off (or Alt held) leaves, or I and O set
 /// there. Frame-rounded, in the recording's own seconds, with the recording's key when the project has several (#31). A
 /// selection, never part of the project. Twin of the Mac <c>TimelineRange</c>.</summary>
 internal sealed record TimelineExactRange(string? Recording, double Start, double End);
