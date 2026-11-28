@@ -111,14 +111,27 @@ internal sealed class PicturePanel : Grid
         scroller.Content = body;
         Children.Add(scroller);
 
-        Model.Changed += ModelChanged;
-        Model.Announced += Announced;
-        editor.Changed += ModelChanged;
-        editor.PropertyChanged += EditorPropertyChanged;
-        Ui.EffectsChanged += EffectsChanged;
         LosingFocus += (_, args) => { if (args.NewFocusedElement is not DependencyObject next || !InputState.DescendsFrom(next, this)) EndCompareForFocus(); };
-        Loaded += (_, _) => { shown = true; Model.Opened(); Render(); _ = RefreshThumbnailsAsync(); };
-        Unloaded += (_, _) => { shown = false; hover.Stop(); rest.Stop(); thumbnailWork?.Cancel(); Model.EndPreview(); Model.EndCompare(); };
+        Loaded += (_, _) => { Subscribe(true); shown = true; Model.Opened(); Render(); _ = RefreshThumbnailsAsync(); };
+        Unloaded += (_, _) =>
+        {
+            // Hidden (another tab, or the editor closed): nothing static holds the panel, and the frame and pictures go.
+            Subscribe(false);
+            shown = false; hover.Stop(); rest.Stop(); Model.EndPreview(); Model.EndCompare();
+            thumbnailKey = null; tilesKey = "";
+            ResetThumbnails();
+            UpdateThumbnails();
+        };
+    }
+
+    /// <summary>The model, editor and system effects events, held only while the panel is loaded (Ui.EffectsChanged is static).</summary>
+    private void Subscribe(bool on)
+    {
+        Model.Changed -= ModelChanged; Model.Announced -= Announced; editor.Changed -= ModelChanged;
+        editor.PropertyChanged -= EditorPropertyChanged; Ui.EffectsChanged -= EffectsChanged;
+        if (!on) return;
+        Model.Changed += ModelChanged; Model.Announced += Announced; editor.Changed += ModelChanged;
+        editor.PropertyChanged += EditorPropertyChanged; Ui.EffectsChanged += EffectsChanged;
     }
 
     // MARK: Building

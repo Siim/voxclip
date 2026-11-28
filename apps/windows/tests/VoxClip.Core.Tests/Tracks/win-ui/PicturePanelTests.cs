@@ -517,6 +517,11 @@ public sealed class PicturePanelTests
         var panel = App("Controls/PicturePanel.cs");
         foreach (var needle in new[] { "ItemsWrapGrid", "HyperlinkButton", "AutomationProperties.SetHelpText", "SetHeadingLevel", "SystemColorHighlightColor", "RaiseNotificationEvent" })
             Assert.True(panel.Contains(needle, StringComparison.Ordinal) || App("Controls/Ui.cs").Contains(needle, StringComparison.Ordinal), needle);
+        // The static effects event holds the panel only while it's loaded, so a closed editor isn't kept alive by it.
+        Assert.Contains("Loaded += (_, _) => { Subscribe(true);", panel);
+        Assert.Contains("Subscribe(false);", panel);
+        Assert.Equal(1, panel.Split("Ui.EffectsChanged +=").Length - 1);
+        Assert.Contains("Ui.EffectsChanged -= EffectsChanged", panel);
         Assert.DoesNotContain("Flyout", panel);
         Assert.DoesNotContain("ContentDialog", panel);
         Assert.DoesNotContain("App.Services", App("ViewModels/PicturePanelModel.cs"));
