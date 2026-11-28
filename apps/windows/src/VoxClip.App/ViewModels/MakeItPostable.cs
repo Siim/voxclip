@@ -378,13 +378,13 @@ public sealed class MakeItController
     public static string SpeedLabel(double rate) =>
         Math.Round(rate, 2).ToString("0.##", CultureInfo.InvariantCulture) + "×";
 
-    /// <summary>"warm", "black and white".</summary>
+    /// <summary>"warm", "black and white"; the original look is "as filmed", its one name on both platforms.</summary>
     public static string LookName(ClipLook look) => look switch
     {
         ClipLook.Muted => "muted",
         ClipLook.Warm => "warm",
         ClipLook.Bw => "black and white",
-        _ => "original"
+        _ => "as filmed"
     };
 
     /// <summary>The look row's other choices.</summary>

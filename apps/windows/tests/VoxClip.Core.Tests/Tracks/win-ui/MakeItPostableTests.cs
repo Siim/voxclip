@@ -378,8 +378,10 @@ public sealed class MakeItPostableTests
         Assert.Equal("Change speed", editor.UndoActionName);
         Assert.Equal("You chose 1.25× speed", run.Rows.Single(row => row.Id == speed.Id).Text);
         var look = run.Rows.Single(row => row.Change == MakeItChange.Look);
-        Assert.Equal(["original", "muted", "black and white"], look.Options);
+        // The original look is "as filmed", its one name on both platforms (looks spec §3.7).
+        Assert.Equal(["as filmed", "muted", "black and white"], look.Options);
         Assert.True(editor.MakeItChoose("black and white", look.Id, run));
+        Assert.Equal(["as filmed", "muted", "warm"], run.Rows.Single(row => row.Id == look.Id).Options);
         Assert.Equal(ClipLook.Bw, ClipControlsProject.Controls("c1", editor.Project)!.Look);
         Assert.True(editor.MakeItUndo(speed.Id, run));
         Assert.Equal(1, ClipControlsProject.Controls("c1", editor.Project)!.Speed);
