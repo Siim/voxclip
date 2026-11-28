@@ -437,6 +437,19 @@ private actor PrecisionTestSettings: SettingsStore {
         #expect(model.timelinePlayRangeReason == nil)
     }
 
+    /// Make clip snaps each edge to a word the range overlaps: word 21 ends at 21.2 here, so a range from 21.3 s is
+    /// nearer its start than word 22's but leaves it out.
+    @Test func makeClipSnapsOnlyToWordsTheRangeOverlaps() throws {
+        var fixture = try project()
+        fixture.transcript?.words[21].end = 21.2
+        let app = try app(), model = editor(app, project: fixture)
+        defer { model.close() }
+        _ = model.setTimelineRange(from: 21.3, to: 22.5, on: .source)
+        #expect(model.timelineRangeClipWords.map { [$0.start, $0.end] } == ["t22", "t22"])
+        _ = model.setTimelineRange(from: 21.1, to: 22.5, on: .source)
+        #expect(model.timelineRangeClipWords.map { [$0.start, $0.end] } == ["t21", "t22"], "Word 21's tail is in the range")
+    }
+
     @Test func editMenuCutAndRestoreSelectionAreOffWhileARangeIsSet() async throws {
         let app = try app()
         await app.shell.attachForTesting(VoxClipDocument(project: try project(), demo: true), preview: DemoPreviewEngine())

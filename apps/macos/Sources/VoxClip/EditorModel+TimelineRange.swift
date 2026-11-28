@@ -333,14 +333,16 @@ extension EditorModel {
     }
 
     /// The words a clip from the range runs between: each edge snaps to the nearest word start
-    /// or end in the scope, as a drag with Snapping on does. Nil when no word reaches into the
-    /// range (a pause or music only).
+    /// or end among the scope's words the range overlaps, so a clip never takes in a word
+    /// outside it. Nil when no word reaches into the range (a pause or music only).
     var timelineRangeClipWords: (start: String, end: String)? {
         guard let range = timelineRangeSource, !words.isEmpty else { return nil }
         let words = words, scope = scopeBounds ?? 0...(words.count - 1)
         let region = hasSeveralRecordings ? recordingClock.flatMap { clock in clock.localTime((range.lowerBound + range.upperBound) / 2)?.key } : nil
-        let candidates = scope.filter { region == nil || recordingClock?.region(of: words[$0].id)?.key == region }
-        guard candidates.contains(where: { words[$0].start < range.upperBound && words[$0].end > range.lowerBound }) else { return nil }
+        let candidates = scope.filter {
+            (region == nil || recordingClock?.region(of: words[$0].id)?.key == region) && words[$0].start < range.upperBound && words[$0].end > range.lowerBound
+        }
+        guard !candidates.isEmpty else { return nil }
         guard let first = candidates.min(by: { abs(words[$0].start - range.lowerBound) < abs(words[$1].start - range.lowerBound) }),
               let last = candidates.min(by: { abs(words[$0].end - range.upperBound) < abs(words[$1].end - range.upperBound) }) else { return nil }
         if first <= last { return (words[first].id, words[last].id) }
