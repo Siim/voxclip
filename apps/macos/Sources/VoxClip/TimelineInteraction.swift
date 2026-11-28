@@ -16,6 +16,8 @@ import VoxClipCore
     private enum Drag {
         case overview, scrub
         case range(anchor: Double, point: NSPoint, moved: Bool)
+        /// ⇧-press with a range or words: a click extends them on release; a drag of 3 pt becomes the ⇧-drag word selection.
+        case extend(anchor: Double, point: NSPoint, exact: Bool)
         case trim(clip: ClipRange, start: Bool, point: NSPoint, index: Int?, time: Double?)
         case item(ItemDrag)
         case marquee(point: NSPoint, original: Set<TimelineItemID>, additive: Bool)
@@ -151,19 +153,22 @@ import VoxClipCore
         } else if event.clickCount == 2, point.y >= canvas.rulerRow.maxY {
             model.restoreCut(at: time(point), on: model.timelineAxis, tolerance: Double(TimelineMetrics.reach) / canvas.viewport.ptPerSecond)
         } else if event.modifierFlags.contains(.shift), model.timelineActionRange != nil {
-            // ⇧-click extends the range or the words to here: by frame with Snapping off (or ⌥), else by word.
+            // ⇧-click extends the range or the words to here on release: by frame with Snapping off (or ⌥), else by word.
             model.selectTimelineItems([])
-            model.extendTimelineSelection(to: time(point), on: model.timelineAxis,
-                                          exact: !model.timelineSnapping || event.modifierFlags.contains(.option))
+            drag = .extend(anchor: time(point), point: point, exact: !model.timelineSnapping || event.modifierFlags.contains(.option))
         } else {
-            model.selectTimelineItems([])
-            drag = .range(anchor: time(point), point: point, moved: false)
-            model.timelineRange = nil
-            model.selectedWordIDs = []; model.selectedPauseIDs = []
-            model.askClaude.timeRange = nil
-            model.seekTimeline(time(point), on: model.timelineAxis)
+            beginRange(at: point)
         }
         canvas.apply()
+    }
+    /// A press on the tracks: the selection goes, the playhead moves there, and a drag selects from there.
+    private func beginRange(at point: NSPoint) {
+        model.selectTimelineItems([])
+        drag = .range(anchor: time(point), point: point, moved: false)
+        model.timelineRange = nil
+        model.selectedWordIDs = []; model.selectedPauseIDs = []
+        model.askClaude.timeRange = nil
+        model.seekTimeline(time(point), on: model.timelineAxis)
     }
     func mouseDragged(_ event: NSEvent) {
         reconcile()
@@ -187,6 +192,11 @@ import VoxClipCore
             canvas.apply()
         case .overview?: seekOverview(point)
         case .scrub?: model.seekTimeline(time(point).clamped(to: canvas.content.displayRange), on: model.timelineAxis)
+        case .extend(_, let start, _)?:
+            // Moved 3 pt: not a click but the ⇧-drag, which selects words from the press (⇧ snaps it).
+            guard hypot(point.x - start.x, point.y - start.y) >= 3 else { return }
+            beginRange(at: start)
+            mouseDragged(event)
         case .range(let anchor, let start, let moved)?:
             guard moved || hypot(point.x - start.x, point.y - start.y) >= 3 else { return }
             drag = .range(anchor: anchor, point: start, moved: true)
@@ -223,6 +233,9 @@ import VoxClipCore
         if active { mouseDragged(event) }
         let ended = drag
         let command = itemCommand
+        if case .extend(let anchor, _, let exact)? = ended {
+            model.extendTimelineSelection(to: anchor, on: model.timelineAxis, exact: exact)
+        }
         if case .item(let item)? = ended {
             if case .audioRange = item.gesture, let range = audioRangePreview {
                 audioSelection = (item.fragment.display.item.id, range, current)

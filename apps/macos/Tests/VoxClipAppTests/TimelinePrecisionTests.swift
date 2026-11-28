@@ -253,6 +253,29 @@ private actor PrecisionTestSettings: SettingsStore {
         #expect(model.undoSteps == 0)
     }
 
+    @Test func shiftDragStillSelectsSnappedWordsWhenARangeIsSet() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = true
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        let y = TimelineMetrics.audio.y + 12
+        func p(_ source: Double) -> NSPoint { NSPoint(x: canvas.headerWidth + canvas.viewport.x(source), y: y) }
+        model.timelineSnapping = false
+        _ = model.setTimelineRange(from: 12.4, to: 13.5, on: .source)
+        // The press alone changes nothing yet: on release it would extend.
+        canvas.mouseDown(with: try mouse(.leftMouseDown, p(16.05), in: canvas, flags: .shift))
+        #expect(model.timelineRange != nil)
+        // Moved 3 pt it is the ⇧-drag: words from the press, snapped by ⇧ although Snapping is off.
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, p(17.5), in: canvas, flags: .shift))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, p(18.75), in: canvas, flags: .shift))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, p(18.75), in: canvas, flags: .shift))
+        #expect(model.timelineRange == nil)
+        #expect(model.selectedWordIDs == ["t16", "t17", "t18"], "\(model.selectedWordIDs.sorted())")
+        #expect(model.undoSteps == 0)
+    }
+
     @Test func severalRecordingsKeepTheRangeInTheRecordingItBeganIn() throws {
         let shared = try SharedResources.locate()
         var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/recordings/two-recordings.voxclip")))
