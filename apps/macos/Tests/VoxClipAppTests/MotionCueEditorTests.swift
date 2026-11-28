@@ -375,6 +375,38 @@ private actor MotionCueTestSettings: SettingsStore {
         #expect(reopened.status == "This cue was removed. Undo restores it.")
     }
 
+    @Test func openDraftMergesKeyframeEditsPerValueAndTakesSplitKeyframes() throws {
+        let model = try editor(); defer { model.close() }
+        let shell = WorkspaceShell(app: model.app)
+        let undo = UndoManager(); undo.groupsByEvent = false
+        model.undoManager = undo
+        let added = try draft(model)
+        grouped(undo) { #expect(model.applyMotionCue(added)) }
+        let stored = try #require(model.project.motionCues.first)
+        #expect(model.openMotionCueJob(id: stored.id, in: shell))
+        let editing = try #require(model.motionCueEditing)
+        editing.setFrameValue(.scale, to: 1.25)
+        grouped(undo) { #expect(editing.apply(model: model)) }
+        // An unapplied Horizontal nudge survives Undo of the applied zoom; the zoom goes back with the project.
+        editing.setFrameValue(.anchorX, to: 0.7)
+        undo.undo()
+        #expect(model.project.motionCues == [stored])
+        #expect(editing.frameValue(.scale) == stored.keyframes[editing.selectedFrame].scale && editing.frameValue(.anchorX) == 0.7)
+        #expect(editing.status == "The saved cue changed. Your unapplied edits are kept.")
+        grouped(undo) { #expect(editing.apply(model: model)) }
+        let nudged = try #require(model.project.motionCues.first)
+        #expect(nudged.keyframes[1].scale == stored.keyframes[1].scale && nudged.keyframes[1].anchorX == 0.7)
+
+        // A Split resamples the left half's keyframes: they replace the draft's, so Apply cannot stretch the whole pulse into it.
+        editing.setFrameValue(.scale, to: 1.3)
+        grouped(undo) { #expect(model.commitTimelineItemEdit(.split(items: [.motion(nudged.id)], atSource: 12.5))) }
+        let left = try #require(model.project.motionCues.first { $0.id == nudged.id })
+        #expect(left.sourceEnd == 12.5 && left.keyframes != nudged.keyframes)
+        #expect(editing.draft.original == left && editing.draft.cue == left)
+        #expect(editing.draft.keyframes.indices.contains(editing.selectedFrame))
+        #expect(editing.status == "The saved cue's keyframes changed. Your keyframe edits were replaced.")
+    }
+
     @Test func applyIsNeverDisabledWithoutSayingWhy() async throws {
         let model = try editor(); defer { model.close() }
         let shell = WorkspaceShell(app: model.app)

@@ -65,11 +65,33 @@ struct TimelineMotionCue: Equatable {
         var next = MotionCueDraft(cue: stored, original: stored)
         if draft.sourceStart != original.sourceStart { next.sourceStart = draft.sourceStart }
         if draft.sourceEnd != original.sourceEnd { next.sourceEnd = draft.sourceEnd }
-        if draft.keyframes != original.keyframes { next.keyframes = draft.keyframes }
+        let merged = Self.mergedKeyframes(draft: draft.keyframes, original: original.keyframes, stored: stored.keyframes)
+        next.keyframes = merged.keyframes
         let kept = next.cue != stored
         draft = next
         selectedFrame = min(selectedFrame, next.keyframes.count - 1)
-        if kept { status = "The saved cue changed. Your unapplied edits are kept." }
+        if merged.replaced { status = "The saved cue's keyframes changed. Your keyframe edits were replaced." }
+        else if kept { status = "The saved cue changed. Your unapplied edits are kept." }
+    }
+
+    /// Keeps each keyframe value the user changed and takes the saved value for the rest. That needs the
+    /// saved cue to keep the original's keyframe times: a Split, or an Undo that adds, removes or retimes
+    /// keyframes, changes them, and then the saved keyframes replace the draft's (`replaced`).
+    static func mergedKeyframes(draft: [MotionKeyframe], original: [MotionKeyframe],
+                                stored: [MotionKeyframe]) -> (keyframes: [MotionKeyframe], replaced: Bool) {
+        if draft == original || draft == stored { return (stored, false) }
+        if stored == original { return (draft, false) }
+        guard draft.count == original.count, stored.count == original.count,
+              stored.map(\.progress) == original.map(\.progress) else { return (stored, true) }
+        let keyframes = draft.indices.map { index in
+            let edit = draft[index], base = original[index], saved = stored[index]
+            func value(_ field: KeyPath<MotionKeyframe, Double>) -> Double {
+                edit[keyPath: field] != base[keyPath: field] ? edit[keyPath: field] : saved[keyPath: field]
+            }
+            return MotionKeyframe(progress: value(\.progress), scale: value(\.scale),
+                                  anchorX: value(\.anchorX), anchorY: value(\.anchorY))
+        }
+        return (keyframes, false)
     }
 
     /// The footer line. Apply is never disabled without one.
