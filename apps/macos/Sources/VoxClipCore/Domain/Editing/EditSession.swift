@@ -8,14 +8,15 @@ extension EditState {
         self.init(transcript: transcript, pauses: try clock.pauses(thresholdSeconds: edits.pauseThresholdSeconds),
                   pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds,
                   cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections,
-                  clips: edits.clips, activeClipId: edits.activeClipId)
+                  clips: edits.clips, activeClipId: edits.activeClipId, cutEdges: edits.cutEdges)
         if clock.regions.count > 1 { projectClock = clock }
     }
 
     public init(transcript: Transcript, edits: ProjectEdits) throws {
         self.init(transcript: transcript, pauses: try detectPauses(transcript.words, thresholdSeconds: edits.pauseThresholdSeconds),
                   pauseThresholdSeconds: edits.pauseThresholdSeconds, pauseKeepSeconds: edits.pauseKeepSeconds,
-                  cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections, clips: edits.clips, activeClipId: edits.activeClipId)
+                  cutWordIds: Set(edits.cutWordIds), cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections, clips: edits.clips, activeClipId: edits.activeClipId,
+                  cutEdges: edits.cutEdges)
     }
 
     public var activeClip: ClipRange? { clips.first { $0.id == activeClipId } }
@@ -24,7 +25,7 @@ extension EditState {
     public var projectEdits: ProjectEdits {
         ProjectEdits(pauseThresholdSeconds: pauseThresholdSeconds, pauseKeepSeconds: pauseKeepSeconds,
                      cutWordIds: transcript.words.map(\.id).filter { cutWordIds.contains($0) }, cutPauseIds: pauses.map(\.id).filter { cutPauseIds.contains($0) },
-                     corrections: corrections, clips: clips, activeClipId: activeClipId)
+                     corrections: corrections, clips: clips, activeClipId: activeClipId, cutEdges: cutEdges)
     }
     func filler(_ word: TimedWord) -> Bool { word.kind == .unlabeledSpeech || (word.kind == .word && EditingPrimitives.filler(textOf(word))) }
 

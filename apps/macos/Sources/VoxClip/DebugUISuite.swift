@@ -888,6 +888,7 @@ import ApplicationServices
             results += try await DebugPersistence.run(app: app, fixture: project, directory: destination)
             results += try await DebugExport.run(app: app, fixture: project, directory: destination)
             results += DebugCapabilities.run(app: app, fixture: project)
+            results += try await DebugCutEdges.run(app: app, fixture: project)
             results += try await DebugRewrite.run(app: app, fixture: project, directory: destination)
             results += try await DebugConnectorRequests.run(fixture: project, directory: destination)
             results += try DebugRedesignScenes.checks(app: app)

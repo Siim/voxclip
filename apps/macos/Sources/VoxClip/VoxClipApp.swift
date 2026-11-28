@@ -376,6 +376,7 @@ import VoxClipCore
         case 7: editor.apply(.cutFillers, name: "Cut fillers")
         case 8: editor.apply(.tightenPauses, name: "Tighten pauses")
         case 9: editor.apply(.restoreCuts, name: "Restore cuts")
+        case 77: editor.fixCutEdges()
         case 11: editor.showPauses.toggle()
         case 12: model.shell.toggleViewer()
         case 21: editor.transport(" ")
@@ -387,8 +388,10 @@ import VoxClipCore
         case 27: editor.seek(source: 0)
         case 28: editor.seek(source: editor.sourceDuration)
         case 29: editor.makeClip()
-        case 30: editor.setClipEdge(start: true)
-        case 31: editor.setClipEdge(start: false)
+        case 30, 31:
+            // With timeline focus I and O set the exact range's In and Out at the playhead (issue #41).
+            if TimelineItemShortcut.focusedCanvas(NSApp.keyWindow?.firstResponder) != nil { editor.setTimelineRangeEdge(start: item.tag == 30) }
+            else { editor.setClipEdge(start: item.tag == 30) }
         case 32: editor.moveClip(-1)
         case 33: editor.moveClip(1)
         case 34: editor.requestFindClips(from: .clipBar)
@@ -491,6 +494,7 @@ import VoxClipCore
                 item.title = editor?.rewriteMenuTitle ?? "Rewrite Full Take"
                 item.toolTip = editor?.storyRewriteReason(for: editor?.rewriteScopeNow)
             }
+            if item.tag == 77 { item.toolTip = editor?.fixCutEdgesReason }
             switch item.tag {
             case 97: return recordingLineForMenu() != nil
             case 90...96: return keyEditor.map { $0.hasSeveralRecordings && item.tag - 90 <= $0.recordingRegions.count } ?? false
@@ -534,8 +538,11 @@ import VoxClipCore
                 if responder is NSTextField { return false }
                 if responder is NSTableView && ![32, 33].contains(item.tag) { return false }
             }
+            // An exact range cuts and restores nothing yet (issue #41), so the menu agrees with the edit bar's disabled Cut range.
+            if [1, 2].contains(item.tag), editor.timelineRange != nil { return false }
             switch item.tag {
-            case 1, 3, 29: return editor.capabilities.edit && !editor.selectedIDs.isEmpty
+            case 1, 3: return editor.capabilities.edit && !editor.selectedIDs.isEmpty
+            case 29: return editor.capabilities.edit && (!editor.selectedIDs.isEmpty || editor.timelineRangeClipWords != nil)
             case 48: return !editor.selectedIDs.isEmpty
             case 2: return editor.capabilities.edit && (!editor.selectedWordIDs.isDisjoint(with: editor.cutWordIDs) || !editor.selectedPauseIDs.isDisjoint(with: editor.cutPauseIDs))
             case 40, 41: return editor.capabilities.edit && selectedClipID.map(editor.isSuggestion) == true
@@ -564,7 +571,10 @@ import VoxClipCore
             case 7: return editor.capabilities.edit && editor.summary.canCutFillers
             case 8: return editor.capabilities.edit && editor.summary.canTighten
             case 9: return editor.capabilities.edit && editor.summary.hasEdits
-            case 30, 31: return editor.capabilities.edit && editor.activeClip != nil
+            case 77: return editor.canFixCutEdges
+            case 30, 31:
+                if TimelineItemShortcut.focusedCanvas(NSApp.keyWindow?.firstResponder) != nil { return !editor.words.isEmpty }
+                return editor.capabilities.edit && editor.activeClip != nil
             case 34: return editor.capabilities.ai && !editor.words.isEmpty
             case 11: item.title = editor.showPauses ? "Hide Pauses" : "Show Pauses"
             case 12: item.title = model.shell.viewerShown ? "Hide Viewer" : "Show Viewer"
@@ -667,6 +677,8 @@ import VoxClipCore
         command(edit, "Cut Fillers", 7, "u", [.command, .option])
         command(edit, "Tighten Pauses", 8, "p", [.command, .option])
         command(edit, "Restore All Cuts", 9, "r", [.command, .option])
+        // Always listed; `validateMenuItem` gives the reason it can't run (editing §5.10 "Existing projects").
+        command(edit, "Fix Cut Edges", 77)
         command(edit, "Transcribe Again…", 37)
         command(edit, "Split at Playhead", 71, "b")
         command(edit, "Split at Playhead", 71, "b", [])

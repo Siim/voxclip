@@ -122,6 +122,35 @@ public sealed class SavedRewriteProposalStore(string paidRoot, string projectId,
         catch (Exception error) when (IoFailure(error)) { }
     }
 
+    /// <summary>The scopes ("full", "clip:{id}" or "selection:{first}-{last}:{clip}") of this project's saved proposals that hold paid
+    /// takes and are within their lifetime. Read without changing anything: an unreadable or expired record stays for
+    /// <see cref="Load"/> and <see cref="SweepStale"/> to settle. The editors' cut edge freeze reads it (editing §5.10).</summary>
+    public static IReadOnlyList<string> PaidScopes(string paidRoot, string projectId, DateTimeOffset now)
+    {
+        var scopes = new List<string>();
+        if (!ValidId(projectId)) return scopes;
+        var folder = Path.Combine(paidRoot, projectId, Folder);
+        try
+        {
+            if (!Directory.Exists(folder) || Links(folder)) return scopes;
+            VoiceConsentPrivacy.Validate(folder, true);
+            foreach (var file in Directory.EnumerateFiles(folder, "*.json").Order(StringComparer.Ordinal))
+            {
+                if (Path.GetFileName(file).StartsWith('.') || IsLink(file)) continue;
+                try
+                {
+                    VoiceConsentPrivacy.Validate(file, false);
+                    using var stream = File.OpenRead(file);
+                    if (JsonSerializer.Deserialize(stream, Context.SavedRewriteProposal) is { Schema: Schema, PatchTakes: > 0, Scope: { Length: > 0 } scope } record &&
+                        record.ProjectId == projectId && now - record.SavedAt < Lifetime) scopes.Add(scope);
+                }
+                catch (Exception error) when (error is JsonException || IoFailure(error)) { }
+            }
+        }
+        catch (Exception error) when (IoFailure(error)) { }
+        return scopes;
+    }
+
     private static SavedRewriteProposal? Read(string path, DateTimeOffset now)
     {
         try

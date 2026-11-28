@@ -1,0 +1,40 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "plan/cut-edge-override",
+  "kind": "edit-plan",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §5.10 (CutEdges.seat, normalize, the planner override)",
+  "description": "V3's stored edges replace w2's padded start and end: the cut is [0.705, 1.205) instead of [0.80, 1.30), so w1's tail and w3's onset are kept, and captions, mapTime and the preview skip follow the same cut.",
+  "input": {
+    "durationSeconds": 3,
+    "sampleRate": 48000,
+    "segments": [
+      {"id": "w1", "kind": "word", "text": "w1", "start": 0.3, "end": 0.8, "cut": false},
+      {"id": "w2", "kind": "word", "text": "w2", "start": 0.8, "end": 1.3, "cut": true, "cutStart": 0.705, "cutEnd": 1.205},
+      {"id": "w3", "kind": "word", "text": "w3", "start": 1.3, "end": 1.9, "cut": false}
+    ]
+  },
+  "expected": {
+    "totalSamples": 144000,
+    "outputSamples": 120000,
+    "durationSeconds": 2.5,
+    "segmentCuts": [{"id": "w2", "rawStart": 0.705, "rawEnd": 1.205, "startSample": 33840, "endSample": 57840, "empty": false}],
+    "cuts": [[33840, 57840]],
+    "kept": [[0, 33840], [57840, 144000]],
+    "captions": [{"id": "w1", "start": 0.3, "end": 0.705}, {"id": "w3", "start": 0.8, "end": 1.4}],
+    "mapTime": [
+      [0, 0],
+      [-1, 0],
+      ["NaN", 0],
+      [3, 2.5],
+      [4, 2.5],
+      [0.705, 0.705],
+      [1.205, 0.705],
+      [0.9550000000000001, 0.705],
+      [0.3525, 0.3525],
+      [2.1025, 1.6025]
+    ],
+    "sourceTime": [[0, 0], [-1, 0], ["NaN", 0], [2.5, 3], [3.5, 3], [0.705, 1.205]],
+    "previewSkip": [[0, null], [0.705, 1.205], [0.9550000000000001, 1.205], [1.205, null]]
+  }
+}

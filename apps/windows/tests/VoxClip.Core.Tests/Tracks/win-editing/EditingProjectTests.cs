@@ -3,6 +3,8 @@ using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.ContextDemo;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Services.Project;
+using VoxClip.Tests.Support;
 using Xunit;
 
 namespace VoxClip.Core.Tests.Tracks.WinEditing;
@@ -10,6 +12,103 @@ namespace VoxClip.Core.Tests.Tracks.WinEditing;
 public sealed class EditingProjectTests
 {
     public static IEnumerable<TheoryDataRow<string>> Projects() => ProjectStoreTests.Projects();
+
+    [Fact]
+    public void CutEdgesOpenTheV8FrameWithoutAThread()
+    {
+        var project = ProjectSerialization.Deserialize(File.ReadAllText(TestStorage.ProjectPath("interview-take.voxclip")));
+        Assert.Equal(1, project.SchemaVersion);
+        Assert.Contains("w2", project.Edits.CutWordIds);
+        var v8 = ProjectSerialization.Serialize(project with { Edits = project.Edits with { CutEdges = new Dictionary<string, double> { ["w2"] = 0.66 } } });
+        var reloaded = ProjectSerialization.Deserialize(v8);
+        Assert.Equal(8, reloaded.SchemaVersion);
+        Assert.Null(reloaded.AgentThread);
+        Assert.Equal(0.66, reloaded.Edits.CutEdges!["w2"]);
+        Assert.Equal(v8, ProjectSerialization.Serialize(reloaded));
+        Assert.Equal(VoxClipErrorCode.ProjectTooNew, Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(v8, 7)).Code);
+        var left = ProjectSerialization.Serialize(reloaded with { Edits = reloaded.Edits with { CutEdges = new Dictionary<string, double>() } });
+        Assert.Equal(TimelineEditFields.Version, ProjectSerialization.Deserialize(left).SchemaVersion);
+        Assert.DoesNotContain("cutEdges", left);
+        Assert.DoesNotContain("agentThread", left);
+        var document = JsonNode.Parse(v8)!;
+        document["schemaVersion"] = 6;
+        Assert.Equal(VoxClipErrorCode.ProjectUnreadable, Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(document.ToJsonString())).Code);
+    }
+
+    [Fact]
+    public void ASpokenProjectLeavesV8AtV7AndKeepsAThreadAtV8()
+    {
+        var v7 = File.ReadAllText(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "recordings", "two-recordings.voxclip"));
+        var spoken = ProjectSerialization.Deserialize(v7);
+        var words = spoken.Transcript!.Words.ToArray();
+        words[1] = words[1] with { Start = 0.5 };
+        spoken = spoken with { Transcript = spoken.Transcript with { Words = words },
+            Edits = spoken.Edits with { CutWordIds = ["w2", "r2.w2"], CutEdges = new Dictionary<string, double> { ["w2"] = 0.48 } } };
+        var cut = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(spoken));
+        Assert.Equal(8, cut.SchemaVersion);
+        Assert.Null(cut.AgentThread);
+        var restored = cut with { Edits = cut.Edits with { CutEdges = null } };
+        Assert.Equal(7, ProjectSerialization.Deserialize(ProjectSerialization.Serialize(restored)).SchemaVersion);
+        var threaded = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(restored with { AgentThread = new("th-kept", AgentMode.Propose, []) }));
+        Assert.Equal(8, threaded.SchemaVersion);
+        Assert.Equal(7, ProjectSerialization.Deserialize(v7).SchemaVersion);
+    }
+
+    [Fact]
+    public void AgentThreadPromotesOnlyOnUse()
+    {
+        var legacy = ProjectSerialization.Serialize(ContextDemoProject.UpgradeToV4(TestStorage.ProjectFixture()));
+        Assert.Equal(legacy, ProjectSerialization.Serialize(ProjectSerialization.Deserialize(legacy)));
+        var document = JsonNode.Parse(legacy)!;
+        document["schemaVersion"] = 8;
+        document["agentThread"] = new JsonObject { ["id"] = "th-test", ["mode"] = "propose", ["turns"] = new JsonArray() };
+        var wire = document.ToJsonString();
+        var roundTrip = ProjectSerialization.Serialize(ProjectSerialization.Deserialize(wire));
+        Assert.Equal(roundTrip, ProjectSerialization.Serialize(ProjectSerialization.Deserialize(roundTrip)));
+        Assert.Equal(VoxClipErrorCode.ProjectTooNew,
+            Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(wire, 7)).Code);
+        var spoken = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "recordings", "two-recordings.voxclip")));
+        var v7 = ProjectSerialization.Serialize(spoken);
+        Assert.Equal(7, ProjectSerialization.Deserialize(v7).SchemaVersion);
+        Assert.Equal(v7, ProjectSerialization.Serialize(ProjectSerialization.Deserialize(v7)));
+        var v8 = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(spoken with { AgentThread = new("th-companions", AgentMode.Propose, []) }));
+        Assert.Equal(8, v8.SchemaVersion);
+        Assert.Equal(spoken.Media.SpokenSources!.Select(source => source.SourceKey), v8.Media.SpokenSources!.Select(source => source.SourceKey));
+    }
+
+    [Fact]
+    public async Task ProjectOpenStopsRunningTurnsWithoutReplayingPendingEdits()
+    {
+        var project = ProjectSerialization.Deserialize(AgentFixture());
+        var running = Assert.Single(project.AgentThread!.Turns) with { Id = "t2", State = AgentTurnState.Running, Changes = [] };
+        project = project with { AgentThread = project.AgentThread with { Turns = [.. project.AgentThread.Turns, running] } };
+        var wire = ProjectSerialization.Serialize(project);
+        Assert.Equal(wire, ProjectSerialization.Serialize(ProjectSerialization.Deserialize(wire)));
+        using var storage = new TestStorage();
+        var path = storage.PathFor("agent-thread.voxclip");
+        await File.WriteAllTextAsync(path, wire, TestContext.Current.CancellationToken);
+        var loaded = (await new ProjectStore().LoadAsync(path, TestContext.Current.CancellationToken)).Project;
+        Assert.Equal([AgentTurnState.Pending, AgentTurnState.Stopped], loaded.AgentThread!.Turns.Select(turn => turn.State));
+        Assert.Equal(AgentChangeState.Applied, Assert.Single(loaded.AgentThread.Turns[0].Changes).State);
+        Assert.Equal(project.Captions.StyleId, loaded.Captions.StyleId);
+    }
+
+    [Fact]
+    public void StrictAgentWireRejectsUnknownKeysAndVersionMismatch()
+    {
+        var original = JsonNode.Parse(AgentFixture())!;
+        var invalid = original.DeepClone();
+        invalid["schemaVersion"] = 6;
+        Assert.Equal(VoxClipErrorCode.ProjectUnreadable, Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(invalid.ToJsonString())).Code);
+        invalid = original.DeepClone();
+        invalid["agentThread"] = null;
+        Assert.Equal(VoxClipErrorCode.ProjectUnreadable, Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(invalid.ToJsonString())).Code);
+        var patch = original["agentThread"]!["turns"]![0]!["changes"]![0]!["patch"]![0]!;
+        patch["unknown"] = true;
+        Assert.Equal(VoxClipErrorCode.ProjectUnreadable, Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(original.ToJsonString())).Code);
+    }
+
+    private static string AgentFixture() => File.ReadAllText(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "agent-chat", "pending-turn.voxclip"));
 
     [Fact]
     public void SpokenSourcesRequireV7AndV6ReaderRefusesThem()

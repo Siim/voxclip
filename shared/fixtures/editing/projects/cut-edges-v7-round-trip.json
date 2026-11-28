@@ -1,0 +1,10 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "projects/cut-edges-v7-round-trip",
+  "kind": "cut-edge-project",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §5.10 and §10.1 (the v8 frame)",
+  "description": "A v7 multi-recording project without cut edges or a thread round-trips at v7.",
+  "input": {"projectPath": "shared/fixtures/recordings/two-recordings.voxclip", "set": []},
+  "expected": {"valid": true, "writtenVersion": 7, "edgeSamples": []}
+}

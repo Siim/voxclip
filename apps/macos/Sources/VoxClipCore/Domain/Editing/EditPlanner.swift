@@ -183,6 +183,8 @@ func buildScopedEditPlan(_ segments: [EditSegment], state: EditState, activeClip
             var segment = segment
             segment.start = recordingLocalTime(segment.start, region: region, rate: rate)
             segment.end = recordingLocalTime(segment.end, region: region, rate: rate)
+            segment.cutStart = segment.cutStart.map { recordingLocalTime($0, region: region, rate: rate) }
+            segment.cutEnd = segment.cutEnd.map { recordingLocalTime($0, region: region, rate: rate) }
             return segment
         }
         if let (_, range) = scope {
@@ -220,6 +222,13 @@ public func buildSegments(_ state: EditState, activeClip: ClipRange?) throws -> 
     var segments = words.enumerated().map { index, word in
         EditSegment(id: word.id, kind: .word, wordKind: word.kind, text: state.textOf(word), start: word.start, end: word.end,
                     cut: state.cutWordIds.contains(word.id) || !(ranges?.contains { $0.contains(index) } ?? true))
+    }
+    // Stored cut edges (editing §5.10) replace the padded edge at a kept/cut boundary, converted from local to clock time.
+    for index in words.indices.dropFirst() {
+        guard let edge = state.cutEdges[words[index].id] else { continue }
+        let clock = state.clockTime(ofEdge: edge, word: words[index].id)
+        if segments[index].cut && !segments[index - 1].cut { segments[index].cutStart = clock }
+        if !segments[index].cut && segments[index - 1].cut { segments[index - 1].cutEnd = clock }
     }
     segments += state.pauses.filter { state.cutPauseIds.contains($0.id) }.map {
         EditSegment(id: $0.id, kind: .pause, start: $0.start, end: $0.end, cut: true)
@@ -304,8 +313,8 @@ func rawCutRange(at position: Int, segments: [EditSegment], index: CutRangeIndex
     let earlierEnd = index.earlierEnds[rank]
     if earlierEnd >= segment.end { return TimeRange(start: segment.start, end: segment.end) }
     let nextStart = rank + 1 < index.speech.count ? index.starts[rank + 1] : duration
-    return TimeRange(start: segment.start - min(0.1, max(0, segment.start - earlierEnd) / 2),
-                     end: segment.end + min(0.1, max(0, nextStart - segment.end) / 2))
+    return TimeRange(start: segment.cutStart ?? (segment.start - min(0.1, max(0, segment.start - earlierEnd) / 2)),
+                     end: segment.cutEnd ?? (segment.end + min(0.1, max(0, nextStart - segment.end) / 2)))
 }
 
 public func buildEditPlan(_ segments: [EditSegment], duration: Double, sampleRate: Double, pauseKeepSeconds: Double = 0.15) throws -> EditPlan {

@@ -30,7 +30,7 @@ struct RewriteTakeCurrencyTests {
 
     @Test func casesHaveTheirSchemaAndCount() {
         #expect(Swift.Set(raw.keys) == ["schema", "caseCount", "project", "base", "cases"])
-        #expect(cases.schema == "voxclip-voice-take-identity/1" && cases.caseCount == 32 && cases.cases.count == cases.caseCount)
+        #expect(cases.schema == "voxclip-voice-take-identity/1" && cases.caseCount == 36 && cases.cases.count == cases.caseCount)
         #expect(Swift.Set(cases.cases.map(\.id)).count == cases.caseCount)
     }
 

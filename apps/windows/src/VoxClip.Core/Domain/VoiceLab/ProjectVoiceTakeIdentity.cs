@@ -8,7 +8,7 @@ namespace VoxClip.Core.Domain.VoiceLab;
 /// <summary>What a Rewrite reads and what its paid voice work is made from (voice-lab.md "What counts as an edit"), twin of the
 /// Mac <c>Project.rewriteInputs</c> and <c>Project.voiceTakeIdentity</c> and replayed from
 /// shared/fixtures/voice-lab/voice-take-identity-cases.json. <see cref="RewriteInputs"/> keeps the transcript, the media apart from
-/// its relative path, the pause settings and the Voice Lab segments, and scopes the clip, cuts, pauses and corrections: a
+/// its relative path, the pause settings and the Voice Lab segments, and scopes the clip, cuts, cut edges, pauses and corrections: a
 /// selection reads its enclosing clip's placement context and both edge pauses. <see cref="Of"/> adds back the clean-audio choice,
 /// which changes the source a take is fitted to. Save metadata (modified time, writer, relative path, title), the active tab,
 /// music, captions, the clip style, motion cues, clip controls and effects, export, share, the AI results, the Voice Lab asset and
@@ -46,6 +46,10 @@ public static class ProjectVoiceTakeIdentity
         bool InScope(string id) => !positions.TryGetValue(id, out var at) || at >= lower && at <= upper;
         var corrections = new SortedDictionary<string, string>(StringComparer.Ordinal);
         foreach (var (id, text) in project.Edits.Corrections) if (InScope(id)) corrections[id] = text;
+        // A cut edge (editing §5.10) sits between word i−1 and word i, so it counts when either is in scope.
+        var cutEdges = new SortedDictionary<string, double>(StringComparer.Ordinal);
+        foreach (var (id, edge) in project.Edits.CutEdges ?? new Dictionary<string, double>())
+            if (!positions.TryGetValue(id, out var at) || at >= lower && at <= upper || at - 1 >= lower && at - 1 <= upper) cutEdges[id] = edge;
         return project with
         {
             SchemaVersion = 1,
@@ -68,6 +72,7 @@ public static class ProjectVoiceTakeIdentity
                 CutWordIds = project.Edits.CutWordIds.Where(InScope).ToArray(),
                 CutPauseIds = project.Edits.CutPauseIds.Where(id => !pausePositions.TryGetValue(id, out var at) || at >= pauseLower && at <= pauseUpper).ToArray(),
                 Corrections = corrections,
+                CutEdges = cutEdges.Count > 0 ? cutEdges : null,
             },
             Captions = new("", EmptyObject, null, new Dictionary<string, CaptionPosition>()),
             Export = new(ExportAspect.Source, ExportQuality.Standard, false, null),

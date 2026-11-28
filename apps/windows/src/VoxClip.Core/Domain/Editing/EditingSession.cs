@@ -31,6 +31,14 @@ internal static class EditingSession
         var scope = Scope(state);
         var words = state.Transcript.Words;
         var segments = words.Select((word, index) => new EditSegment(word.Id, EditSegmentKind.Word, word.Kind, Text(state, word), word.Start, word.End, state.CutWordIds.Contains(word.Id) || !InScope(index, scope))).ToList();
+        // Stored cut edges (editing §5.10) replace the padded edge at a kept/cut boundary, converted from local to clock time.
+        for (var index = 1; index < words.Count && state.CutEdges.Count > 0; index++)
+        {
+            if (!state.CutEdges.TryGetValue(words[index].Id, out var edge)) continue;
+            var clock = CutEdges.ClockTime(state, edge, words[index].Id);
+            if (segments[index].Cut && !segments[index - 1].Cut) segments[index] = segments[index] with { CutStart = clock };
+            if (!segments[index].Cut && segments[index - 1].Cut) segments[index - 1] = segments[index - 1] with { CutEnd = clock };
+        }
         segments.AddRange(state.Pauses.Where(pause => state.CutPauseIds.Contains(pause.Id)).Select(pause => new EditSegment(pause.Id, EditSegmentKind.Pause, null, null, pause.Start, pause.End, true)));
         if (scope is { Count: 1 })
         {
@@ -53,7 +61,8 @@ internal static class EditingSession
             var newThreshold = replacement.Transcript.Refined ? 0.8 : 1.0;
             return PreserveNoOp(state, state with { Transcript = replacement.Transcript, ProjectClock = null, Pauses = EditingAlgorithms.DetectPauses(replacement.Transcript.Words, newThreshold),
                 PauseThresholdSeconds = newThreshold, CutWordIds = new HashSet<string>(StringComparer.Ordinal), CutPauseIds = new HashSet<string>(StringComparer.Ordinal),
-                Corrections = new Dictionary<string, string>(StringComparer.Ordinal), Clips = [], ActiveClipId = null });
+                Corrections = new Dictionary<string, string>(StringComparer.Ordinal), Clips = [], ActiveClipId = null,
+                CutEdges = System.Collections.ObjectModel.ReadOnlyDictionary<string, double>.Empty });
         }
         var words = state.Transcript.Words;
         var scope = Scope(state);
@@ -259,7 +268,8 @@ internal static class EditingSession
             state.PauseThresholdSeconds == next.PauseThresholdSeconds && state.PauseKeepSeconds == next.PauseKeepSeconds &&
             state.CutWordIds.SetEquals(next.CutWordIds) && state.CutPauseIds.SetEquals(next.CutPauseIds) &&
             state.Corrections.Count == next.Corrections.Count && state.Corrections.All(pair => next.Corrections.TryGetValue(pair.Key, out var text) && pair.Value == text) &&
-            state.Clips.SequenceEqual(next.Clips) && state.ActiveClipId == next.ActiveClipId ? state : next;
+            state.Clips.SequenceEqual(next.Clips) && state.ActiveClipId == next.ActiveClipId &&
+            state.CutEdges.Count == next.CutEdges.Count && state.CutEdges.All(pair => next.CutEdges.TryGetValue(pair.Key, out var edge) && pair.Value == edge) ? state : next;
 
     private static void Set(HashSet<string> set, string id, bool cut)
     {

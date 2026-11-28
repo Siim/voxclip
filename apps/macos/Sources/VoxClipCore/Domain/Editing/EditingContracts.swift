@@ -194,9 +194,11 @@ public struct EditState: Codable, Sendable, Equatable {
     public var clips: [ClipRange]
     /// activeClipId; Reducer state; editing §2.5. ProjectEdits is the serialized subset.
     public var activeClipId: String?
+    /// Stored cut edges (editing §5.10): later word id to that recording's local seconds; the planner reads them.
+    public var cutEdges: [String: Double]
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(transcript: Transcript, pauses: [Pause] = [], pauseThresholdSeconds: Double = 1, pauseKeepSeconds: Double = 0.15, cutWordIds: Set<String> = [], cutPauseIds: Set<String> = [], corrections: [String: String] = [:], clips: [ClipRange] = [], activeClipId: String? = nil) {
+    public init(transcript: Transcript, pauses: [Pause] = [], pauseThresholdSeconds: Double = 1, pauseKeepSeconds: Double = 0.15, cutWordIds: Set<String> = [], cutPauseIds: Set<String> = [], corrections: [String: String] = [:], clips: [ClipRange] = [], activeClipId: String? = nil, cutEdges: [String: Double] = [:]) {
         self.transcript = transcript
         self.pauses = pauses
         self.pauseThresholdSeconds = pauseThresholdSeconds
@@ -206,6 +208,7 @@ public struct EditState: Codable, Sendable, Equatable {
         self.corrections = corrections
         self.clips = clips
         self.activeClipId = activeClipId
+        self.cutEdges = cutEdges
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -218,6 +221,7 @@ public struct EditState: Codable, Sendable, Equatable {
         case corrections
         case clips
         case activeClipId
+        case cutEdges
     }
 
     public init(from decoder: any Decoder) throws {
@@ -231,6 +235,7 @@ public struct EditState: Codable, Sendable, Equatable {
         self.corrections = try values.decodeIfPresent([String: String].self, forKey: .corrections) ?? [:]
         self.clips = try values.decodeIfPresent([ClipRange].self, forKey: .clips) ?? []
         self.activeClipId = try values.decodeIfPresent(String.self, forKey: .activeClipId) ?? nil
+        self.cutEdges = try values.decodeIfPresent([String: Double].self, forKey: .cutEdges) ?? [:]
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -244,6 +249,7 @@ public struct EditState: Codable, Sendable, Equatable {
         try values.encode(self.corrections, forKey: .corrections)
         try values.encode(self.clips, forKey: .clips)
         try values.encode(self.activeClipId, forKey: .activeClipId)
+        if !self.cutEdges.isEmpty { try values.encode(self.cutEdges, forKey: .cutEdges) }
     }
 
 }
@@ -284,9 +290,13 @@ public struct EditSegment: Codable, Sendable, Equatable {
     public var end: Double
     /// cut; Planner input; editing §2.6.
     public var cut: Bool
+    /// A stored cut edge (editing §5.10) that replaces a cut word's padded start, in clock seconds.
+    public var cutStart: Double?
+    /// A stored cut edge that replaces a cut word's padded end, in clock seconds.
+    public var cutEnd: Double?
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(id: String, kind: EditSegmentKind, wordKind: WordKind = .word, text: String = "", start: Double, end: Double, cut: Bool) {
+    public init(id: String, kind: EditSegmentKind, wordKind: WordKind = .word, text: String = "", start: Double, end: Double, cut: Bool, cutStart: Double? = nil, cutEnd: Double? = nil) {
         self.id = id
         self.kind = kind
         self.wordKind = wordKind
@@ -294,6 +304,8 @@ public struct EditSegment: Codable, Sendable, Equatable {
         self.start = start
         self.end = end
         self.cut = cut
+        self.cutStart = cutStart
+        self.cutEnd = cutEnd
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -304,6 +316,8 @@ public struct EditSegment: Codable, Sendable, Equatable {
         case start
         case end
         case cut
+        case cutStart
+        case cutEnd
     }
 
     public init(from decoder: any Decoder) throws {
@@ -315,6 +329,8 @@ public struct EditSegment: Codable, Sendable, Equatable {
         self.start = try values.decode(Double.self, forKey: .start)
         self.end = try values.decode(Double.self, forKey: .end)
         self.cut = try values.decode(Bool.self, forKey: .cut)
+        self.cutStart = try values.decodeIfPresent(Double.self, forKey: .cutStart)
+        self.cutEnd = try values.decodeIfPresent(Double.self, forKey: .cutEnd)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -326,6 +342,8 @@ public struct EditSegment: Codable, Sendable, Equatable {
         try values.encode(self.start, forKey: .start)
         try values.encode(self.end, forKey: .end)
         try values.encode(self.cut, forKey: .cut)
+        try values.encodeIfPresent(self.cutStart, forKey: .cutStart)
+        try values.encodeIfPresent(self.cutEnd, forKey: .cutEnd)
     }
 
 }

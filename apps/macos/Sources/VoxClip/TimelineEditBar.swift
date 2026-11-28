@@ -24,9 +24,12 @@ extension EditorModel {
         rowTitle(.init(id: effect.id, decision: .overlay, action: .effect(effect), reason: ""))
     }
 
+    /// A title over the range or the selected words (issue #41), else from the playhead for 2 s.
     func addTimelineTitle(_ draft: String) throws {
-        let bounds = scopeSourceRange ?? 0...max(0, sourceDuration)
-        let start = sourceTime.clamped(to: bounds), end = min(start + 2, bounds.upperBound, sourceDuration)
+        let bounds = scopeSourceRange ?? 0...max(0, recordingTimelineDuration)
+        let range = timelineActionRange
+        let start = (range?.lowerBound ?? sourceTime).clamped(to: bounds)
+        let end = min(range?.upperBound ?? start + 2, bounds.upperBound, recordingTimelineDuration)
         guard capabilities.edit, end > start else { throw ClipEffectError.invalidEntry("Move the playhead inside the clip to add a title.") }
         let id = ClipEffects.nextID(.title, existing: Set(project.clipEffects.map(\.id)))
         let title = ClipEffect(id: id, clipId: activeClip?.id, kind: .title, start: start, end: end,
@@ -37,7 +40,7 @@ extension EditorModel {
     }
 
     var timelineCanCut: Bool {
-        capabilities.edit && (!selectedWordIDs.isSubset(of: cutWordIDs) || !selectedPauseIDs.isSubset(of: cutPauseIDs))
+        capabilities.edit && timelineRange == nil && (!selectedWordIDs.isSubset(of: cutWordIDs) || !selectedPauseIDs.isSubset(of: cutPauseIDs))
     }
 
     var timelineTrimBounds: ClosedRange<Int>? {
@@ -79,7 +82,23 @@ extension EditorModel {
     }
 }
 
-/// Keep the edit actions above the scrollable tracks, including when E1 is off screen.
+/// One action of the shallow timeline's Edit menu: its title, whether it can run, why not, and what it runs.
+struct TimelineEditMenuAction {
+    let title: String
+    let enabled: Bool
+    let reason: String?
+    let run: @MainActor () -> Void
+}
+
+/// A row of the shallow timeline's Edit menu: an action by its index, or the reason line under disabled ones.
+enum TimelineEditMenuRow: Equatable {
+    case action(Int)
+    case reason(String)
+}
+
+/// Keep the edit actions above the scrollable tracks, including when E1 is off screen. The
+/// range actions (issue #41) act on the exact range, else on the selected words; each one is
+/// always shown, disabled with its reason when it can't run. They drop to icons when the bar is narrow.
 @MainActor struct TimelineEditBar: View {
     let model: EditorModel
     var compact = false
@@ -89,7 +108,19 @@ extension EditorModel {
                 Menu("Edit") {
                     Button("Titles & effects…") { model.openTimelineEditor(.effects) }
                     Button("\(model.timelineTrimTitle)…") { model.openTimelineEditor(.trim) }.disabled(!model.timelineCanTrim)
-                    Button("Cut selection") { model.cutSelection() }.disabled(!model.timelineCanCut)
+                    let groups = Self.menuGroups(model)
+                    ForEach(groups.indices, id: \.self) { group in
+                        if group > 0 { Divider() }
+                        let actions = groups[group]
+                        ForEach(Array(Self.menuRows(actions).enumerated()), id: \.offset) { _, row in
+                            switch row {
+                            case .action(let index):
+                                Button(actions[index].title) { actions[index].run() }.disabled(!actions[index].enabled)
+                            case .reason(let text):
+                                Text(text)
+                            }
+                        }
+                    }
                 }.fixedSize().controlSize(.small)
                 .accessibilityLabel("Timeline edits")
                 .columnLayoutEvidence("timeline.editMenu")
@@ -102,22 +133,175 @@ extension EditorModel {
                         .disabled(!model.timelineCanTrim)
                         .help("Adjust the first or last word")
                     Divider().frame(height: 14)
-                    Button { model.cutSelection() } label: { Label("Cut selection", systemImage: "scissors") }
-                        .disabled(!model.timelineCanCut).help("Cut the selected words and pauses (Delete). Undo with ⌘Z.")
-                        .columnLayoutEvidence("timeline.cutSelection")
-                    if model.selectedWordIDs.isEmpty && model.selectedPauseIDs.isEmpty {
-                        Text("Drag across the waveform to select words or a pause.")
-                            .foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
-                    } else {
-                        let words = model.selectedWordIDs.count, pauses = model.selectedPauseIDs.count
-                        Text([words == 0 ? nil : "\(words) \(words == 1 ? "word" : "words")", pauses == 0 ? nil : "\(pauses) \(pauses == 1 ? "pause" : "pauses")"].compactMap { $0 }.joined(separator: ", "))
-                            .foregroundStyle(.secondary).lineLimit(1)
+                    cut
+                    Divider().frame(height: 14)
+                    ViewThatFits(in: .horizontal) {
+                        rangeActions.labelStyle(.titleAndIcon)
+                        rangeActions.labelStyle(.iconOnly)
+                    }
+                    status.layoutPriority(-1)
+                    if let row = model.cutEdgeBarRow {
+                        Divider().frame(height: 14)
+                        TimelineCutEdgeRow(model: model, row: row)
                     }
                     Spacer(minLength: 0)
                 }
                 .buttonStyle(.borderless).controlSize(.small).font(.callout)
                 .padding(.horizontal, 10).frame(height: TimelineMetrics.editBar)
             }
+        }
+    }
+
+    /// The shallow timeline's Edit menu after Titles & effects and Trim: the cut, the range actions and the cut edge
+    /// actions, each disabled with its reason as the wide bar's are.
+    static func menuGroups(_ model: EditorModel) -> [[TimelineEditMenuAction]] {
+        func action(_ title: String, _ reason: String?, run: @escaping @MainActor () -> Void) -> TimelineEditMenuAction {
+            TimelineEditMenuAction(title: title, enabled: reason == nil, reason: reason, run: run)
+        }
+        let cut = model.timelineRange != nil
+            ? action("Cut range", EditorModel.timelineCutRangeReason) {}
+            : TimelineEditMenuAction(title: "Cut selection", enabled: model.timelineCanCut, reason: nil) { model.cutSelection() }
+        let range = [
+            action("Play range", model.timelinePlayRangeReason) { model.playTimelineRange() },
+            action("\u{2726} Ask Claude", model.timelineAskClaudeReason) { model.askClaudeOnTimelineRange() },
+            action("Add title", model.timelineAddTitleReason) { model.addTimelineTitleOverRange() },
+            action("Trim item to range", model.timelineTrimToRangeReason) { model.trimTimelineItemToRange() },
+            action("Make clip", model.timelineMakeClipReason) { model.makeClip() },
+        ]
+        var edges: [TimelineEditMenuAction] = []
+        if let choice = model.selectedCutEdge {
+            edges.append(TimelineEditMenuAction(title: choice.action, enabled: choice.reason == nil && model.capabilities.edit, reason: choice.reason) {
+                model.useSelectedCutEdge()
+            })
+        }
+        edges.append(TimelineEditMenuAction(title: "Fix cut edges", enabled: model.canFixCutEdges, reason: model.fixCutEdgesReason) { model.fixCutEdges() })
+        return [[cut], range, edges]
+    }
+
+    /// The menu's rows for `actions`: each action, and after a run of disabled ones that share a reason, the reason
+    /// once as a line of its own. A menu item has no tooltip VoiceOver reads, so the line is how the reason is seen
+    /// and heard.
+    static func menuRows(_ actions: [TimelineEditMenuAction]) -> [TimelineEditMenuRow] {
+        var rows: [TimelineEditMenuRow] = []
+        for (index, action) in actions.enumerated() {
+            rows.append(.action(index))
+            guard !action.enabled, let reason = action.reason else { continue }
+            let next = actions.indices.contains(index + 1) ? actions[index + 1] : nil
+            if next.map({ !$0.enabled && $0.reason == reason }) != true { rows.append(.reason(reason)) }
+        }
+        return rows
+    }
+
+    /// Cut selection, or Cut range while an exact range is set: shown, never run, until exact cuts ship.
+    @ViewBuilder private var cut: some View {
+        if model.timelineRange != nil {
+            Button {} label: { Label("Cut range", systemImage: "scissors") }
+                .disabled(true).help(EditorModel.timelineCutRangeReason)
+                .accessibilityHint(EditorModel.timelineCutRangeReason)
+                .columnLayoutEvidence("timeline.cutSelection")
+        } else {
+            Button { model.cutSelection() } label: { Label("Cut selection", systemImage: "scissors") }
+                .disabled(!model.timelineCanCut).help("Cut the selected words and pauses (Delete). Undo with ⌘Z.")
+                .columnLayoutEvidence("timeline.cutSelection")
+        }
+    }
+
+    private var rangeActions: some View {
+        HStack(spacing: 12) {
+            action("Play range", "play", reason: model.timelinePlayRangeReason, help: "Play the range and stop at its end", marker: "timeline.playRange") {
+                model.playTimelineRange()
+            }
+            action("Ask Claude", nil, reason: model.timelineAskClaudeReason, help: "Ask Claude about the range", marker: "timeline.askClaude") {
+                model.askClaudeOnTimelineRange()
+            }
+            action("Add title", "character.textbox", reason: model.timelineAddTitleReason, help: "Add a title over the range", marker: "timeline.addTitle") {
+                model.addTimelineTitleOverRange()
+            }
+            action("Trim item to range", "arrow.right.and.line.vertical.and.arrow.left", reason: model.timelineTrimToRangeReason,
+                   help: model.timelineRangeTrimTarget.map { "Trim the \($0.kind.lowercased()) to the range" } ?? "Trim an item to the range",
+                   marker: "timeline.trimToRange") { model.trimTimelineItemToRange() }
+            action("Make clip", "film", reason: model.timelineMakeClipReason, help: EditorModel.timelineMakeClipHelp, marker: "timeline.makeClip") {
+                model.makeClip()
+            }
+        }
+    }
+
+    /// A range action: `symbol`'s icon, or ✦ for Ask Claude, with `help`, or `reason` while disabled.
+    private func action(_ title: String, _ symbol: String?, reason: String?, help: String, marker: String, run: @escaping () -> Void) -> some View {
+        Button(action: run) {
+            if let symbol { Label(title, systemImage: symbol) }
+            else { Label { Text(title) } icon: { Text("\u{2726}") } }
+        }
+        .disabled(reason != nil)
+        .help(reason ?? help)
+        .accessibilityLabel(title)
+        .accessibilityHint(reason ?? "")
+        .columnLayoutEvidence(marker)
+    }
+
+    /// What is selected, or how to select.
+    @ViewBuilder private var status: some View {
+        if model.timelineRange != nil {
+            let words = model.selectedWordIDs.count
+            Text(words == 0 ? "Exact range" : "Exact range, \(words) \(words == 1 ? "word" : "words") inside")
+                .foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+        } else if model.selectedWordIDs.isEmpty && model.selectedPauseIDs.isEmpty {
+            Text(EditorModel.timelineRangeHint)
+                .foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+        } else {
+            let words = model.selectedWordIDs.count, pauses = model.selectedPauseIDs.count
+            Text([words == 0 ? nil : "\(words) \(words == 1 ? "word" : "words")", pauses == 0 ? nil : "\(pauses) \(pauses == 1 ? "pause" : "pauses")"].compactMap { $0 }.joined(separator: ", "))
+                .foregroundStyle(.secondary).lineLimit(1)
+        }
+    }
+}
+
+/// The edit bar's cut edge row (editing §5.10, design.md "Manual cuts and trims on Mac"): its line, then its inline
+/// action, disabled with the reason beside it. No sheet, no confirmation; the action is one undo step. In a narrow bar
+/// (beside the range actions) only the action stays, and its help and VoiceOver label carry the line and the reason.
+@MainActor struct TimelineCutEdgeRow: View {
+    let model: EditorModel
+    let row: CutEdgeBarRow
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                Text(row.text).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                if let action = row.action {
+                    Text("·").foregroundStyle(.tertiary).accessibilityHidden(true)
+                    button(action, help: row.reason ?? help(action), label: action)
+                    if let reason = row.reason {
+                        // The reason gives way first in a narrow bar; its help keeps the whole of it.
+                        Text(reason).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail).layoutPriority(-1)
+                    }
+                }
+            }
+            if let action = row.action {
+                button(action, help: [row.text, row.reason ?? help(action)].joined(separator: ". "),
+                       label: [row.text, action, row.reason].compactMap { $0 }.joined(separator: ", "))
+            } else {
+                Text(row.text).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("voxclip.timeline.cutEdges")
+        .columnLayoutEvidence("timeline.cutEdges")
+    }
+
+    private func button(_ action: String, help: String, label: String) -> some View {
+        Button(action) { model.runCutEdgeBarAction() }
+            .fixedSize()
+            .disabled(row.reason != nil || !model.capabilities.edit)
+            .help(help)
+            .accessibilityLabel(label)
+            .accessibilityIdentifier("voxclip.timeline.cutEdges.action")
+            .columnLayoutEvidence("timeline.cutEdges.action")
+    }
+
+    private func help(_ action: String) -> String {
+        switch action {
+        case "Fix cut edges": "Move the old cuts' edges into the quiet between words. Undo with ⌘Z."
+        case "Use word edge": "End this cut exactly on the word edge. Undo with ⌘Z."
+        default: "Move this cut's edges into the quiet between words. Undo with ⌘Z."
         }
     }
 }
@@ -172,7 +356,7 @@ extension EditorModel {
             ProjectEffectControls(model: model, effect: selected, title: title).disabled(!model.capabilities.edit)
         } else {
             Text("Titles & effects").font(.headline).accessibilityAddTraits(.isHeader)
-            Text("Add a title at the playhead").font(.subheadline)
+            Text(model.timelineActionRange == nil ? "Add a title at the playhead" : "Add a title over the range").font(.subheadline)
             ViewThatFits(in: .horizontal) {
                 HStack { titleField.frame(minWidth: 100); addButton }
                 VStack(alignment: .leading, spacing: 6) { titleField; addButton }

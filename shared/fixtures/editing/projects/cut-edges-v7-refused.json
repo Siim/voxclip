@@ -1,0 +1,18 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "projects/cut-edges-v7-refused",
+  "kind": "cut-edge-project",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §5.10 and §10.1 (the v8 frame)",
+  "description": "A v7 file with cut edges is refused: they need v8.",
+  "input": {
+    "projectPath": "shared/fixtures/recordings/two-recordings.voxclip",
+    "set": [
+      {"path": "/transcript/words/1/start", "value": 0.5},
+      {"path": "/edits/cutWordIds", "value": ["w2", "r2.w2"]},
+      {"path": "/edits/cutPauseIds", "value": []},
+      {"path": "/edits/cutEdges", "value": {"w2": 0.48}}
+    ]
+  },
+  "expected": {"valid": false, "reason": "cut edges need schema v8"}
+}

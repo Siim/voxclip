@@ -73,6 +73,7 @@ public sealed partial class TimelineView
         track.Children.Add(itemFeedback);
         AutomationProperties.SetLiveSetting(itemFeedback, AutomationLiveSetting.Polite);
         InitializeItemBar(layout);
+        InitializeEditBar(layout);
         slider.PointerExited += (_, _) => UpdateItemHover(null);
         KeyDown += (_, args) =>
         {
@@ -464,7 +465,7 @@ public sealed partial class TimelineView
         if (itemDrag is { Band: true } band) { audioBand = band.PreviousBand; audioBandItem = band.PreviousBandItem; }
         itemDrag?.Session.Cancel(); itemDrag = null; marquee = null; marqueeSelection = [];
         previousMarqueeSelection = [];
-        scrubbing = selecting = ranging = false; gestureReadout = null; itemGuide = null; itemFeedbackOrigin = null;
+        scrubbing = selecting = ranging = extendPending = false; gestureReadout = null; itemGuide = null; itemFeedbackOrigin = null;
         if (active) RedrawItems();
     }
 
@@ -544,11 +545,18 @@ public sealed partial class TimelineView
                     if (overviewDragging) { overviewDragging = false; view = overviewOrigin; overview.ReleasePointerCaptures(); scrollRange.ReleasePointerCaptures(); VisibleRangeChanged?.Invoke(this, VisibleRange); }
                     CancelTrim(); EndTimelineCapture(); slider.ReleasePointerCaptures(); Draw(); return true;
                 }
-                if (selectedItems.Count == 0) return false;
+                // Esc clears the item selection, then the exact range and the words under it (issue #41).
+                if (selectedItems.Count == 0) { if (!model.ClearExactRange()) return false; Draw(); return true; }
                 ClearItemSelection(); Draw(); return true;
             case TimelineShortcut.Snapping:
-                if (itemDrag is null) snapping.IsChecked = snapping.IsChecked != true;
+                // Held during a drag, N suspends snapping rather than toggling it.
+                if (itemDrag is null && !scrubbing) snapping.IsChecked = snapping.IsChecked != true;
                 return true;
+            case TimelineShortcut.RangeIn or TimelineShortcut.RangeOut:
+                // With timeline focus I and O set the exact range's In and Out at the playhead (issue #41).
+                model.SetExactRangeEdge(shortcut == TimelineShortcut.RangeIn); Draw(); return true;
+            case TimelineShortcut.EarlierFrame or TimelineShortcut.LaterFrame or TimelineShortcut.EarlierWord or TimelineShortcut.LaterWord when selectedItems.Count == 0:
+                StepPlayhead(shortcut); return true;
             case TimelineShortcut.ZoomIn or TimelineShortcut.ZoomOut or TimelineShortcut.Fit:
                 ZoomItems(shortcut); return true;
             case TimelineShortcut.Split:
@@ -600,6 +608,33 @@ public sealed partial class TimelineView
         return true;
     }
 
+    /// <summary>, and . with nothing selected move the playhead one frame on the clock's grid; with Shift to the previous or next
+    /// word start or end in the scope, skipping folded words on Edited (issue #41). No undo step.</summary>
+    private void StepPlayhead(TimelineShortcut shortcut)
+    {
+        if (model is null || renderingBlocked || model.IsReadOnly) return;
+        var direction = shortcut is TimelineShortcut.LaterFrame or TimelineShortcut.LaterWord ? 1 : -1;
+        var fps = model.TimelineFrameRate;
+        if (shortcut is TimelineShortcut.EarlierFrame or TimelineShortcut.LaterFrame)
+        {
+            var origin = Edited && ClipBounds() is { } bounds ? ToDisplay(bounds.Start) : 0;
+            var from = ToDisplay(model.SourceTime);
+            var next = TimelinePrecision.FrameStep(TimelinePrecision.StepOrigin(from, fps, frameStep) - origin, fps, direction) + origin;
+            next = Math.Clamp(next, 0, AxisDuration);
+            frameStep = (from, next); wordStep = null;
+            Seek(FromDisplay(next));
+        }
+        else
+        {
+            var from = model.SourceTime;
+            if (model.TimelineWordBoundary(TimelinePrecision.StepOrigin(from, fps, wordStep), direction, ToDisplay, Edited) is not { } boundary) return;
+            wordStep = (from, boundary); frameStep = null;
+            Seek(boundary);
+        }
+    }
+    /// <summary>The last frame or word step, where it began and where it went, so a held key steps on (display and source time).</summary>
+    private (double From, double To)? frameStep, wordStep;
+
     internal void ZoomItems(TimelineShortcut shortcut)
     {
         if (shortcut == TimelineShortcut.Fit)
@@ -614,7 +649,8 @@ public sealed partial class TimelineView
     private void RestoreScrub()
     {
         if (model is null) return;
-        if (scrubSelection is { } selection) { model.Select(selection.Start); model.Select(selection.End, true); }
+        if (scrubRange is { } range) model.RestoreExactRange(range);
+        else if (scrubSelection is { } selection) { model.Select(selection.Start); model.Select(selection.End, true); }
         else model.ClearSelection();
         Seek(scrubOrigin);
     }

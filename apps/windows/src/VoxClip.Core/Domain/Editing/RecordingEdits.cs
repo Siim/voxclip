@@ -234,8 +234,9 @@ public static partial class RecordingEdits
                 Parts = remaining.Length == 0 ? clip.Parts?.Select(part => part with { TakeReason = null }).ToArray() : clip.Parts,
             };
         }).ToArray() };
-        return project with { Media = project.Media with { SpokenSources = remaining.Length == 0 ? null : remaining },
-            SchemaVersion = remaining.Length == 0 ? TimelineEditFields.Version : project.SchemaVersion, Edits = editsAfterRemoval, Extensions = extensions };
+        var result = project with { Media = project.Media with { SpokenSources = remaining.Length == 0 ? null : remaining },
+            Edits = editsAfterRemoval, Extensions = extensions };
+        return result with { SchemaVersion = ProjectSerialization.WrittenVersion(result) };
     }
 
     private static int HighestPrefix(Project project)

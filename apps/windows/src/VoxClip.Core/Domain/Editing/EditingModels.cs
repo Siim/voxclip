@@ -63,6 +63,8 @@ public sealed record EditState(TranscriptModel Transcript, IReadOnlyList<Pause> 
 {
     /// <summary>Present when the editor snapshot uses the joined recording clock.</summary>
     [JsonIgnore] public ProjectClock? ProjectClock { get; internal init; }
+    /// <summary>Stored cut edges (editing §5.10): later word id to that recording's local seconds; the planner reads them.</summary>
+    public IReadOnlyDictionary<string, double> CutEdges { get; init; } = System.Collections.ObjectModel.ReadOnlyDictionary<string, double>.Empty;
 }
 
 /// <summary>One undoable change to the spoken recordings or the clip's ordered parts.</summary>
@@ -104,7 +106,13 @@ public enum EditSegmentKind
 }
 
 /// <summary>Pure planner input; editing §2.6.</summary>
-public sealed record EditSegment(string Id, EditSegmentKind Kind, WordKind? WordKind, string? Text, double Start, double End, bool Cut);
+public sealed record EditSegment(string Id, EditSegmentKind Kind, WordKind? WordKind, string? Text, double Start, double End, bool Cut)
+{
+    /// <summary>A stored cut edge (editing §5.10) that replaces a cut word's padded start, in clock seconds.</summary>
+    public double? CutStart { get; init; }
+    /// <summary>A stored cut edge that replaces a cut word's padded end, in clock seconds.</summary>
+    public double? CutEnd { get; init; }
+}
 
 /// <summary>Half-open source sample interval; editing §2.7.</summary>
 public readonly record struct MediaInterval(long StartSample, long EndSample);

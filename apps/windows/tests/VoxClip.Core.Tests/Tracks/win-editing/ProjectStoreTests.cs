@@ -302,7 +302,8 @@ public sealed class ProjectStoreTests
     {
         using var storage = new TestStorage();
         var path = storage.PathFor("project.voxclip");
-        await File.WriteAllTextAsync(path, "{\"schemaVersion\":8}", TestContext.Current.CancellationToken);
+        var future = FormattableString.Invariant($"{{\"schemaVersion\":{ProjectSerialization.CurrentVersion + 1}}}");
+        await File.WriteAllTextAsync(path, future, TestContext.Current.CancellationToken);
         var store = new ProjectStore();
         var exception = await Assert.ThrowsAsync<VoxClipException>(() => store.LoadAsync(path, TestContext.Current.CancellationToken));
         Assert.Equal(VoxClipErrorCode.ProjectTooNew, exception.Code);
@@ -310,7 +311,7 @@ public sealed class ProjectStoreTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => store.SaveAsync(TestStorage.ProjectFixture(), path, cancelled));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => store.LoadAsync(path, cancelled));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => store.ComputeContentKeyAsync(path, null, cancelled));
-        Assert.Equal("{\"schemaVersion\":8}", await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
+        Assert.Equal(future, await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken));
         Assert.Empty(Directory.GetFiles(storage.Root, "*.tmp"));
     }
 

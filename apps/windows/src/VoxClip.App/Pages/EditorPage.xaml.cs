@@ -126,6 +126,7 @@ public sealed partial class EditorPage : Page
         ViewModel.Changed += ModelChanged;
         ViewModel.SelectionChanged += SelectionChanged;
         ViewModel.SaveRequested += SaveRequested;
+        AttachCutEdges();
         pauseBreath = App.Services.Get("editing.pauseBreath", "natural");
         App.Services.SettingsChanged += EditorSettingsChanged;
         Transcript.Attach(ViewModel);
@@ -146,6 +147,8 @@ public sealed partial class EditorPage : Page
             _ = RunAsync(() => SeekSourceAsync(time), "Preview");
         };
         Timeline.PlayRequested += (_, _) => _ = RunAsync(TogglePlaybackAsync, "Preview");
+        Timeline.MakeClipRequested += (_, _) => MakeClipAndReveal();
+        ViewModel.TimelineRangePlayRequested += (_, range) => _ = RunAsync(() => PlayTimelineRangeAsync(range), "Preview");
         Timeline.OpenMusicRequested += (_, _) =>
         {
             ShowCaptions();
@@ -254,6 +257,8 @@ public sealed partial class EditorPage : Page
     private void RequestWaveform()
     {
         waveformRequest?.Cancel();
+        // Cut edges seat on the levels this load reads (editing §5.10); until it does, a new cut keeps today's padding.
+        ViewModel.ClearCutEdgeLevels();
         waveformMedia = ViewModel.Project.Media;
         Timeline.SetRecordingMedia(null);
         Timeline.SetWaveform([]);
@@ -269,7 +274,10 @@ public sealed partial class EditorPage : Page
             await previous;
             IReadOnlyList<float> levels;
             if (project.Media.SpokenSources is not { Count: > 0 })
+            {
                 levels = await App.Services.Waveform.GetAsync(source, project.Media.Source.ContentKey, request.Token);
+                await LoadCutEdgeLevelsAsync(source, project.Media.Source.ContentKey, request);
+            }
             else
             {
                 var clock = ProjectClock.Build(project);
@@ -277,9 +285,10 @@ public sealed partial class EditorPage : Page
                 if (!disposed && !request.IsCancellationRequested && ReferenceEquals(waveformRequest, request)) Timeline.SetRecordingMedia(paths);
                 const double bucketSeconds = .05;
                 var samples = new float[checked((int)Math.Ceiling(clock.TotalSamples / (clock.SampleRate * bucketSeconds)))];
-                foreach (var region in clock.Regions)
+                // One recording that can't be probed or decoded is marked unreadable on its own; the others still load.
+                await RecordingLoads.EachAsync(clock.Regions, async region =>
                 {
-                    if (!paths.TryGetValue(region.Key, out var reference) || reference.Audio is null) continue;
+                    if (!paths.TryGetValue(region.Key, out var reference) || reference.Audio is null) { CutEdgeLevelsUnreadable(region.Key, request); return; }
                     var recording = reference.AbsolutePath == source.Path ? source : await new FfmpegMediaProbe().ProbeAsync(reference.AbsolutePath, request.Token);
                     var localLevels = await App.Services.Waveform.GetAsync(recording, region.Key, request.Token);
                     var offset = (int)Math.Round(region.OffsetSamples / (clock.SampleRate * bucketSeconds));
@@ -287,7 +296,12 @@ public sealed partial class EditorPage : Page
                     var gain = (float)Math.Pow(10, region.GainDb / 20);
                     for (var index = 0; index < Math.Min(Math.Min(localCount, localLevels.Count), samples.Length - offset); index++)
                         samples[offset + index] = localLevels[index] * gain;
-                }
+                    await LoadCutEdgeLevelsAsync(recording, region.Key, request);
+                }, (region, exception) =>
+                {
+                    UiError.WriteFailure(exception, "Waveform");
+                    CutEdgeLevelsUnreadable(region.Key, request);
+                }, request.Token);
                 levels = samples;
             }
             if (!disposed && !request.IsCancellationRequested && ReferenceEquals(waveformRequest, request)) Timeline.SetWaveform(levels);
@@ -296,6 +310,7 @@ public sealed partial class EditorPage : Page
         catch (Exception exception)
         {
             UiError.WriteFailure(exception, "Waveform");
+            CutEdgeLevelsUnreadable(project.Media.Source.ContentKey, request);
         }
         finally
         {
@@ -412,11 +427,11 @@ public sealed partial class EditorPage : Page
             else if (ViewModel.Notice is noDevice or inUse) ViewModel.Notice = "";
         });
     }
-    /// <summary>Make clip needs words selected (design §6.2).</summary>
+    /// <summary>Make clip needs words selected, or an exact range that reaches a word (design §6.2, issue #41).</summary>
     private void SelectionChanged(object? sender, EventArgs args)
     {
         RefreshRecordingSelection();
-        MakeClipCommand.IsEnabled = ViewModel.HasSelection && !ViewModel.IsReadOnly && !ViewModel.Busy && !ViewModel.IsLeaving;
+        MakeClipCommand.IsEnabled = ViewModel.TimelineMakeClipReason is null;
         PreviewCutCommand.IsEnabled = ViewModel.CanPreviewCut;
         UpdateRewriteCommand();
         UpdateShellChrome();
@@ -654,6 +669,10 @@ public sealed partial class EditorPage : Page
     private void ShellAskKeyDown(object sender, KeyRoutedEventArgs args) => HandleShellAskKeyDown(sender, args);
     private void PausesClicked(object sender, RoutedEventArgs args) => ViewModel.Apply(new EditOperation.TightenPauses());
     private void RestoreClicked(object sender, RoutedEventArgs args) => ViewModel.Apply(new EditOperation.RestoreCuts());
+    private void FixCutEdgesClicked(object sender, RoutedEventArgs args)
+    {
+        if (!ViewModel.Busy && !ViewModel.IsLeaving) ViewModel.FixCutEdges();
+    }
     private void UndoClicked(object sender, RoutedEventArgs args) => ViewModel.Undo();
     private void ReloadPreviewClicked(object sender, RoutedEventArgs args) => _ = RunAsync(ReloadPreviewAsync, "Preview");
     private void RedoClicked(object sender, RoutedEventArgs args) => ViewModel.Redo();
@@ -1018,6 +1037,21 @@ public sealed partial class EditorPage : Page
             if (preview is not null && !ViewModel.IsReadOnly) await preview.PlayAsync(token);
         });
     }
+    /// <summary>The timeline edit bar's Play range: from In, stopping at Out (issue #41), both on the edited clock of the one render
+    /// timeline it seeks on, so reordered story parts never run past Out. Space playback is unchanged.</summary>
+    private async Task PlayTimelineRangeAsync(TimeRange range)
+    {
+        await playback.EndCorrectionAsync(ViewModel);
+        if (preview is null || ViewModel.IsReadOnly) return;
+        await SourceTransportAsync(async token =>
+        {
+            var snapshot = await SnapshotAsync(token);
+            if (preview is null || ViewModel.IsReadOnly || EditorViewModel.TimelineRangePlayback(snapshot.Timeline, range) is not { } play) return;
+            await preview.SeekAsync(play.Start, true, token);
+            previewStop = (play.Stop, true);
+            await preview.PlayAsync(token);
+        });
+    }
     private void DisplayChanged(object sender, RoutedEventArgs args)
     {
         Transcript.SetDisplay(ShowCuts.IsChecked == true, ShowPauses.IsChecked == true);
@@ -1205,6 +1239,7 @@ public sealed partial class EditorPage : Page
     private void UpdateExport()
     {
         PreviewCutCommand.IsEnabled = ViewModel.CanPreviewCut;
+        UpdateFixCutEdgesCommand();
         var active = ViewModel.Clips.FirstOrDefault(clip => clip.Id == ViewModel.State?.ActiveClipId);
         var label = active is null ? "Export video…" : "Export clip…";
         var reason = ViewModel.ExportBlocked(demo, MediaPath is null || media is null, active?.Id);
@@ -1380,6 +1415,7 @@ public sealed partial class EditorPage : Page
             ViewModel.Changed -= ModelChanged;
             ViewModel.SelectionChanged -= SelectionChanged;
             ViewModel.SaveRequested -= SaveRequested;
+            DetachCutEdges();
         }
         Transcript.Detach(); Timeline.Detach(); captions?.Detach();
         FindClips.Close();

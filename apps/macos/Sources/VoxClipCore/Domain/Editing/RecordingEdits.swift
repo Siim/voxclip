@@ -254,7 +254,7 @@ public enum RecordingEdits {
             result.edits.clips[index].displacedVersions = !sources.isEmpty && retained?.isEmpty == false ? retained : nil
         }
         if sources.isEmpty {
-            result.schemaVersion = TimelineEditFields.version
+            result.schemaVersion = ProjectMigrations.writtenVersion(result)
             for index in result.edits.clips.indices {
                 guard let parts = result.edits.clips[index].parts else { continue }
                 result.edits.clips[index].parts = parts.map { part in

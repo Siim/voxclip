@@ -260,6 +260,9 @@ public sealed partial class EditorViewModel : ObservableObject
         if (Words.Count == 0) return;
         var previousSelection = (SelectionStart, SelectionEnd);
         index = Math.Clamp(index, 0, Words.Count - 1);
+        // A word selection replaces the timeline's exact range (issue #41).
+        DropExactRange();
+        TimelineRangeMessage = null;
         if (!extend || selectionAnchor < 0) selectionAnchor = index;
         selectionEnd = index;
         RewriteSelectionRevision++;
@@ -273,7 +276,10 @@ public sealed partial class EditorViewModel : ObservableObject
 
     internal void ClearSelection()
     {
-        if (!HasSelection) return;
+        // An item selection clears the exact range too, words under it or not (issue #41).
+        var hadRange = DropExactRange();
+        if (!HasSelection && !hadRange) return;
+        TimelineRangeMessage = null;
         selectionAnchor = -1;
         selectionEnd = -1;
         RewriteSelectionRevision++;
@@ -326,8 +332,10 @@ public sealed partial class EditorViewModel : ObservableObject
             if (next == state) return false;
             CaptionDrag.Cancel();
             PushHistory(actionName);
+            var before = project;
             state = next;
             SyncProject();
+            SeatCutEdges(before);
             Refresh();
             return true;
         }
@@ -389,8 +397,11 @@ public sealed partial class EditorViewModel : ObservableObject
                 CaptionDrag.Cancel();
                 if (!ReferenceEquals(project, snapshot) || isLeaving || IsReadOnly || Busy) return false;
                 PushHistory(actionName ?? command.ActionName);
-                state = nextState;
-                project = change.Present;
+                // A local cut accepted with the takes is seated in the same step; the new segments' ranges are frozen.
+                var present = CommittingCutEdges(snapshot, change.Present);
+                state = ReferenceEquals(present, change.Present) ? nextState
+                    : nextState with { CutEdges = present.Edits.CutEdges ?? System.Collections.ObjectModel.ReadOnlyDictionary<string, double>.Empty };
+                project = present;
                 Refresh();
                 Announcement?.Invoke(this, actionName ?? command.ActionName);
                 return true;
@@ -426,6 +437,8 @@ public sealed partial class EditorViewModel : ObservableObject
 
     public void CutSelection(bool restore = false)
     {
+        // An exact range cuts nothing yet: the words under it are only its highlight (issue #41).
+        if (exactRange is not null) { Announce(TimelineCutRangeReason); return; }
         if (!HasSelection) return;
         var ids = Words.Skip(SelectionStart).Take(SelectionEnd - SelectionStart + 1).Select(word => word.Id).ToList();
         ids.AddRange(state!.Pauses.Where(pause => pause.AfterIndex >= SelectionStart && pause.AfterIndex < SelectionEnd).Select(pause => pause.Id));
@@ -496,10 +509,13 @@ public sealed partial class EditorViewModel : ObservableObject
     /// summary announcement, and the announcement says so instead of adding a duplicate.</summary>
     public string? MakeClip()
     {
-        if (!HasSelection) { Notice = "Select words to make a clip. No key or account is needed."; return null; }
+        // From an exact range the clip's edges snap to the words it covers (issue #41).
+        var range = exactRange is not null ? TimelineRangeClipWords : null;
+        if (range is null && !HasSelection) { Notice = "Select words to make a clip. No key or account is needed."; return null; }
         if (isLeaving || IsReadOnly || Busy) return null;
-        var start = Words[SelectionStart].Id;
-        var end = Words[SelectionEnd].Id;
+        var (first, last) = range ?? (SelectionStart, SelectionEnd);
+        var start = Words[first].Id;
+        var end = Words[last].Id;
         if (Clips.FirstOrDefault(clip => clip.Clip.StartWordId == start && clip.Clip.EndWordId == end) is { } existing)
         {
             Notice = "";
@@ -508,9 +524,11 @@ public sealed partial class EditorViewModel : ObservableObject
             return existing.Id;
         }
         var id = Guid.NewGuid().ToString("N");
-        var title = EditingAlgorithms.ClipTitle(Words.Skip(SelectionStart).Take(SelectionEnd - SelectionStart + 1).Select(DisplayText));
-        return Announce(ApplyBatch([new EditOperation.AddClip(new(id, start, end, title, ClipOrigin.Manual, null, null, true)), new EditOperation.SetActiveClip(id)]),
-            () => $"Clip {Number(id)} made.") ? id : null;
+        var named = Words.Skip(first).Take(last - first + 1);
+        if (range is not null) named = named.Where(word => state?.CutWordIds.Contains(word.Id) != true);
+        var title = EditingAlgorithms.ClipTitle(named.Select(DisplayText));
+        return Announce(ApplyBatch([new EditOperation.AddClip(new(id, start, end, title, ClipOrigin.Manual, null, null, true)), new EditOperation.SetActiveClip(id)],
+            range is null ? null : "Make clip"), () => $"Clip {Number(id)} made.") ? id : null;
     }
     /// <summary>Keep a suggestion: it becomes the next numbered clip.</summary>
     public bool Keep(string id)
@@ -742,7 +760,7 @@ public sealed partial class EditorViewModel : ObservableObject
             project = EditingEngine.ApplyToProject(project, state);
         }
         else project = ProjectStore.ReplaceTranscript(project, value);
-        undo.Clear(); redo.Clear(); selectionAnchor = -1; selectionEnd = -1;
+        undo.Clear(); redo.Clear(); selectionAnchor = -1; selectionEnd = -1; DropExactRange();
         InitializeState(); Refresh();
         Transcribed?.Invoke(this, EventArgs.Empty);
     }
@@ -858,7 +876,8 @@ public sealed partial class EditorViewModel : ObservableObject
         if (state is null) return;
         var clipIds = state.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
         project = project with { ModifiedAt = now(), Edits = new(state.PauseThresholdSeconds, state.PauseKeepSeconds,
-            state.CutWordIds.ToArray(), state.CutPauseIds.ToArray(), new Dictionary<string, string>(state.Corrections), state.Clips.ToArray(), state.ActiveClipId),
+            state.CutWordIds.ToArray(), state.CutPauseIds.ToArray(), new Dictionary<string, string>(state.Corrections), state.Clips.ToArray(), state.ActiveClipId)
+            { CutEdges = state.CutEdges.Count > 0 ? new Dictionary<string, double>(state.CutEdges, StringComparer.Ordinal) : null },
             MotionCues = project.MotionCues.Where(cue => clipIds.Contains(cue.ClipID)).ToArray(),
             Music = VoxClip.Core.Domain.Music.MusicProject.Pruned(project.Music, clipIds),
             ClipEffects = VoxClip.Core.Domain.Effects.ClipEffects.Pruned(project.ClipEffects, clipIds),
@@ -867,6 +886,8 @@ public sealed partial class EditorViewModel : ObservableObject
 
     private void Refresh()
     {
+        // Another scope, or another transcript, leaves the exact range behind (issue #41).
+        if (exactRange is not null && (state is null || state.ActiveClipId != exactRangeScope)) DropExactRange();
         RefreshClipParts();
         RefreshTranscriptParagraphs();
         Clips.Clear();

@@ -33,11 +33,20 @@ internal sealed class TimelineScene
         VisitedWords = 0;
         foreach (var layer in Layers) layer.Clear();
         Clips.Clear();
+        // The band and wash draw the exact range itself when there is one (issue #41), else the selected words.
+        var exact = model.ExactRangeSource;
         if (story is not null)
         {
-            if (model.HasSelection) MarkStoryBand(model.SelectionStart, model.SelectionEnd, 8);
+            if (exact is { } range) MarkBand(story.Display(range.Start, edited), story.Display(range.End, edited), 8);
+            else if (model.HasSelection) MarkStoryBand(model.SelectionStart, model.SelectionEnd, 8);
             MarkStoryBand(model.RewriteStart, model.RewriteEnd, 10);
             return;
+        }
+        void MarkBand(double start, double end, int layer)
+        {
+            var left = Math.Clamp(window.X(Math.Min(start, end), width), 0, width);
+            var right = Math.Clamp(window.X(Math.Max(start, end), width), 0, width);
+            if (right > left) Layers[layer].Add(new(left, 0, right - left, 30));
         }
         void MarkStoryBand(int first, int last, int layer)
         {
@@ -128,7 +137,17 @@ internal sealed class TimelineScene
             Layers[edge].Add(new(left, 0, stroke, 30)); Layers[edge].Add(new(right - stroke, 0, stroke, 30));
             if (fill == 10) { Layers[edge].Add(new(left, 0, right - left, stroke)); Layers[edge].Add(new(left, 30 - stroke, right - left, stroke)); }
         }
-        if (model.HasSelection) Band(model.SelectionStart, model.SelectionEnd, 8, 9, 1.5);
+        if (exact is { } exactRange)
+        {
+            var left = Math.Clamp(window.X(Display(exactRange.Start), width), 0, width);
+            var right = Math.Clamp(window.X(Display(exactRange.End), width), 0, width);
+            if (right > left)
+            {
+                Layers[8].Add(new(left, 0, right - left, 30));
+                Layers[9].Add(new(left, 0, 1.5, 30)); Layers[9].Add(new(right - 1.5, 0, 1.5, 30));
+            }
+        }
+        else if (model.HasSelection) Band(model.SelectionStart, model.SelectionEnd, 8, 9, 1.5);
         Band(model.RewriteStart, model.RewriteEnd, 10, 11, 1);
         foreach (var (clip, part) in model.Clips.SelectMany(clip => clip.Clip.PlayParts.Select(part => (clip, part))))
         {

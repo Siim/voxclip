@@ -1,0 +1,23 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "cut-edges/paid-scope-new-cut-inside",
+  "kind": "cut-edges",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §5.10 (CutEdges.seat, normalize, the planner override)",
+  "description": "Cutting w2 inside a paid scope over w2-w3 changes its cuts anyway, so the commit seats the w2|w3 edge.",
+  "input": {
+    "durationSeconds": 3,
+    "sampleRate": 48000,
+    "envelope": {
+      "generator": "levels-v1",
+      "frames": 300,
+      "sampleRate": 16000,
+      "base": 0.001953125,
+      "runs": [[30, 189, 0.5], [79, 81, 0.0625], [119, 121, 0.0625]]
+    },
+    "words": [{"id": "w1", "start": 0.3, "end": 0.8}, {"id": "w2", "start": 0.8, "end": 1.3}, {"id": "w3", "start": 1.3, "end": 1.9}],
+    "cutWordIds": ["w2"],
+    "freeze": {"paidScopes": [["w2", "w3"]]}
+  },
+  "expected": {"cutEdges": {"w3": 1.205}, "offerCount": 1, "frozen": 0, "cuts": [[38400, 57840]]}
+}

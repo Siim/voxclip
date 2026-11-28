@@ -433,9 +433,12 @@ public struct ProjectEdits: Codable, Sendable, Equatable {
     public var clips: [ClipRange]
     /// activeClipId; doc/architecture.md §3; shared/schemas/project.schema.json
     public var activeClipId: String?
+    /// Cut edges seated in the quiet (editing §5.10): the later word's clock id at a kept/cut boundary to that recording's
+    /// local seconds, sample-rounded. Schema v8 only; omitted when empty.
+    public var cutEdges: [String: Double]
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(pauseThresholdSeconds: Double = 1.0, pauseKeepSeconds: Double = 0.15, cutWordIds: [String] = [], cutPauseIds: [String] = [], corrections: [String: String] = [:], clips: [ClipRange] = [], activeClipId: String? = nil) {
+    public init(pauseThresholdSeconds: Double = 1.0, pauseKeepSeconds: Double = 0.15, cutWordIds: [String] = [], cutPauseIds: [String] = [], corrections: [String: String] = [:], clips: [ClipRange] = [], activeClipId: String? = nil, cutEdges: [String: Double] = [:]) {
         self.pauseThresholdSeconds = pauseThresholdSeconds
         self.pauseKeepSeconds = pauseKeepSeconds
         self.cutWordIds = cutWordIds
@@ -443,6 +446,7 @@ public struct ProjectEdits: Codable, Sendable, Equatable {
         self.corrections = corrections
         self.clips = clips
         self.activeClipId = activeClipId
+        self.cutEdges = cutEdges
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -453,6 +457,7 @@ public struct ProjectEdits: Codable, Sendable, Equatable {
         case corrections
         case clips
         case activeClipId
+        case cutEdges
     }
 
     public init(from decoder: any Decoder) throws {
@@ -464,6 +469,7 @@ public struct ProjectEdits: Codable, Sendable, Equatable {
         self.corrections = try values.decode([String: String].self, forKey: .corrections)
         self.clips = try values.decode([ClipRange].self, forKey: .clips)
         self.activeClipId = try values.decode(Optional<String>.self, forKey: .activeClipId)
+        self.cutEdges = try values.decodeIfPresent([String: Double].self, forKey: .cutEdges) ?? [:]
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -475,6 +481,7 @@ public struct ProjectEdits: Codable, Sendable, Equatable {
         try values.encode(self.corrections, forKey: .corrections)
         try values.encode(self.clips, forKey: .clips)
         try values.encode(self.activeClipId, forKey: .activeClipId)
+        if !self.cutEdges.isEmpty { try values.encode(self.cutEdges, forKey: .cutEdges) }
     }
 
 }
@@ -1005,6 +1012,7 @@ public struct Project: Codable, Sendable, Equatable {
     /// Captions shown in another language over runs of words (Ask Claude's translate); schema v4 only, omitted when
     /// empty (ai.md §18.2).
     public var captionTranslations: [CaptionTranslation]
+    public var agentThread: AgentThread?
 
     /// Creates an explicit value without I/O or generated identifiers.
     public init(format: String = "voxclip-project", schemaVersion: Int = 1, id: String, title: String? = nil, createdAt: Date, modifiedAt: Date, savedBy: ProjectWriter, media: ProjectMedia, transcript: Transcript? = nil, edits: ProjectEdits = ProjectEdits(), captions: CaptionSettings = CaptionSettings(), export: ProjectExport = ProjectExport(), share: ProjectShare = ProjectShare(), ai: ProjectAI = ProjectAI(), voiceLab: ProjectVoiceLab = ProjectVoiceLab(), extensions: [String: JSONValue]? = nil, contextDemo: ContextDemoDocument? = nil, motionCues: [MotionCue] = [], music: [ProjectMusic] = [], clipEffects: [ClipEffect] = [], clipControls: [ProjectClipControls] = [], captionTranslations: [CaptionTranslation] = []) {
@@ -1057,6 +1065,7 @@ public struct Project: Codable, Sendable, Equatable {
         case clipEffects
         case clipControls
         case captionTranslations
+        case agentThread
     }
 
     public init(from decoder: any Decoder) throws {
@@ -1084,6 +1093,7 @@ public struct Project: Codable, Sendable, Equatable {
         self.clipEffects = try values.decodeIfPresent([ClipEffect].self, forKey: .clipEffects) ?? []
         self.clipControls = try values.decodeIfPresent([ProjectClipControls].self, forKey: .clipControls) ?? []
         self.captionTranslations = try values.decodeIfPresent([CaptionTranslation].self, forKey: .captionTranslations) ?? []
+        self.agentThread = try values.decodeIfPresent(AgentThread.self, forKey: .agentThread)
         guard schemaVersion >= 4 || (!values.contains(.contextDemo) && !values.contains(.motionCues)) else {
             throw ContextDemoError.unsupportedVersion
         }
@@ -1128,6 +1138,7 @@ public struct Project: Codable, Sendable, Equatable {
         if !self.clipEffects.isEmpty { try values.encode(self.clipEffects, forKey: .clipEffects) }
         if !self.clipControls.isEmpty { try values.encode(self.clipControls, forKey: .clipControls) }
         if !self.captionTranslations.isEmpty { try values.encode(self.captionTranslations, forKey: .captionTranslations) }
+        try values.encodeIfPresent(self.agentThread, forKey: .agentThread)
     }
 
 }

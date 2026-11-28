@@ -31,12 +31,15 @@ enum ProjectValidation {
 
     static func validate(_ raw: JSONValue) throws {
         try ProjectMigrations.checkVersion(raw)
-        let wireVersion = try map(raw, at: "/")["schemaVersion"]
-        let isV7 = wireVersion == .number(7)
-        let isV6 = isV7 || wireVersion == .number(6)
+        let fields = try map(raw, at: "/")
+        let wireVersion = fields["schemaVersion"]
+        let isV8 = wireVersion == .number(8)
+        let hasSpokenSources = wireVersion == .number(7) || (isV8 && (try? map(fields["media"], at: "media")["spokenSources"]) != nil)
+        let isV6 = isV8 || hasSpokenSources || wireVersion == .number(6)
         let isV5 = isV6 || wireVersion == .number(5)
         let isV4 = isV5 || wireVersion == .number(4)
-        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""), at: "/")
+        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : "") + (isV8 ? " agentThread" : ""), at: "/")
+        if let thread = root["agentThread"] { try AgentThreadWire.validate(thread) }
         if let clipStyle = root["clipStyle"] {
             let style = try object(clipStyle, required: "preset captions music maxLengthSec shapes rewording captionPicks", optional: "tone", at: "clipStyle")
             for (key, pick) in try map(style["captionPicks"], at: "clipStyle/captionPicks") {
@@ -49,7 +52,7 @@ enum ProjectValidation {
         }
         if let title = root["title"], case .string = title {} else if root["title"] != nil { try fail("Invalid project title") }
         _ = try object(root["savedBy"], required: "app version platform", at: "savedBy")
-        let media = try object(root["media"], required: isV7 ? "source spokenSources" : "source", optional: isV4 ? "additionalSources footage" : "", at: "media")
+        let media = try object(root["media"], required: hasSpokenSources ? "source spokenSources" : "source", optional: isV4 ? "additionalSources footage" : "", at: "media")
         let additional = try media["additionalSources"].map { try array($0, at: "media/additionalSources") } ?? []
         try require(media["additionalSources"] == nil || !additional.isEmpty, "Empty companion source list")
         var sourceKeys = Set<String>()
@@ -83,7 +86,7 @@ enum ProjectValidation {
             }
         }
         if root["transcript"] != .null { try transcriptWire(root["transcript"], at: "transcript") }
-        if isV7 {
+        if hasSpokenSources {
             let spokenPath = "media/spokenSources"
             let spoken = try array(media["spokenSources"], at: spokenPath)
             guard (1...5).contains(spoken.count) else { try fail("expected one to five companion spoken recordings", at: spokenPath) }
@@ -97,14 +100,20 @@ enum ProjectValidation {
                 try transcriptWire(fields["transcript"], at: "\(path)/transcript")
             }
         }
-        let edits = try object(root["edits"], required: "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId", at: "edits")
+        let edits = try object(root["edits"], required: "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId", optional: isV8 ? "cutEdges" : "", at: "edits")
+        if let cutEdges = edits["cutEdges"] {
+            for (id, seconds) in try map(cutEdges, at: "edits/cutEdges") {
+                guard case .number(let value) = seconds, value.isFinite, value >= 0 else { try fail("expected seconds", at: "edits/cutEdges") }
+                try text(id, pattern: idPattern, at: "edits/cutEdges")
+            }
+        }
         for (index, clip) in try array(edits["clips"], at: "edits/clips").enumerated() {
             let path = "edits/clips/\(index)"
             if !isV5, case .object(let fields) = clip, fields["parts"] != nil || fields["kind"] != nil {
                 try fail("story clip needs schemaVersion 5", at: path)
             }
             let fields = try object(clip, required: "id startWordId endWordId title origin aiResultId aiClipIndex selected",
-                                    optional: "leadInSeconds" + (isV5 ? " parts kind" : "") + (isV7 ? " displacedVersions" : ""), at: path)
+                                    optional: "leadInSeconds" + (isV5 ? " parts kind" : "") + (hasSpokenSources ? " displacedVersions" : ""), at: path)
             if let saved = fields["displacedVersions"] {
                 for (index, range) in try array(saved, at: "\(path)/displacedVersions").enumerated() {
                     let rangePath = "\(path)/displacedVersions/\(index)"
@@ -121,7 +130,7 @@ enum ProjectValidation {
             if let parts = fields["parts"] {
                 for (partIndex, part) in try array(parts, at: "\(path)/parts").enumerated() {
                     let partPath = "\(path)/parts/\(partIndex)"
-                    let fields = try object(part, required: "id startWordId endWordId", optional: isV7 ? "reframe takeReason" : "reframe", at: partPath)
+                    let fields = try object(part, required: "id startWordId endWordId", optional: hasSpokenSources ? "reframe takeReason" : "reframe", at: partPath)
                     if let reframe = fields["reframe"] { _ = try object(reframe, required: "mode zoom centerX centerY", at: "\(partPath)/reframe") }
                     if let reason = fields["takeReason"] {
                         guard let value = reason.aiString else { try fail("expected a string", at: "\(partPath)/takeReason") }
@@ -398,6 +407,7 @@ enum ProjectValidation {
         try require(Set(edits.cutWordIds).count == edits.cutWordIds.count && Set(edits.cutPauseIds).count == edits.cutPauseIds.count, "Duplicate cut ids")
         for id in edits.cutWordIds { try text(id, pattern: idPattern) }
         for id in edits.cutPauseIds { try text(id, pattern: "pause-after-" + idPattern) }
+        for id in edits.cutEdges.keys { try text(id, pattern: idPattern, at: "edits/cutEdges") }
         for (id, correction) in edits.corrections { try text(id, pattern: idPattern, at: "edits/corrections"); try validateWordText(correction) }
         try text(edits.activeClipId, pattern: idPattern)
         try require(Set(edits.clips.map(\.id)).count == edits.clips.count, "Duplicate clip ids")

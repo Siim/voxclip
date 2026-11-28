@@ -1917,30 +1917,32 @@ private actor TimelineTestSettings: SettingsStore {
         withExtendedLifetime((coordinator, scroll)) {}
     }
 
-    @Test func rulerDragSelectsBackwardsAndOptionBypassesTheMagnet() throws {
+    @Test func waveformDragSelectsBackwardsAndOptionBypassesTheMagnet() throws {
         let app = try app(), model = editor(app, project: try project())
         defer { model.close() }
         model.showsCuts = true
         let (canvas, window) = windowed(model)
         defer { canvas.tearDown(); window.close() }
         canvas.renderContent()
-        let y = TimelineMetrics.ruler.y + 12
+        let y = TimelineMetrics.audio.y + 12
         func p(_ source: Double) -> NSPoint { NSPoint(x: canvas.headerWidth + canvas.viewport.x(source), y: y) }
         for flags: NSEvent.ModifierFlags in [[], [.option]] {
             canvas.mouseDown(with: try mouse(.leftMouseDown, p(17.05), in: canvas, flags: flags))
             canvas.mouseDragged(with: try mouse(.leftMouseDragged, p(12.85), in: canvas, flags: flags))
-            if flags.isEmpty { #expect(model.selectedWordIDs == Set((13...16).map { "t\($0)" })) }
+            if flags.isEmpty { #expect(model.selectedWordIDs == Set((13...16).map { "t\($0)" }) && model.timelineRange == nil) }
             else {
-                #expect(model.selectedWordIDs == Set((13...17).map { "t\($0)" }))
+                // ⌥ keeps the exact range, on the frame grid; the words wholly inside it stay selected.
+                #expect(model.selectedWordIDs == Set((13...16).map { "t\($0)" }))
                 let preview = try #require(canvas.interaction.selection)
-                #expect(abs(preview.lowerBound - 12.85) < 0.001 && abs(preview.upperBound - 17.05) < 0.001)
+                #expect(abs(preview.lowerBound - 12.85) < 0.017 && abs(preview.upperBound - 17.05) < 0.017, "Within half a frame: \(preview)")
+                #expect(model.timelineRange != nil)
             }
             canvas.mouseUp(with: try mouse(.leftMouseUp, p(12.85), in: canvas, flags: flags))
         }
         model.timelineSnapping = false
         canvas.mouseDown(with: try mouse(.leftMouseDown, p(12), in: canvas))
         canvas.mouseDragged(with: try mouse(.leftMouseDragged, p(17.05), in: canvas))
-        #expect(model.selectedWordIDs == Set((12...17).map { "t\($0)" }))
+        #expect(model.selectedWordIDs == Set((12...16).map { "t\($0)" }) && model.timelineRange != nil)
     }
 
     @Test func cuttingAPauseOrSpanningItNeverSubstitutesANearbyWord() throws {
@@ -2167,15 +2169,17 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(model.selectedWordIDs == Set((10...13).map { "t\($0)" }), "Reverse selection keeps its anchor")
         canvas.keyDown(with: try timelineKey(124))
         #expect(model.selectedWordIDs == ["t16"], "Edited caret skips the two folded words")
+        // On the timeline I sets the exact range's In at the playhead; the clip keeps its edges (issue #41).
+        for _ in 0..<100 { await Task.yield() }
         canvas.keyDown(with: try timelineKey(34, "i"))
-        #expect(model.activeClip?.startWordId == "t16")
+        #expect(model.activeClip?.startWordId == "t10" && model.timelineRange?.start == model.words[16].start)
         canvas.keyDown(with: try timelineKey(37, "l"))
         #expect(model.isPlaying)
         canvas.keyDown(with: try timelineKey(40, "k"))
         #expect(!model.isPlaying)
         canvas.keyDown(with: try timelineKey(115))
         for _ in 0..<100 { await Task.yield() }
-        #expect(model.sourceTime == model.words[16].start)
+        #expect(model.sourceTime == model.words[10].start)
         canvas.keyDown(with: try timelineKey(119))
         for _ in 0..<100 { await Task.yield() }
         #expect(model.sourceTime == model.words[29].end)

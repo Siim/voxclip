@@ -1,0 +1,18 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "projects/cut-edges-stale-key",
+  "kind": "cut-edge-project",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §5.10 and §10.1 (the v8 frame)",
+  "description": "A key at a boundary that is no longer kept/cut is accepted and ignored by the planner (the next normalize drops it).",
+  "input": {
+    "projectPath": "shared/fixtures/music/music-project.voxclip",
+    "set": [
+      {"path": "/schemaVersion", "value": 8},
+      {"path": "/edits/cutWordIds", "value": ["w2"]},
+      {"path": "/edits/cutEdges", "value": {"w2": 0.66}},
+      {"path": "/edits/cutWordIds", "value": []}
+    ]
+  },
+  "expected": {"valid": true, "writtenVersion": 8, "edgeSamples": []}
+}

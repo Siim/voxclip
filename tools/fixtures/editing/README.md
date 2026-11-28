@@ -19,9 +19,10 @@ The generator refuses to run under a Turkish, Azeri or Lithuanian default locale
 | `gen.mjs` | Every fixture definition and the write/check logic |
 | `reference/*.ts` | Verbatim copies of VoxConvo's editing code (same author, vendored unmodified, MIT; see `reference/LICENSE`) |
 | `reference/manifest.json` | Source path and sha1 of each vendored file; the loader refuses a mismatch |
-| `lib/reference.mjs` | Loads the reference (from `VOXCONVO_WEB_DIR` or `reference/`): strips types, imports from `data:` URLs, applies the in-memory patches it asserts (exporting `cutRange`, stubbing `./videoJob`, a stub `AudioContext`, and changed constants for parameter fixtures) |
+| `lib/reference.mjs` | Loads the reference (from `VOXCONVO_WEB_DIR` or `reference/`): strips types, imports from `data:` URLs, applies the in-memory patches it asserts (exporting `cutRange`, stubbing `./videoJob`, a stub `AudioContext`, changed constants for parameter fixtures, and `cutRange` honouring a segment's stored `cutStart` and `cutEnd` for cut edge fixtures) |
 | `lib/voxclip.mjs` | The VoxClip-defined rules in JavaScript: range-layer session reducer, `cleanWords`, `tightenIntoSound`, `findUnlabeledSpeech`, the import pipeline, project plans, and the VoxConvo session reducer used for comparison |
-| `lib/audio.mjs` | The `vox-take-v1` synthetic audio generator |
+| `lib/audio.mjs` | The `vox-take-v1` synthetic audio generator and the `levels-v1` envelope |
+| `lib/cutedges.mjs` | Cut edges seated in the quiet (editing §5.10): the seat, normalize, the planner override, the stored-edge validation rule and the v8 frame version |
 | `lib/format.mjs` | Deterministic JSON formatting (two-space indent; short arrays and objects inline) |
 
 ## Changing behaviour

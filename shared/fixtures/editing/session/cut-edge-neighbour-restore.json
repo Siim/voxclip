@@ -1,0 +1,48 @@
+{
+  "schema": "voxclip-editing-fixture/1",
+  "id": "session/cut-edge-neighbour-restore",
+  "kind": "cut-edge-session",
+  "origin": "voxclip",
+  "source": "doc/spec/editing.md §5.10 (CutEdges.seat, normalize, the planner override)",
+  "description": "Cut w2, then w3, then restore w3: the w2|w3 key goes while both are cut and comes back with the same value.",
+  "input": {
+    "durationSeconds": 3,
+    "sampleRate": 48000,
+    "startVersion": 6,
+    "envelope": {
+      "generator": "levels-v1",
+      "frames": 300,
+      "sampleRate": 16000,
+      "base": 0.001953125,
+      "runs": [[30, 189, 0.5], [69, 71, 0.0625], [119, 121, 0.0625]]
+    },
+    "words": [{"id": "w1", "start": 0.3, "end": 0.8}, {"id": "w2", "start": 0.8, "end": 1.3}, {"id": "w3", "start": 1.3, "end": 1.9}],
+    "ops": [{"op": "toggle", "id": "w2"}, {"op": "toggle", "id": "w3"}, {"op": "toggle", "id": "w3"}]
+  },
+  "expected": {
+    "steps": [
+      {"after": {"op": "initial"}, "cutWords": [], "cutEdges": {}, "schemaVersion": 6, "editsEqualInitial": true},
+      {
+        "after": {"op": "toggle", "id": "w2"},
+        "cutWords": ["w2"],
+        "cutEdges": {"w2": 0.705, "w3": 1.205},
+        "schemaVersion": 8,
+        "editsEqualInitial": false
+      },
+      {
+        "after": {"op": "toggle", "id": "w3"},
+        "cutWords": ["w2", "w3"],
+        "cutEdges": {"w2": 0.705},
+        "schemaVersion": 8,
+        "editsEqualInitial": false
+      },
+      {
+        "after": {"op": "toggle", "id": "w3"},
+        "cutWords": ["w2"],
+        "cutEdges": {"w2": 0.705, "w3": 1.205},
+        "schemaVersion": 8,
+        "editsEqualInitial": false
+      }
+    ]
+  }
+}

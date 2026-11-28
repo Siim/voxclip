@@ -13,6 +13,9 @@ public sealed record Project(string Format, int SchemaVersion, string Id, DateTi
     DateTimeOffset ModifiedAt, SavedBy SavedBy, ProjectMedia Media, TranscriptModel? Transcript,
     ProjectEdits Edits, ProjectCaptions Captions, ProjectExport Export, ProjectShare Share, ProjectAi Ai, VoiceLabPlaceholder VoiceLab)
 {
+    /// <summary>Optional persistent agent thread; only written in schema v8.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public AgentThread? AgentThread { get; init; }
     /// <summary>Optional project title, absent rather than null; project schema.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Title { get; init; }
@@ -169,7 +172,13 @@ public sealed record AudioTrackInfo(int SampleRate, int Channels);
 /// <summary>Persisted edit layer; editing §2.5. Derived pauses and transcript are deliberately not serialized twice.</summary>
 public sealed record ProjectEdits(double PauseThresholdSeconds, double PauseKeepSeconds,
     IReadOnlyList<string> CutWordIds, IReadOnlyList<string> CutPauseIds, IReadOnlyDictionary<string, string> Corrections,
-    IReadOnlyList<ClipRange> Clips, string? ActiveClipId);
+    IReadOnlyList<ClipRange> Clips, string? ActiveClipId)
+{
+    /// <summary>Cut edges seated in the quiet (editing §5.10): the later word's clock id at a kept/cut boundary to that recording's
+    /// local seconds, sample-rounded. Schema v8 only; absent when there are none.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, double>? CutEdges { get; init; }
+}
 
 /// <summary>Caption choices and merge patch; project schema $defs/captions.</summary>
 public sealed record ProjectCaptions(string StyleId, JsonElement Overrides, CaptionPosition? Position,

@@ -103,6 +103,7 @@
     <Compile Include="EditorLayoutTests.cs" />
     <Compile Include="ColumnBoundsGateTests.cs" />
     <Compile Include="TimelineTests.cs" />
+    <Compile Include="TimelinePrecisionTests.cs" />
     <Compile Include="UpdateRestartTests.cs" />
     <Compile Include="VelopackUpdateTests.cs" />
     <Compile Include="VelopackUpdateTestDoubles.cs" />
@@ -119,6 +120,8 @@
     <Compile Include="InlineCorrectionTests.cs" />
     <Compile Include="ShareDisclosureTests.cs" />
     <Compile Include="CaptionUndoTests.cs" />
+    <Compile Include="CutEdgeCarryTests.cs" />
+    <Compile Include="CutEdgesEditorTests.cs" />
     <Compile Include="FootageUndoTests.cs" />
     <Compile Include="WindowsSettingsCopyTests.cs" />
     <Compile Include="CacheUpkeepTests.cs" />

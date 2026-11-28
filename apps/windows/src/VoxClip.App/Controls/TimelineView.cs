@@ -107,6 +107,7 @@ public sealed partial class TimelineView : UserControl
     private readonly Microsoft.UI.Xaml.Shapes.Path overviewActive = new();
     private readonly Microsoft.UI.Xaml.Shapes.Path overviewSuggestions = new() { StrokeThickness = 1, StrokeDashArray = [3, 2] };
     private readonly Microsoft.UI.Xaml.Shapes.Path rulerTicks = new() { StrokeThickness = 1 };
+    private readonly Microsoft.UI.Xaml.Shapes.Path wordTicks = new() { StrokeThickness = 1 };
     private readonly Microsoft.UI.Xaml.Shapes.Path trimBrackets = new() { StrokeThickness = 1.5 };
     private readonly TimelineRangeControl overview = new("Visible timeline window") { Height = TimelineLayout.OverviewHeight, VerticalAlignment = VerticalAlignment.Top };
     private readonly Slider zoom = new() { Minimum = 0, Maximum = 100, Width = 72, Height = 32, VerticalAlignment = VerticalAlignment.Center };
@@ -116,12 +117,23 @@ public sealed partial class TimelineView : UserControl
     private readonly Button maximize = new() { Content = "↕", Width = 32, Height = 32, Padding = new(0), Visibility = Visibility.Collapsed };
     private readonly TextBlock sourceClock = new() { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock selectionLength = new() { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Run rangeLength = new();
+    private readonly Run rangeSpan = new();
     private readonly TextBlock stateMessage = new() { FontSize = 11, Margin = new(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
     /// <summary>A range dragged across empty FX-lane time, for the toolbar's ✦ Ask Claude.</summary>
     private readonly Rectangle askRange = new() { IsHitTestVisible = false, RadiusX = 2, RadiusY = 2 };
     private readonly Button askClaude = new() { Height = 28, Padding = new(8, 0, 8, 0), Visibility = Visibility.Collapsed };
     private bool ranging;
     private double rangeAnchor;
+    /// <summary>A Ctrl+drag's start on the display axis, where the press was, whether it moved 3 epx, and whether its first word
+    /// is selected (issue #41).</summary>
+    private double selectAnchor;
+    private Point selectOrigin;
+    private bool selectMoved;
+    private bool wordAnchored;
+    /// <summary>A Shift+press with a range or words: a click extends them on release; a 3 epx move makes it the Shift+drag scrub.</summary>
+    private bool extendPending;
+    private TimelineExactRange? scrubRange;
     private readonly TextBlock videoName = new() { FontSize = 9, IsHitTestVisible = false, TextTrimming = TextTrimming.CharacterEllipsis };
     private TimelineTrackGeometry metrics = TimelineLayout.Tracks(1);
     private TimelineWaveform? envelope;
@@ -238,6 +250,8 @@ public sealed partial class TimelineView : UserControl
         var next = Command("⏭", "Go to Out", () => Seek(ClipBounds()?.End ?? SourceDuration));
         transport.Children.Add(previous); transport.Children.Add(play); transport.Children.Add(next); transport.Children.Add(time);
         transport.Children.Add(sourceClock); transport.Children.Add(selectionLength);
+        InitializeCutEdgeRow(transport);
+        selectionLength.Inlines.Add(rangeLength); selectionLength.Inlines.Add(rangeSpan);
         Grid.SetColumn(mode, 1); toolbar.Children.Add(mode);
         Grid.SetColumn(transport, 2); toolbar.Children.Add(transport);
         var tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
@@ -279,7 +293,7 @@ public sealed partial class TimelineView : UserControl
         foreach (var path in mediaPaths.Take(8)) audioDrawing.Children.Add(path);
         videoDrawing.Children.Add(mediaPaths[8]); videoDrawing.Children.Add(mediaPaths[9]); videoDrawing.Children.Add(videoSeams);
         laneDrawing.Children.Add(videoDrawing); laneDrawing.Children.Add(filmstrip); laneDrawing.Children.Add(audioDrawing);
-        laneDrawing.Children.Add(videoName); laneDrawing.Children.Add(storyLane);
+        laneDrawing.Children.Add(videoName); laneDrawing.Children.Add(storyLane); laneDrawing.Children.Add(wordTicks);
         foreach (var image in thumbnails) filmstrip.Children.Add(image);
         foreach (var label in ticks) { label.FontFamily = time.FontFamily; rulerLabels.Children.Add(label); }
         foreach (var cue in cueBlocks) captions.Children.Add(cue);
@@ -332,6 +346,8 @@ public sealed partial class TimelineView : UserControl
         slider.PointerReleased += ScrubReleased;
         slider.PointerCanceled += (_, _) => EndTimelineCapture();
         slider.PointerCaptureLost += (_, _) => EndTimelineCapture();
+        // Ctrl+N opens a window. During a Ctrl+drag selection (or Ctrl+Shift FX range) N only suspends Snap, so the timeline keeps it.
+        slider.ProcessKeyboardAccelerators += (_, args) => { if ((selecting || ranging) && args.Key == VirtualKey.N) args.Handled = true; };
         slider.DoubleTapped += RestoreCut;
         ConfigureTrim(startHandle, true);
         ConfigureTrim(endHandle, false);
@@ -466,12 +482,12 @@ public sealed partial class TimelineView : UserControl
         if (model is not null) Detach();
         disposed = false;
         model = value; model.Changed += Changed; model.SelectionChanged += SelectionChanged;
-        model.PropertyChanged += PropertyChanged; model.AskClaudeChanged += AskClaudeChanged;
+        model.PropertyChanged += PropertyChanged; model.AskClaudeChanged += AskClaudeChanged; model.CutEdgesChanged += CutEdgesChanged;
         Rebuild(true);
     }
     public void Detach()
     {
-        if (model is not null) { model.Changed -= Changed; model.SelectionChanged -= SelectionChanged; model.PropertyChanged -= PropertyChanged; model.AskClaudeChanged -= AskClaudeChanged; }
+        if (model is not null) { model.Changed -= Changed; model.SelectionChanged -= SelectionChanged; model.PropertyChanged -= PropertyChanged; model.AskClaudeChanged -= AskClaudeChanged; model.CutEdgesChanged -= CutEdgesChanged; }
         disposed = true; CancelTrim(); EndTimelineCapture(); ResetItemAudio(); itemPeers.Children.Clear(); itemNodes.Clear(); ClearFilmstrip(); waveformRequest?.Cancel();
         model = null; plan = null; envelope = null; captionPages = []; captionCues = []; captionSnapshot = null; storyRendering = null; story = null;
         scene.Tiles.Clear(); geometryCache.Clear(); attachedSource = null;
@@ -486,7 +502,8 @@ public sealed partial class TimelineView : UserControl
     }
     private void SelectionChanged(object? sender, EventArgs args)
     {
-        if (model?.HasSelection == true) ClearItemSelection();
+        // Words and the exact range replace an item selection (issue #41).
+        if (model is { } current && (current.HasSelection || current.ExactRange is not null)) ClearItemSelection();
         Draw();
     }
     private void PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
@@ -505,6 +522,7 @@ public sealed partial class TimelineView : UserControl
         clockPrefix.Foreground = Brush("VcTextTertiaryBrush");
         playhead.Fill = head.Fill = Brush("VcTintDefaultBrush");
         sourceClock.Foreground = selectionLength.Foreground = Brush("VcTextSecondaryBrush");
+        rangeSpan.Foreground = Brush("VcTextTertiaryBrush");
         stateMessage.Foreground = videoName.Foreground = Brush("VcTextTertiaryBrush");
         foreach (var handle in new[] { startHandle, endHandle })
         {
@@ -606,22 +624,39 @@ public sealed partial class TimelineView : UserControl
         var point = args.GetCurrentPoint(track).Position;
         if (ItemPressed(point, args)) return;
         ClearItemSelection();
-        if (InputState.Down(VirtualKey.Control) && InputState.Down(VirtualKey.Shift) && point.Y >= metrics.EffectsTop && point.Y < metrics.EffectsTop + metrics.EffectsHeight)
+        var control = InputState.Down(VirtualKey.Control); var shift = InputState.Down(VirtualKey.Shift);
+        if (control && shift && point.Y >= metrics.EffectsTop && point.Y < metrics.EffectsTop + metrics.EffectsHeight)
         {
+            model.ClearExactRange();
             priorAskRange = model.AskClaude.TimeRange;
             ranging = true; rangeAnchor = PointerTime(args);
             model.SetAskClaudeTimeRange(null);
             slider.Focus(FocusState.Pointer); slider.CapturePointer(args.Pointer); args.Handled = true;
             return;
         }
-        if (model.AskClaude.TimeRange is not null) model.SetAskClaudeTimeRange(null);
+        var ruler = point.Y < TimelineLayout.OverviewHeight + TimelineLayout.RulerHeight;
+        // Shift+click extends the range or the words to here on release: by frame with Snap off (or Alt or N held), else by word
+        // (issue #41). Once the pointer moves 3 epx it is the Shift+drag scrub, snapped to word starts.
+        extendPending = shift && !control && !ruler && model.TimelineActionRange is not null;
+        // A click clears a range dragged in the FX lane; the exact range stays, so I and O can follow a scrub.
+        if (!extendPending && model.AskClaude.TimeRange is not null && model.ExactRange is null) model.SetAskClaudeTimeRange(null);
         scrubOrigin = model.SourceTime;
         scrubSelection = model.HasSelection ? (model.SelectionStart, model.SelectionEnd) : null;
-        scrubbing = true; selecting = InputState.Down(VirtualKey.Control);
+        scrubRange = model.ExactRange;
+        // The ruler only scrubs; Ctrl+drag on the tracks selects: words with Snap on, else an exact range.
+        scrubbing = true; selecting = control && !ruler && model.Words.Count > 0;
+        selectAnchor = view.Time(point.X, track.ActualWidth); selectOrigin = point; selectMoved = false; wordAnchored = false;
         slider.Focus(FocusState.Pointer); slider.CapturePointer(args.Pointer);
-        if (selecting && model.Words.Count > 0) model.Select(TimelineLayout.WordAt(model.Words, PointerTime(args)));
-        Scrub(args); args.Handled = true;
+        if (selecting)
+        {
+            if (SnapsSelection) { model.Select(TimelineLayout.WordAt(model.Words, PointerTime(args))); wordAnchored = true; }
+            else model.ClearSelection();
+        }
+        if (!extendPending) Scrub(args);
+        args.Handled = true;
     }
+    /// <summary>Whether a selection gesture snaps to words now: Snap on, and neither Alt nor N held.</summary>
+    private bool SnapsSelection => snapping.IsChecked == true && !InputState.Down(VirtualKey.Menu) && !InputState.Down(VirtualKey.N);
     private void ScrubMoved(object sender, PointerRoutedEventArgs args)
     {
         if (ItemMoved(args)) return;
@@ -634,10 +669,42 @@ public sealed partial class TimelineView : UserControl
     }
     private void Scrub(PointerRoutedEventArgs args)
     {
+        if (extendPending)
+        {
+            if (Math.Abs(args.GetCurrentPoint(track).Position.X - selectOrigin.X) < 3) return;
+            extendPending = false;
+        }
         var source = PointerTime(args);
-        if ((snapping.IsChecked == true || InputState.Down(VirtualKey.Shift)) && model is { Words.Count: > 0 }) source = model.Words[TimelineLayout.WordAt(model.Words, source)].Start;
-        if (selecting && model is { Words.Count: > 0 }) model.Select(TimelineLayout.WordAt(model.Words, source), true);
+        // The scrub is exact unless Shift is held, which snaps it to word starts (design §5.2); Snap governs selection only.
+        if (InputState.Down(VirtualKey.Shift) && !selecting && model is { Words.Count: > 0 }) source = model.Words[TimelineLayout.WordAt(model.Words, source)].Start;
+        if (selecting && model is { Words.Count: > 0 })
+        {
+            var point = args.GetCurrentPoint(track).Position;
+            selectMoved |= Math.Abs(point.X - selectOrigin.X) >= 3;
+            if (SnapsSelection)
+            {
+                if (!wordAnchored) { model.Select(TimelineLayout.WordAt(model.Words, FromDisplay(selectAnchor))); wordAnchored = true; }
+                model.Select(TimelineLayout.WordAt(model.Words, source), true);
+            }
+            else
+            {
+                wordAnchored = false;
+                if (selectMoved) SelectExactRange(view.Time(point.X, track.ActualWidth));
+            }
+        }
         Seek(source);
+    }
+    /// <summary>A Ctrl+drag from the anchor to <paramref name="head"/> (display time) as an exact range. On Edited a range ending
+    /// at a seam ends before the closed cut.</summary>
+    private void SelectExactRange(double head)
+    {
+        if (model is null) return;
+        var lower = Math.Clamp(Math.Min(selectAnchor, head), 0, AxisDuration);
+        var upper = Math.Clamp(Math.Max(selectAnchor, head), 0, AxisDuration);
+        var sample = 1 / (plan?.SampleRate ?? 48000);
+        var start = FromDisplay(lower);
+        var end = Edited && upper > lower ? FromDisplay(Math.Max(lower, upper - sample)) + sample : FromDisplay(upper);
+        model.SetExactRange(Math.Min(start, end), Math.Max(start, end), FromDisplay(Math.Clamp(selectAnchor, 0, AxisDuration)));
     }
     private static (double, double) Ordered(double a, double b) => (Math.Min(a, b), Math.Max(a, b));
     private void ScrubReleased(object sender, PointerRoutedEventArgs args)
@@ -650,7 +717,9 @@ public sealed partial class TimelineView : UserControl
             return;
         }
         if (!scrubbing) return;
-        Scrub(args); scrubbing = selecting = false; slider.ReleasePointerCapture(args.Pointer); args.Handled = true;
+        Scrub(args);
+        if (extendPending && model is not null) { extendPending = false; model.ExtendTimelineSelection(PointerTime(args), exact: !SnapsSelection); Draw(); }
+        scrubbing = selecting = false; slider.ReleasePointerCapture(args.Pointer); args.Handled = true;
     }
     private void RestoreCut(object sender, DoubleTappedRoutedEventArgs args)
     {
@@ -810,9 +879,9 @@ public sealed partial class TimelineView : UserControl
             path.Fill = Brush(index == 8 ? "VcTintDefaultBrush" : "VcAiTintBrush");
             path.Opacity = index == 8 ? .07 : .1;
         }
-        DrawHeaders(); DrawOverview(width); DrawRuler(width); DrawCaptions(width); DrawAskRange(width); DrawStory(width);
-        selectionLength.Text = model.HasSelection ? string.Create(System.Globalization.CultureInfo.InvariantCulture,
-            $"{Math.Max(0, ToDisplay(model.Words[model.SelectionEnd].End) - ToDisplay(model.Words[model.SelectionStart].Start)):0.0} s selected") : "";
+        DrawHeaders(); DrawOverview(width); DrawRuler(width); DrawCaptions(width); DrawAskRange(width); DrawStory(width); DrawWordTicks(width);
+        DrawSelectionReadout();
+        RefreshCutEdgeRow();
         updatingControls = true;
         zoom.Value = AxisDuration > .1 ? Math.Clamp(Math.Log(Math.Max(1, AxisDuration / view.Duration)) / Math.Log(AxisDuration / .1) * 100, 0, 100) : 0;
         updatingControls = false;
@@ -889,7 +958,7 @@ public sealed partial class TimelineView : UserControl
         recordingOverview.Height = RecordingOverviewHeight;
         if (story is null || model is null)
         {
-            AutomationProperties.SetHelpText(slider, "");
+            AutomationProperties.SetHelpText(slider, GestureHelp);
             DrawRecordingSource(width);
             return;
         }
@@ -1019,18 +1088,40 @@ public sealed partial class TimelineView : UserControl
         }
         for (var index = count; index < ticks.Length; index++) ticks[index].Visibility = Visibility.Collapsed;
         tickCount = count;
+        // 0.5 s, 0.1 s or frame ticks between the seconds, 3 epx tall (issue #41).
+        foreach (var time in TimelineRuler.SubsecondTicks(new(rendered.Start - origin, rendered.End - origin), width / rendered.Duration, model.TimelineFrameRate))
+            if (time >= 0) marks.Add(new(rendered.X(time + origin, width), TimelineLayout.OverviewHeight + TimelineLayout.RulerHeight - 3, 0, 3));
         rulerTicks.Data = Geometry(marks, true); rulerTicks.Stroke = Brush("VcTimelineTickBrush");
         trimBrackets.Stroke = Brush("VcTimelineClipBracketBrush");
         selectionBar.Fill = Brush("VcTintDefaultBrush");
         Canvas.SetTop(selectionBar, TimelineLayout.OverviewHeight + TimelineLayout.RulerHeight - 3);
-        if (model.HasSelection)
+        // The ruler's bar draws the exact range itself when there is one, else the selected words.
+        var selected = model.ExactRangeSource is { } exact ? (exact.Start, exact.End)
+            : model.HasSelection ? (model.Words[model.SelectionStart].Start, model.Words[model.SelectionEnd].End) : ((double, double)?)null;
+        if (selected is { } span)
         {
-            var left = Math.Clamp(view.X(ToDisplay(model.Words[model.SelectionStart].Start), width), 0, width);
-            var right = Math.Clamp(view.X(ToDisplay(model.Words[model.SelectionEnd].End), width), 0, width);
+            var left = Math.Clamp(view.X(ToDisplay(span.Item1), width), 0, width);
+            var right = Math.Clamp(view.X(ToDisplay(span.Item2), width), 0, width);
             Canvas.SetLeft(selectionBar, left); selectionBar.Width = Math.Max(0, right - left);
         }
         else selectionBar.Width = 0;
     }
+    /// <summary>From 100 epx per second, A1 ticks each word's start from its top and each end from its bottom, 1 epx wide and
+    /// 5 tall in <c>timeline.tick</c>: what a word drag grabs (issue #41).</summary>
+    private void DrawWordTicks(double width)
+    {
+        if (model is null || renderingBlocked || model.IsReadOnly || width / rendered.Duration < WordTickZoom) { wordTicks.Data = null; return; }
+        var edges = model.TimelineWordEdges(rendered.Start, rendered.End, ToDisplay, story is null ? FromDisplay : null, Edited);
+        var top = metrics.AudioTop + 2; var bottom = metrics.AudioTop + metrics.AudioHeight - 2 - WordTick;
+        var marks = edges.Starts.Select(time => new TimelineMark(rendered.X(time, width) + .5, top, 0, WordTick))
+            .Concat(edges.Ends.Select(time => new TimelineMark(rendered.X(time, width) - .5, bottom, 0, WordTick)));
+        wordTicks.Data = Geometry(marks, true); wordTicks.Stroke = Brush("VcTimelineTickBrush");
+    }
+    /// <summary>The playhead's Narrator help on a single take or clip (issue #41).</summary>
+    private const string GestureHelp = "Drag to scrub; Shift+drag snaps to word starts. Ctrl+drag selects words, or keeps an exact range with Snap off. " +
+        "Shift+click extends the selection. Comma and period step one frame; with Shift, to the previous or next word edge. I and O set the range's In and Out.";
+    private const double WordTickZoom = 100;
+    private const double WordTick = 5;
     private void DrawCaptions(double width)
     {
         var blocks = new List<TimelineMark>(); var cuts = new List<TimelineMark>();
@@ -1071,7 +1162,9 @@ public sealed partial class TimelineView : UserControl
     /// dragged range, and the toolbar's "✦ Ask Claude · 0:12–0:15" while a range is marked.</summary>
     private void DrawAskRange(double width)
     {
-        if (model?.AskClaude.TimeRange is { } range)
+        // The exact range draws its own band and carries ✦ Ask Claude in the edit bar (issue #41).
+        var exact = model?.ExactRange is not null;
+        if (model?.AskClaude.TimeRange is { } range && !exact)
         {
             var left = Math.Clamp(rendered.X(ToDisplay(range.Start), width), 0, width);
             var right = Math.Clamp(rendered.X(ToDisplay(range.End), width), 0, width);
@@ -1082,9 +1175,28 @@ public sealed partial class TimelineView : UserControl
         }
         else askRange.Visibility = Visibility.Collapsed;
         var title = model?.AskClaudeTimeRangeTitle;
-        askClaude.Visibility = title is null || ranging ? Visibility.Collapsed : Visibility.Visible;
+        askClaude.Visibility = title is null || ranging || exact ? Visibility.Collapsed : Visibility.Visible;
         askClaude.Content = title ?? "";
         AutomationProperties.SetName(askClaude, title ?? "Ask Claude");
+    }
+
+    /// <summary>The toolbar's selection readout: "0.43 s · 12:04.10–12:04.53" for an exact range (length in <c>text.primary</c>, In
+    /// and Out in the recording's time in <c>text.tertiary</c>), else "1.6 s selected" for words.</summary>
+    private void DrawSelectionReadout()
+    {
+        if (model is null) return;
+        if (model.ExactRangeReadoutParts is { } parts)
+        {
+            rangeLength.Text = parts.Length; rangeLength.Foreground = Brush("VcTextPrimaryBrush");
+            rangeSpan.Text = " · " + parts.Span;
+            AutomationProperties.SetName(selectionLength, "Exact range, " + model.ExactRangeReadout);
+            return;
+        }
+        rangeLength.Text = model.HasSelection ? string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"{Math.Max(0, ToDisplay(model.Words[model.SelectionEnd].End) - ToDisplay(model.Words[model.SelectionStart].Start)):0.0} s selected") : "";
+        rangeLength.Foreground = Brush("VcTextSecondaryBrush");
+        rangeSpan.Text = "";
+        AutomationProperties.SetName(selectionLength, rangeLength.Text);
     }
 
     private void ChangeWindow(TimelineWindow next)

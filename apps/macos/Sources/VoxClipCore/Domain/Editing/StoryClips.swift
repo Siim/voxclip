@@ -59,7 +59,7 @@ enum StoryClips {
         try ProjectValidation.require(project.schemaVersion >= 6 || (project.schemaVersion == 5) == !stories.isEmpty, "Invalid story clip project version")
         for clip in project.edits.clips {
             try ProjectValidation.require(valid(clip, words: words), "Invalid story clip parts or source hull")
-            try ProjectValidation.require(project.schemaVersion == ProjectMigrations.currentVersion || clip.playParts.allSatisfy { $0.takeReason == nil },
+            try ProjectValidation.require(project.media.spokenSources != nil || clip.playParts.allSatisfy { $0.takeReason == nil },
                                           "Version reasons require project version 7")
             if clock.regions.count > 1 {
                 try ProjectValidation.require(clip.playParts.allSatisfy { clock.containsRange(startWordId: $0.startWordId, endWordId: $0.endWordId) }, "A part comes from one recording.")

@@ -89,6 +89,7 @@ extension EditorModel {
         timelineItemRefusal = nil
         timelineItemSelection = ids
         guard !ids.isEmpty else { return }
+        timelineRange = nil
         selectedWordIDs = []
         selectedPauseIDs = []
         askClaude.timeRange = nil
@@ -178,7 +179,7 @@ extension EditorModel {
                      fades: fades, recordingStart: recordingStart, audio: audio)
     }
 
-    private static func itemKind(_ kind: String) -> String {
+    static func itemKind(_ kind: String) -> String {
         switch kind {
         case "lowerThird": "Lower third"
         case "sticker": "Emoji"

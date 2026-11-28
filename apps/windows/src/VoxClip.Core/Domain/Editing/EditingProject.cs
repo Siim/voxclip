@@ -14,7 +14,11 @@ internal static class EditingProject
         return new(transcript, clock.Pauses(edits.PauseThresholdSeconds),
             edits.PauseThresholdSeconds, edits.PauseKeepSeconds, edits.CutWordIds.ToHashSet(StringComparer.Ordinal),
             edits.CutPauseIds.ToHashSet(StringComparer.Ordinal), new Dictionary<string, string>(edits.Corrections, StringComparer.Ordinal),
-            edits.Clips.ToArray(), edits.ActiveClipId) { ProjectClock = clock.Regions.Count > 1 ? clock : null };
+            edits.Clips.ToArray(), edits.ActiveClipId)
+        {
+            ProjectClock = clock.Regions.Count > 1 ? clock : null,
+            CutEdges = edits.CutEdges is { Count: > 0 } edges ? edges : System.Collections.ObjectModel.ReadOnlyDictionary<string, double>.Empty,
+        };
     }
 
     internal static ProjectModel ApplyToProject(ProjectModel project, EditState state)
@@ -23,7 +27,8 @@ internal static class EditingProject
         var edits = new ProjectEdits(state.PauseThresholdSeconds, state.PauseKeepSeconds,
             state.Transcript.Words.Where(word => state.CutWordIds.Contains(word.Id)).Select(word => word.Id).ToArray(),
             state.Pauses.Where(pause => state.CutPauseIds.Contains(pause.Id)).Select(pause => pause.Id).ToArray(),
-            new Dictionary<string, string>(state.Corrections, StringComparer.Ordinal), state.Clips.ToArray(), state.ActiveClipId);
+            new Dictionary<string, string>(state.Corrections, StringComparer.Ordinal), state.Clips.ToArray(), state.ActiveClipId)
+            { CutEdges = state.CutEdges.Count > 0 ? new Dictionary<string, double>(state.CutEdges, StringComparer.Ordinal) : null };
         return StoryClips.ForWriting(Clean(project with { Transcript = replaced ? state.Transcript : project.Transcript, Edits = edits,
             Ai = replaced ? new([]) : project.Ai,
             Share = replaced ? new(new Dictionary<string, string>(StringComparer.Ordinal)) : project.Share,

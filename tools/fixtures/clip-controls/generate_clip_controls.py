@@ -82,7 +82,7 @@ def generated():
     reject('stored-defaults', [set_value('/clipControls', [defaults])], True)
     for version in (1, 2, 3):
         reject(f'v{version}-clip-controls', [set_value('/schemaVersion', version)])
-    reject('future-project', [set_value('/schemaVersion', 8)])
+    reject('future-project', [set_value('/schemaVersion', 999)])
     invalid[-1]['tooNew'] = True
     cases = {'format': 'voxclip-clip-controls-wire-cases/1', 'project': 'fixtures/clip-controls/clip-controls-project.voxclip',
              'valid': valid, 'invalid': invalid}

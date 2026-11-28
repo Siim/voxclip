@@ -7,8 +7,7 @@ from pathlib import Path
 PATH = Path(__file__).resolve().parents[2] / 'shared/schemas/project.schema.json'
 
 
-def main():
-    schema = json.loads(PATH.read_text())
+def populate(schema):
     versions = sorted(set(schema['properties']['schemaVersion']['enum']) | {7})
     schema['properties']['schemaVersion']['enum'] = versions
     schema['title'] = 'VoxClip project file (.voxclip), schemaVersion ' + ', '.join(map(str, versions[:-1])) + f' or {versions[-1]}'
@@ -46,12 +45,19 @@ def main():
             'clips': {'items': {'not': {'required': ['displacedVersions']}, 'properties': {'parts': legacy_parts}}},
         }}}},
     }
+    if 8 in versions:
+        rule['else'] = {'if': {'properties': {'schemaVersion': {'maximum': 6}}}, 'then': rule['else']}
     for index, existing in enumerate(schema['allOf']):
         if existing.get('if') == rule['if']:
             schema['allOf'][index] = rule
             break
     else:
         schema['allOf'].append(rule)
+
+
+def main():
+    schema = json.loads(PATH.read_text())
+    populate(schema)
     PATH.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + '\n')
 
 

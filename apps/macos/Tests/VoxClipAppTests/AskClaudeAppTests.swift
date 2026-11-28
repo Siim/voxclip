@@ -337,6 +337,22 @@ private actor AskFixtureConnector: LLMConnector {
         #expect(editor.askClaude.label == "Clip \(editor.clipNumber(clip.id) ?? 0)")
     }
 
+    @Test func aTimelineDragThatSelectsOnlyAPauseAsksAboutItsTime() async throws {
+        let (_, editor, _, _) = try await open()
+        defer { editor.close() }
+        let pause = try #require(editor.pauses.first { $0.end - $0.start >= 0.1 })
+        // What a drag with Snapping on leaves inside a pause: the pause, no words.
+        editor.selectedWordIDs = []; editor.selectedPauseIDs = [pause.id]
+        #expect(editor.timelineRange == nil && editor.askClaudeWordSelection == nil)
+        #expect(editor.timelineAskClaudeTimeRange == pause.start...pause.end && editor.timelineAskClaudeReason == nil)
+        editor.askClaudeOnTimelineRange()
+        guard case .time(let range)? = editor.askClaude.selection?.scope else { Issue.record("No time range"); return }
+        #expect(range == pause.start...pause.end)
+        // Words are asked about as words, not as time.
+        select(editor, 2...5)
+        #expect(editor.timelineAskClaudeTimeRange == nil && editor.timelineAskClaudeReason == nil)
+    }
+
     @Test func aReadOnlyOrAIlessEditorOffersNoAskClaude() async throws {
         let (_, editor, _, _) = try await open()
         defer { editor.close() }

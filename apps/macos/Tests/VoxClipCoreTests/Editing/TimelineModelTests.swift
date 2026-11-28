@@ -137,6 +137,24 @@ import Testing
         #expect(TimelineRuler.ticks(visible: 0...Double.infinity, ptPerSecond: 20).isEmpty)
     }
 
+    @Test func subsecondTicksAreHalvesTenthsThenFramesOnceSixPointsApart() {
+        // Below 12 pt/s a half second is under 6 pt: whole seconds only.
+        #expect(TimelineRuler.subsecondTicks(visible: 10...11, ptPerSecond: 11.9, fps: 30).isEmpty)
+        #expect(TimelineRuler.subsecondTicks(visible: 10...12, ptPerSecond: 20, fps: 30) == [10.5, 11.5])
+        let tenths = TimelineRuler.subsecondTicks(visible: 10...11, ptPerSecond: 60, fps: 30)
+        #expect(tenths.count == 9 && abs(tenths[0] - 10.1) < 1e-9 && abs(tenths[8] - 10.9) < 1e-9)
+        // 30 fps frames are 6 pt apart at 180 pt/s; 24 fps already at 144 pt/s.
+        let frames = TimelineRuler.subsecondTicks(visible: 10...11, ptPerSecond: 180, fps: 30)
+        #expect(frames.count == 29 && abs(frames[0] - (10 + 1.0 / 30)) < 1e-9)
+        #expect(TimelineRuler.subsecondTicks(visible: 10...11, ptPerSecond: 179, fps: 30).count == 9)
+        #expect(TimelineRuler.subsecondTicks(visible: 10...11, ptPerSecond: 144, fps: 24).count == 23)
+        // Far into a long take the ticks stay on the grid, and never where 1 s minor ticks don't show.
+        let late = TimelineRuler.subsecondTicks(visible: 3_599...3_600, ptPerSecond: 60, fps: 30)
+        #expect(late.count == 9 && abs(late[4] - 3_599.5) < 1e-9)
+        #expect(TimelineRuler.subsecondTicks(visible: 0...100, ptPerSecond: 2, fps: 30).isEmpty)
+        #expect(TimelineRuler.subsecondTicks(visible: 0...Double.infinity, ptPerSecond: 60, fps: 30).isEmpty)
+    }
+
     @Test func labelsNeverCrossABracketOrTheLaneEnd() {
         let width = 66.0
         // 4 pt after its tick.
