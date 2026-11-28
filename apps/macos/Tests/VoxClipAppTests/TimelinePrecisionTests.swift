@@ -369,6 +369,44 @@ private actor PrecisionTestSettings: SettingsStore {
         #expect(model.activeClip?.startWordId == "t12")
     }
 
+    /// I with no range in a story clip: Out defaults to the end of the playhead's own part, never to the start of the
+    /// part that plays after it. Reordered, words 20–29 (19.9–29.9 s, 0–10) play before words 10–13 (9.9–13.9 s, 10–14);
+    /// in source order, words 10–13 (0–4) play before words 20–29 (4–14).
+    @Test(arguments: [TimelineAxis.edited, .source]) func iInAStoryPartEndsTheRangeAtThatPartsEnd(_ axis: TimelineAxis) async throws {
+        func story(_ parts: [ClipPart]) throws -> EditorModel {
+            var fixture = try project()
+            let clip = ClipRange(id: "story", startWordId: "t10", endWordId: "t29", parts: parts)
+            fixture.edits.clips = [clip]; fixture.edits.activeClipId = clip.id
+            let model = editor(try app(), project: fixture)
+            model.showsCuts = axis == .source
+            return model
+        }
+        let late = ClipPart(id: "late", startWordId: "t20", endWordId: "t29"), early = ClipPart(id: "early", startWordId: "t10", endWordId: "t13")
+        let reordered = try story([late, early])
+        defer { reordered.close() }
+        #expect(reordered.storyTimeline != nil && abs(reordered.timelineLength(on: axis) - 14) < 1e-6)
+        reordered.seekTimeline(5, on: axis); await settle()
+        reordered.setTimelineRangeEdge(start: true)
+        var range = try #require(reordered.timelineRange, "I in the first output part marks a range")
+        #expect(abs(range.start * 30 - 747) < 0.01 && abs(range.end * 30 - 897) < 0.01, "\(range)")
+        #expect(reordered.selectedWordIDs == Set((25...29).map { "t\($0)" }))
+        // At the seam the playhead shows the next part's first frame: I there ends at that part's end.
+        reordered.clearTimelineRange()
+        reordered.seekTimeline(10, on: axis); await settle()
+        reordered.setTimelineRangeEdge(start: true)
+        range = try #require(reordered.timelineRange, "I at the seam marks a range")
+        #expect(abs(range.start * 30 - 297) < 0.01 && abs(range.end * 30 - 417) < 0.01, "\(range)")
+        #expect(reordered.selectedWordIDs == Set((10...13).map { "t\($0)" }))
+
+        let inOrder = try story([early, late])
+        defer { inOrder.close() }
+        inOrder.seekTimeline(2, on: axis); await settle()
+        inOrder.setTimelineRangeEdge(start: true)
+        range = try #require(inOrder.timelineRange)
+        #expect(abs(range.start * 30 - 357) < 0.01 && abs(range.end * 30 - 417) < 0.01, "Not over the gap to the next part: \(range)")
+        #expect(inOrder.selectedWordIDs == ["t12", "t13"], "No word outside the story")
+    }
+
     // MARK: Range actions
 
     @Test func rangeActionsPlayTheRangeAndAddATitleTrimAnItemOrMakeAClipAsOrdinaryUndoSteps() async throws {

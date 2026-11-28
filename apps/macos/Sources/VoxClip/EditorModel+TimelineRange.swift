@@ -146,12 +146,18 @@ extension EditorModel {
         let axis = timelineAxis
         var display = timelineDisplayRange(on: axis)
         let playhead = timelinePlayhead(on: axis).clamped(to: display)
-        if let story = storyTimeline, let span = story.parts.compactMap({ axis == .source ? $0.display : $0.edited })
-            .first(where: { $0.lowerBound <= playhead && playhead <= $0.upperBound }) {
+        // At a seam the playhead shows the next part's first frame, so that part is its part.
+        if let story = storyTimeline, case let spans = story.parts.compactMap({ axis == .source ? $0.display : $0.edited }),
+           let span = spans.first(where: { $0.contains(playhead) }) ?? spans.first(where: { $0.lowerBound <= playhead && playhead <= $0.upperBound }) {
             display = span.lowerBound...max(span.lowerBound, span.upperBound)
         }
         let source = timelineExactSourceTime(playhead, on: axis)
-        let first = timelineExactSourceTime(display.lowerBound, on: axis), last = timelineExactSourceTime(display.upperBound, on: axis)
+        // The part's end is an end: mapped just after its last sample, not into the part that plays after it.
+        let sample = 1 / (renderTimeline?.sampleRate ?? 48_000)
+        let first = timelineExactSourceTime(display.lowerBound, on: axis)
+        let last = display.upperBound > display.lowerBound
+            ? timelineExactSourceTime(max(display.lowerBound, display.upperBound - sample), on: axis) + sample
+            : timelineExactSourceTime(display.upperBound, on: axis)
         let current = timelineRangeSource
         let lower = start ? source : current.map { $0.lowerBound < source ? $0.lowerBound : first } ?? first
         let upper = start ? current.map { $0.upperBound > source ? $0.upperBound : last } ?? last : source
