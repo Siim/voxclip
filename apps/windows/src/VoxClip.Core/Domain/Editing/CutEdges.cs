@@ -142,6 +142,10 @@ public static class CutEdges
         return Frozen(a, b, cutWordIds, Window(a, b), freeze, positions);
     }
 
+    /// <summary>The word edge between <paramref name="a"/> and <paramref name="b"/>, sample-rounded at <paramref name="sampleRate"/> as a key
+    /// is stored: where today's padding ends a cut between touching words. "Use word edge" pins a key here (§6).</summary>
+    public static double WordEdge(TimedWord a, TimedWord b, double sampleRate) => EditingMath.Round((a.End + b.Start) / 2 * sampleRate) / sampleRate;
+
     /// <summary>§6 "Fix cut edges": seats every qualifying boundary without a key, as one step.</summary>
     public static (Project Project, OfferSummary Offer) Fix(Project project, IReadOnlyDictionary<string, AudioEnvelope> envelopes,
         IReadOnlyDictionary<string, Freeze>? freeze = null)

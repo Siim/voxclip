@@ -99,6 +99,17 @@ public sealed class CutEdgesTests
         Assert.False(CutEdges.IsFrozen(words, 3, cut, voice));
     }
 
+    /// <summary>"Use word edge" pins the word edge as a key is stored: the mid-point of the gap, sample-rounded half up.</summary>
+    [Fact]
+    public void AWordEdgeIsTheGapsMidPointOnTheSampleGrid()
+    {
+        var words = Words();
+        Assert.Equal(0.80, CutEdges.WordEdge(words[0], words[1], 48_000));
+        Assert.Equal(1.30, CutEdges.WordEdge(words[1], words[2], 48_000));
+        Assert.Equal(0.25, CutEdges.WordEdge(EditingFixtureTests.Word("a", "a", 0, 0.125), EditingFixtureTests.Word("b", "b", 0.125, 1), 4));
+        Assert.Equal(0.5, CutEdges.WordEdge(EditingFixtureTests.Word("a", "a", 0, 0.4), EditingFixtureTests.Word("b", "b", 0.6, 1), 4));
+    }
+
     [Fact]
     public void AnEdgeInALaterRecordingIsStoredInItsLocalSecondsAndPlannedOnTheClock()
     {
