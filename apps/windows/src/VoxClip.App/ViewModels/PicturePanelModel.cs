@@ -121,6 +121,7 @@ public sealed class PicturePanelModel(EditorViewModel editor)
     private readonly Dictionary<string, PictureClaudePick> picks = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ClipColorFix?> measured = new(StringComparer.Ordinal);
     private readonly HashSet<string> measuring = new(StringComparer.Ordinal);
+    private readonly HashSet<string> measureWhenPaused = new(StringComparer.Ordinal);
     private PicturePanelServices? services;
     private bool fineTuneRemembered;
     private string? foldClosedFor;
@@ -589,11 +590,13 @@ public sealed class PicturePanelModel(EditorViewModel editor)
 
     // MARK: Auto
 
-    /// <summary>Measures the open clip's Fix once per clip (free, on this PC); the panel calls it when it shows.</summary>
+    /// <summary>Measures the open clip's Fix once per clip (free, on this PC); the panel calls it on every render.</summary>
     public void Opened()
     {
-        if (ClipId is not { } clip || Blocked is not null || measured.ContainsKey(clip) || !measuring.Add(clip)) return;
+        if (ClipId is not { } clip || Blocked is not null || measured.ContainsKey(clip) || (Playing && measureWhenPaused.Contains(clip)) ||
+            !measuring.Add(clip)) return;
         var measure = services?.Measure ?? editor.MeasurePictureFixAsync;
+        var playing = Playing;
         Measuring = Run();
         Notify();
 
@@ -603,7 +606,10 @@ public sealed class PicturePanelModel(EditorViewModel editor)
             try { fix = await measure(clip, CancellationToken.None).ConfigureAwait(true); }
             catch (Exception exception) when (exception is not OutOfMemoryException) { fix = null; }
             measuring.Remove(clip);
-            measured[clip] = fix;
+            // Nothing measured during playback (without a frame pass Auto needs the paused frame) or with the source gone: the next
+            // paused, readable render measures again. Only a miss on a paused, readable source reads as a failure.
+            if (fix is null && (playing || Playing)) measureWhenPaused.Add(clip);
+            else if (fix is not null || Blocked is null) { measureWhenPaused.Remove(clip); measured[clip] = fix; }
             Notify();
         }
     }

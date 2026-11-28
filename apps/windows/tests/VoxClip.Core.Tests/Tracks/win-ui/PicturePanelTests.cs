@@ -268,6 +268,42 @@ public sealed class PicturePanelTests
         Assert.Equal("VoxClip couldn't read this video's frames", failed.AutoReason);
     }
 
+    /// <summary>A measurement that comes back empty during playback (no frame pass, so the paused frame is needed) or with the source
+    /// gone is tried again at the next paused, readable render; only an empty result then reads as a failure.</summary>
+    [Fact]
+    public async Task AutoMeasuresAgainWhenItCameBackEmptyDuringPlaybackOrOffline()
+    {
+        var editor = MakeItPostableTests.Editor();
+        var calls = 0;
+        var results = new Queue<ClipColorFix?>([null, null, new ClipColorFix(20, 0, 0), null]);
+        editor.Picture.Services = new(Looks)
+        {
+            Measure = (_, _) => { if (++calls == 2) editor.SetMediaUnavailable(true); return Task.FromResult(results.Dequeue()); },
+        };
+        Assert.True(editor.SetScope("c1"));
+        var picture = editor.Picture;
+        picture.SetPlaying(true);
+        picture.Opened();
+        await picture.Measuring;
+        Assert.Equal((1, "Measuring the picture…"), (calls, picture.AutoReason));
+        // Still playing: renders don't measure again.
+        picture.Opened();
+        Assert.Equal(1, calls);
+        picture.SetPlaying(false);
+        picture.Opened();
+        await picture.Measuring;
+        Assert.Equal(2, calls);
+        Assert.Equal("Locate the video to change the look.", picture.AutoReason);
+        picture.Opened();
+        Assert.Equal(2, calls);
+        editor.SetMediaUnavailable(false);
+        Assert.Equal("Measuring the picture…", picture.AutoReason);
+        picture.Opened();
+        await picture.Measuring;
+        Assert.Equal((3, null), (calls, picture.AutoReason));
+        Assert.True(picture.Auto());
+    }
+
     [Fact]
     public void HoverAndComparePreviewOnThePausedViewerWithoutAStep()
     {
