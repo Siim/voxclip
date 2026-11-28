@@ -47,8 +47,7 @@ public sealed class ClipLookLibrary
     /// <summary>The file, relative to the shared root.</summary>
     public const string Path = "looks/clip-looks.json";
 
-    private ClipLookLibrary(IReadOnlyList<ClipLookCategory> categories, IReadOnlyList<ClipLookPreset> looks,
-        IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>> measure)
+    private ClipLookLibrary(IReadOnlyList<ClipLookCategory> categories, IReadOnlyList<ClipLookPreset> looks, ClipColorMeasure measure)
     {
         Categories = categories;
         Looks = looks;
@@ -59,8 +58,8 @@ public sealed class ClipLookLibrary
     public IReadOnlyList<ClipLookCategory> Categories { get; }
     /// <summary>Every look in display order, hidden ones included.</summary>
     public IReadOnlyList<ClipLookPreset> Looks { get; }
-    /// <summary>The <c>measure</c> groups (<c>auto</c>, <c>light</c>): name to number.</summary>
-    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, double>> Measure { get; }
+    /// <summary>The shared numbers for Auto and the planner's light notes.</summary>
+    public ClipColorMeasure Measure { get; }
     /// <summary>The looks a picker offers.</summary>
     public IReadOnlyList<ClipLookPreset> Visible => Looks.Where(look => !look.Hidden).ToArray();
 
@@ -109,7 +108,7 @@ public sealed class ClipLookLibrary
                 Text(item, "label") is not { } label || categories.Any(category => category.Id == id)) return null;
             categories.Add(new(id, label));
         }
-        var measure = new Dictionary<string, IReadOnlyDictionary<string, double>>(StringComparer.Ordinal);
+        var numbersByGroup = new Dictionary<string, IReadOnlyDictionary<string, double>>(StringComparer.Ordinal);
         var groups = root.GetProperty("measure");
         if (categories.Count == 0 || groups.ValueKind != JsonValueKind.Object || !Keys(groups).SetEquals(["auto", "light"])) return null;
         foreach (var group in groups.EnumerateObject())
@@ -121,8 +120,9 @@ public sealed class ClipLookLibrary
                 if (value.Value.ValueKind != JsonValueKind.Number || !value.Value.TryGetDouble(out var number) || !double.IsFinite(number)) return null;
                 numbers[value.Name] = number;
             }
-            measure[group.Name] = numbers;
+            numbersByGroup[group.Name] = numbers;
         }
+        if (ClipColorMeasure.Read(numbersByGroup) is not { } measure) return null;
         string[] required = ["id", "label", "category", "strength", "line", "planner", "classic", "base", "adjustments", "grade"];
         var looks = new List<ClipLookPreset>();
         if (root.GetProperty("looks").ValueKind != JsonValueKind.Array) return null;

@@ -47,8 +47,24 @@ public sealed class ClipLookLibraryTests
             SplitTone = new(200, 10, 38, 30, 0)
         }, warmPrint.Grade);
         Assert.Equal(new ClipSplitTone(30, 60, 40, 40, 0), library.Look("sepia")!.Grade.SplitTone);
-        Assert.Equal(40, library.Measure["auto"]["balanceLimit"]);
-        Assert.Equal(0.3, library.Measure["light"]["dimFaceLuma"]);
+        Assert.Equal((40.0, 8, 0.3), (library.Measure.Auto.BalanceLimit, library.Measure.Auto.Frames, library.Measure.Light.DimFaceLuma));
+    }
+
+    /// <summary>The measure block holds exactly the numbers Auto and the light notes read.</summary>
+    [Theory]
+    [InlineData("auto", "faceTarget", null)]
+    [InlineData("auto", "faceTargets", "0.5")]
+    [InlineData("light", "lowColour", "0.1")]
+    [InlineData("auto", "frames", "2.5")]
+    [InlineData("auto", "frames", "0")]
+    [InlineData("light", "warmCool", "\"0.04\"")]
+    public void ABrokenMeasureBlockIsRefused(string group, string key, string? json)
+    {
+        var root = JsonNode.Parse(FixtureLoader.ReadText(ClipLookLibrary.Path))!.AsObject();
+        var numbers = root["measure"]![group]!.AsObject();
+        if (json is null) numbers.Remove(key);
+        else numbers[key] = JsonNode.Parse(json);
+        Assert.Equal(VoxClipErrorCode.SharedResourcesMissing, Assert.Throws<VoxClipException>(() => ClipLookLibrary.Parse(root.ToJsonString())).Code);
     }
 
     /// <summary>Today's eight looks keep their IDs, labels and values; the four Mac presets reach Windows through the file.</summary>

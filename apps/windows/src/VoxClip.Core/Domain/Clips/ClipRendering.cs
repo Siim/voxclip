@@ -142,6 +142,26 @@ public sealed class ClipLookRecipe
     private static double[][] Saturation(double s, double scale = 1)
         => Enumerable.Range(0, 3).Select(row => Enumerable.Range(0, 3).Select(column => scale * ((1 - s) * Luma[column] + (row == column ? s : 0))).ToArray()).ToArray();
 
+    /// <summary>The matrix and bias, then the cubic after a clamp, without clamping the result: Core Image's arithmetic, which
+    /// <see cref="ClipGradeRecipe"/> chains from the base look into the adjustments (looks spec §5.2).</summary>
+    internal double[] Transform(ReadOnlySpan<double> rgb)
+    {
+        var result = new double[3];
+        for (var row = 0; row < 3; row++)
+        {
+            var value = Bias[row];
+            for (var column = 0; column < 3; column++) value += Matrix[row][column] * rgb[column];
+            if (Curve is { } curve)
+            {
+                value = Math.Clamp(value, 0, 1);
+                var squared = value * value;
+                value = curve[0] + curve[1] * value + curve[2] * squared + curve[3] * squared * value;
+            }
+            result[row] = value;
+        }
+        return result;
+    }
+
     /// <summary>The recipe on one RGB value, clamped to 0…1 as an 8-bit frame stores it.</summary>
     public double[] Apply(ReadOnlySpan<double> rgb)
     {

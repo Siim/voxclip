@@ -6,7 +6,7 @@ namespace VoxClip.Core.Domain.Clips;
 
 /// <summary>The camera fix (looks spec §5.4): Exposure, Temperature and Tint, -100 to 100. It corrects the picture before the
 /// look and stays when the look changes. Twin of the Mac <c>ClipColorFix</c>.</summary>
-public readonly record struct ClipColorFix(int Exposure, int Temperature, int Tint)
+public readonly partial record struct ClipColorFix(int Exposure, int Temperature, int Tint)
 {
     /// <summary>No correction.</summary>
     public bool IsNeutral => Exposure == 0 && Temperature == 0 && Tint == 0;
