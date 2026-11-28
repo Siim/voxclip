@@ -47,7 +47,7 @@ struct EditorCapabilities: Equatable {
 extension EditorModel {
     func mutationEnabled(_ command: Int) -> Bool? {
         switch command {
-        case 1, 2, 3, 7, 8, 9, 29, 30, 31, 37, 40, 41, 42, 43, 44: return capabilities.edit
+        case 1, 2, 3, 7, 8, 9, 29, 30, 31, 37, 40, 41, 42, 43, 44, 77: return capabilities.edit
         case 34: return capabilities.ai
         case 62: return capabilities.ai && capabilities.edit
         case 38: return storyRewriteReason(for: rewriteScopeNow) == nil && RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: rewriteScopeNow)

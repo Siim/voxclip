@@ -376,6 +376,7 @@ import VoxClipCore
         case 7: editor.apply(.cutFillers, name: "Cut fillers")
         case 8: editor.apply(.tightenPauses, name: "Tighten pauses")
         case 9: editor.apply(.restoreCuts, name: "Restore cuts")
+        case 77: editor.fixCutEdges()
         case 11: editor.showPauses.toggle()
         case 12: model.shell.toggleViewer()
         case 21: editor.transport(" ")
@@ -491,6 +492,7 @@ import VoxClipCore
                 item.title = editor?.rewriteMenuTitle ?? "Rewrite Full Take"
                 item.toolTip = editor?.storyRewriteReason(for: editor?.rewriteScopeNow)
             }
+            if item.tag == 77 { item.toolTip = editor?.fixCutEdgesReason }
             switch item.tag {
             case 97: return recordingLineForMenu() != nil
             case 90...96: return keyEditor.map { $0.hasSeveralRecordings && item.tag - 90 <= $0.recordingRegions.count } ?? false
@@ -564,6 +566,7 @@ import VoxClipCore
             case 7: return editor.capabilities.edit && editor.summary.canCutFillers
             case 8: return editor.capabilities.edit && editor.summary.canTighten
             case 9: return editor.capabilities.edit && editor.summary.hasEdits
+            case 77: return editor.canFixCutEdges
             case 30, 31: return editor.capabilities.edit && editor.activeClip != nil
             case 34: return editor.capabilities.ai && !editor.words.isEmpty
             case 11: item.title = editor.showPauses ? "Hide Pauses" : "Show Pauses"
@@ -667,6 +670,8 @@ import VoxClipCore
         command(edit, "Cut Fillers", 7, "u", [.command, .option])
         command(edit, "Tighten Pauses", 8, "p", [.command, .option])
         command(edit, "Restore All Cuts", 9, "r", [.command, .option])
+        // Always listed; `validateMenuItem` gives the reason it can't run (editing §5.10 "Existing projects").
+        command(edit, "Fix Cut Edges", 77)
         command(edit, "Transcribe Again…", 37)
         command(edit, "Split at Playhead", 71, "b")
         command(edit, "Split at Playhead", 71, "b", [])

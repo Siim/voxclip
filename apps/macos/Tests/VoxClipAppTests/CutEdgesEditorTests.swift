@@ -164,5 +164,79 @@ private actor CutEdgeTestSettings: SettingsStore {
             RewriteSavedProposalStore.remove(url)
         }
     }
+
+    // MARK: Old cuts
+
+    @Test func oldCutsAreOfferedInlineAndFixedInOneStep() throws {
+        let app = try app()
+        let original = try Self.project(cut: ["w2"])
+        let (model, undo) = editor(app, project: original)
+        defer { model.close(); try? FileManager.default.removeItem(at: app.locations.root) }
+        // Opening changes nothing; the edit bar offers the two edges.
+        #expect(model.project == original)
+        #expect(model.cutEdgeOffer == CutEdges.Offer(count: 2, frozen: 0, unloaded: []))
+        #expect(model.cutEdgeBarRow == CutEdgeBarRow(text: "2 cuts can land in the quiet", action: "Fix cut edges"))
+        #expect(model.canFixCutEdges && model.fixCutEdgesReason == nil && model.mutationEnabled(77) == true)
+        let steps = model.undoSteps
+        step(undo) { model.fixCutEdges() }
+        #expect(model.undoSteps == steps + 1 && undo.undoActionName == "Fix cut edges")
+        #expect(model.project.edits.cutEdges == ["w2": 0.705, "w3": 1.205] && model.project.schemaVersion == 8)
+        #expect(model.plan?.cuts == [MediaInterval(startSample: 33_840, endSample: 57_840)])
+        #expect(model.cutEdgeBarRow == CutEdgeBarRow(text: "Moved 2 cut edges into the quiet"))
+        #expect(model.lastAnnouncement == "Moved 2 cut edges into the quiet")
+        // Edit ▸ Fix Cut Edges stays, disabled with its reason.
+        #expect(!model.canFixCutEdges && model.fixCutEdgesReason == "All cut edges are in the quiet")
+        undo.undo()
+        #expect(model.project == original && model.cutEdgeBarRow?.action == "Fix cut edges")
+    }
+
+    @Test func fixingBesideAVoicePatchSaysWhatItKept() throws {
+        let app = try app()
+        var project = try Self.project(cut: ["w2"])
+        let shared = try SharedResources.locate()
+        let revoiced = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/whole-clip-revoice-project.voxclip")))
+        var segment = try #require(revoiced.voiceLab.segments.first)
+        segment.replace = VoiceLabReplacement(start: 1.30, end: 1.90, firstWordId: "w3", lastWordId: "w3")
+        project.voiceLab.segments = [segment]
+        let (model, undo) = editor(app, project: project)
+        defer { model.close(); try? FileManager.default.removeItem(at: app.locations.root) }
+        #expect(model.cutEdgeOffer == CutEdges.Offer(count: 1, frozen: 1, unloaded: []))
+        #expect(model.cutEdgeBarRow?.text == "1 cut can land in the quiet")
+        step(undo) { model.fixCutEdges() }
+        #expect(model.project.edits.cutEdges == ["w2": 0.705])
+        #expect(model.cutEdgeBarRow == CutEdgeBarRow(text: "Moved 1 cut edge into the quiet · 1 kept beside voice patches"))
+    }
+
+    @Test func fixCutEdgesSaysWhyItCannotRun() throws {
+        let app = try app()
+        let (loading, _) = editor(app, project: try Self.project(cut: ["w2"]), levels: nil)
+        defer { loading.close(); try? FileManager.default.removeItem(at: app.locations.root) }
+        #expect(loading.cutEdgeOffer.unloaded == [loading.project.media.source.contentKey] && loading.cutEdgeBarRow == nil)
+        #expect(!loading.canFixCutEdges && loading.fixCutEdgesReason == "Waveform still loading")
+        // The video is missing: its waveform can't load until it is found again.
+        var project = try Self.project(cut: ["w2"])
+        project.media.source.absolutePath = app.locations.root.appendingPathComponent("absent.mov").path
+        let missing = EditorModel(document: VoxClipDocument(project: project, demo: false), app: app, preview: DemoPreviewEngine())
+        defer { missing.close() }
+        missing.markMediaCheckedForAudit()
+        let label = ProjectClock.label(project.media.source)
+        #expect(missing.fixCutEdgesReason == "Reconnect \(label) to fix its cut edges")
+        // No old cut to move.
+        let (none, _) = editor(app, project: try Self.project())
+        defer { none.close() }
+        #expect(none.fixCutEdgesReason == "All cut edges are in the quiet" && none.cutEdgeBarRow == nil)
+    }
+
+    @Test func editMenuListsFixCutEdges() throws {
+        _ = NSApplication.shared
+        let previous = NSApp.mainMenu
+        defer { NSApp.mainMenu = previous }
+        AppDelegate().installMenus()
+        let edit = try #require(NSApp.mainMenu?.item(withTitle: "Edit")?.submenu)
+        let item = try #require(edit.item(withTitle: "Fix Cut Edges"))
+        #expect(item.tag == 77 && item.action == NSSelectorFromString("performEditorCommand:") && !item.isHidden)
+        let restore = try #require(edit.item(withTitle: "Restore All Cuts"))
+        #expect(edit.index(of: item) == edit.index(of: restore) + 1)
+    }
 }
 #endif

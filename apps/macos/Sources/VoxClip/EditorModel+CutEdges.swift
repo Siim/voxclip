@@ -143,4 +143,66 @@ extension EditorModel {
         let freeze = envelopes.isEmpty ? [:] : cutEdgeFreeze(after)
         return (try? CutEdges.finalize(before: before, after: after, envelopes: envelopes, freeze: freeze)) ?? after
     }
+
+    // MARK: Old cuts: the offer and Fix cut edges
+
+    /// What "Fix cut edges" would do now (editing §5.10 "Existing projects"): N edges that would move, K kept beside voice
+    /// patches, and the recordings whose levels aren't loaded. Counted once per change of the edits, the waveforms or
+    /// the open Rewrite.
+    var cutEdgeOffer: CutEdges.Offer {
+        _ = transcriptRevision
+        _ = openRewrite
+        let waveforms = [waveform?.identity] + recordingWaveforms.keys.sorted().map { recordingWaveforms[$0]?.identity }
+        if let memo = cutEdgeOfferMemo, memo.edits == project.edits, memo.waveforms == waveforms { return memo.offer }
+        // With nothing cut there is nothing to count, and no levels to analyse.
+        let offer = project.edits.cutWordIds.isEmpty ? CutEdges.offer(project, envelopes: [:])
+            : CutEdges.offer(project, envelopes: cutEdgeEnvelopes, freeze: cutEdgeFreeze(project))
+        cutEdgeOfferMemo = CutEdgeOfferMemo(edits: project.edits, waveforms: waveforms, offer: offer)
+        return offer
+    }
+
+    var canFixCutEdges: Bool { capabilities.edit && cutEdgeOffer.count > 0 }
+
+    /// Why Edit ▸ Fix Cut Edges is disabled (design.md, the menu bar), or nil when it can run.
+    var fixCutEdgesReason: String? {
+        let offer = cutEdgeOffer
+        guard offer.count == 0 else { return nil }
+        guard let key = offer.unloaded.first else { return "All cut edges are in the quiet" }
+        return recordingIsMissing(key) || (key == project.media.source.contentKey && mediaUnreadable)
+            ? "Reconnect \(recordingLabel(key)) to fix its cut edges" : "Waveform still loading"
+    }
+
+    /// A recording's name as the timeline's recording lanes show it.
+    func recordingLabel(_ key: String) -> String {
+        recordingRegions.first { $0.key == key }?.label ?? ProjectClock.label(project.media.source)
+    }
+
+    /// Fix cut edges: every old cut's edges that can move into the quiet, as one undo step, then the result line.
+    func fixCutEdges() {
+        guard capabilities.edit,
+              let (fixed, offer) = try? CutEdges.fix(project, envelopes: cutEdgeEnvelopes, freeze: cutEdgeFreeze(project)),
+              offer.count > 0 else { return }
+        replace(fixed, name: "Fix cut edges")
+        let moved = "Moved \(offer.count) cut \(offer.count == 1 ? "edge" : "edges") into the quiet"
+        let text = offer.frozen > 0 ? moved + " · \(offer.frozen) kept beside voice patches" : moved
+        cutEdgeResult = (project.edits, text)
+        announce(text)
+    }
+
+    /// The one cut edge row the timeline edit bar shows: a selected cut's edges, the result of Fix cut edges while
+    /// its edits stand, or the offer while old cuts could move.
+    var cutEdgeBarRow: CutEdgeBarRow? {
+        if let result = cutEdgeResult, result.edits == project.edits { return CutEdgeBarRow(text: result.text) }
+        let count = cutEdgeOffer.count
+        guard count > 0 else { return nil }
+        return CutEdgeBarRow(text: "\(count) \(count == 1 ? "cut" : "cuts") can land in the quiet", action: "Fix cut edges")
+    }
+}
+
+/// A row of the timeline edit bar about cut edges: its line and, when it has one, its inline action and why that is
+/// disabled.
+struct CutEdgeBarRow: Equatable {
+    var text: String
+    var action: String? = nil
+    var reason: String? = nil
 }
