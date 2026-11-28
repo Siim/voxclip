@@ -429,7 +429,7 @@ import VoxClipCore
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow, .home, .end, .return, .space, .escape]) { press in
             key(press.key, count: shown.count, columns: columns, shown: shown)
         }
-        .task(id: "\(panel.controls.clipId):\(pixels):\(model.projectRevision):\(model.isPlaying)") {
+        .task(id: "\(panel.controls.clipId):\(pixels):\(model.projectRevision):\(model.isPlaying):\(Int(model.playhead * 100))") {
             guard !model.isPlaying, pixels > 0, width > 0 else { return }
             // The still follows the paused playhead once it has rested (spec section 7.1).
             try? await Task.sleep(for: .milliseconds(model.looks.tiles.isEmpty ? 0 : 500))
@@ -760,6 +760,8 @@ import VoxClipCore
             .background(DesignValues.color("status.infoBackground"), in: .rect(cornerRadius: 6))
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("voxclip.picture.timed")
+            .columnLayoutEvidence("picture.timed", text: "A timed \(effect.look?.label ?? "look") from Ask Claude replaces this look at "
+                + "\(model.makeItClipTime(effect.start, clipID: clipID))\u{2013}\(model.makeItClipTime(effect.end, clipID: clipID))")
         }
     }
 }

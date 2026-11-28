@@ -366,6 +366,8 @@ private struct LookReader: FrameReading {
         step(fixture) { editor.chooseLook("warmPrint") }
         let still = try await still(editor)
         editor.looks.stills = { _ in still }
+        // The edits' own preview update (150 ms after each) lands first; only what follows counts.
+        try await Task.sleep(for: .milliseconds(400))
         let loads = fixture.player.loads, updates = fixture.player.updates
         editor.previewLook("goldenHour")
         await editor.looks.previewTask?.value

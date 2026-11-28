@@ -7,6 +7,8 @@ import VoxClipMedia
 /// What the viewer shows over the paused player while a look is previewed, Compare is held or a slider is dragged (looks
 /// spec 2026-11-28, sections 3.4 and 7.8): the export's frame with other colour, and its badge.
 struct ClipLookViewerPreview {
+    /// The clip it shows; another clip's viewer never shows it.
+    let clipID: String
     let image: CGImage
     /// "Preview · Golden Hour", "As filmed", or nil for a drag.
     let badge: String?
@@ -361,10 +363,11 @@ extension EditorModel {
         looks.generation += 1
         let generation = looks.generation
         looks.previewTask?.cancel()
+        guard let clipID = renderedActiveClipID else { return }
         looks.previewTask = Task { [weak self] in
             guard let self, let still = try? await lookStill(), !Task.isCancelled,
                   let image = try? await still.still(colorOf: colour), generation == looks.generation else { return }
-            looks.show(ClipLookViewerPreview(image: image, badge: badge))
+            looks.show(ClipLookViewerPreview(clipID: clipID, image: image, badge: badge))
         }
     }
 
@@ -379,56 +382,68 @@ extension EditorModel {
         looks.tileTask?.cancel()
         looks.tileTask = Task { [weak self] in
             guard let self else { return }
-            var still: ClipStillFrame?
-            var source = ClipLookTileSource.frame
-            if !lookPreviewsAvailable {
-                source = .sample("Previews need the source video. Looks still apply when it's back.")
-            } else {
-                do {
-                    still = try await lookStill()
-                    if still == nil { source = .sample(nil) }
-                } catch {
-                    source = .sample("Showing looks on a sample picture: this frame couldn't be read.")
-                }
-            }
-            guard !Task.isCancelled, let controls = currentClipControls, controls.clipId == panel.controls.clipId else { return }
-            let key = ClipLookTileKey(clipID: controls.clipId, stillTime: still?.renderedTime.seconds, controls: controls, pixels: size,
-                                      library: panel.library)
-            if let cached = looks.tileCache.tiles(key) {
-                looks.tileKey = key
-                looks.setTiles(cached, source: source)
+            guard lookPreviewsAvailable else {
+                await drawLookTiles(panel, still: nil, source: .sample("Previews need the source video. Looks still apply when it's back."),
+                                    pixels: size, first: first)
                 return
             }
-            let order = first + panel.library.visible.map(\.id).filter { !first.contains($0) }
-            let looksByID = order.compactMap { id in panel.library.look(id).map { (id, $0) } }
-            let center = Self.tileCenter(controls)
-            let card = ClipLookState.testCard, frame = still
-            var drawn: [String: CGImage] = [:]
-            let split = first.isEmpty ? looksByID.count : min(looksByID.count, first.count)
-            for batch in [Array(looksByID.prefix(split)), Array(looksByID.dropFirst(split))] where !batch.isEmpty {
-                let jobs = batch.map { id, look -> (String, ProjectClipControls) in
-                    var tile = controls
-                    tile.applyLook(look, amount: 100)
-                    return (id, tile)
-                }
-                let images = await Task.detached(priority: .userInitiated) { () -> [(String, CGImage)] in
-                    jobs.compactMap { id, tile in
-                        if Task.isCancelled { return nil }
-                        let image = if let frame { try? frame.tile(controls: tile, center: center, pixels: size) }
-                                    else { card.flatMap { try? ClipStillFrame.tile(of: $0, controls: tile, center: nil, pixels: size) } }
-                        return image.map { (id, $0) }
-                    }
-                }.value
-                guard !Task.isCancelled else { return }
-                for (id, image) in images { drawn[id] = image }
-                looks.setTiles(drawn, source: source)
+            var still: ClipStillFrame?
+            do { still = try await lookStill() } catch {
+                await drawLookTiles(panel, still: nil, source: .sample("Showing looks on a sample picture: this frame couldn't be read."),
+                                    pixels: size, first: first)
+                return
             }
-            #if DEBUG
-            looks.tileRenders += 1
-            #endif
-            looks.tileKey = key
-            looks.tileCache.store(drawn, for: key)
+            if still == nil, looks.stills == nil, nativePreview != nil {
+                // The player has no item yet: the test card until it has one (spec section 7.7).
+                await drawLookTiles(panel, still: nil, source: .sample(nil), pixels: size, first: first)
+                for _ in 0..<20 where still == nil && !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    still = try? await lookStill()
+                }
+            }
+            await drawLookTiles(panel, still: still, source: still == nil ? .sample(nil) : .frame, pixels: size, first: first)
         }
+    }
+
+    /// Draws the tiles of `panel`'s clip from `still` (the test card when nil), unless the cache has them; `first` first.
+    private func drawLookTiles(_ panel: ClipLookPanel, still: ClipStillFrame?, source: ClipLookTileSource, pixels size: Int, first: [String]) async {
+        guard !Task.isCancelled, let controls = currentClipControls, controls.clipId == panel.controls.clipId else { return }
+        let key = ClipLookTileKey(clipID: controls.clipId, stillTime: still?.renderedTime.seconds, controls: controls, pixels: size,
+                                  library: panel.library)
+        if let cached = looks.tileCache.tiles(key) {
+            looks.tileKey = key
+            looks.setTiles(cached, source: source)
+            return
+        }
+        let order = first + panel.library.visible.map(\.id).filter { !first.contains($0) }
+        let looksByID = order.compactMap { id in panel.library.look(id).map { (id, $0) } }
+        let center = Self.tileCenter(controls)
+        let card = ClipLookState.testCard
+        var drawn: [String: CGImage] = [:]
+        let split = first.isEmpty ? looksByID.count : min(looksByID.count, first.count)
+        for batch in [Array(looksByID.prefix(split)), Array(looksByID.dropFirst(split))] where !batch.isEmpty {
+            let jobs = batch.map { id, look -> (String, ProjectClipControls) in
+                var tile = controls
+                tile.applyLook(look, amount: 100)
+                return (id, tile)
+            }
+            let images = await Task.detached(priority: .userInitiated) { () -> [(String, CGImage)] in
+                jobs.compactMap { id, tile in
+                    if Task.isCancelled { return nil }
+                    let image = if let still { try? still.tile(controls: tile, center: center, pixels: size) }
+                                else { card.flatMap { try? ClipStillFrame.tile(of: $0, controls: tile, center: nil, pixels: size) } }
+                    return image.map { (id, $0) }
+                }
+            }.value
+            guard !Task.isCancelled else { return }
+            for (id, image) in images { drawn[id] = image }
+            looks.setTiles(drawn, source: source)
+        }
+        #if DEBUG
+        looks.tileRenders += 1
+        #endif
+        looks.tileKey = key
+        looks.tileCache.store(drawn, for: key)
     }
 
     /// The tile square's centre in the output frame, from the top left: the stored face anchor, else the middle.

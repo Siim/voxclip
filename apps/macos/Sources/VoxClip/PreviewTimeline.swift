@@ -202,7 +202,7 @@ enum ViewerTag: Equatable {
             if !standIn, let native = model.nativePreview {
                 PlayerSurface(player: native.player, onDisplayStall: { Task { await model.previewDisplayStalled() } })
             } else { ViewerStandIn(model: model) }
-            if let look = model.looks.preview {
+            if let look = model.looks.preview, look.clipID == model.renderedActiveClipID {
                 // A look's preview, Compare or a drag (looks spec §3.4): the export's frame with that colour over the paused player.
                 Image(decorative: look.image, scale: 1).resizable().interpolation(.high)
                     .accessibilityHidden(true)
@@ -220,7 +220,7 @@ enum ViewerTag: Equatable {
             }
         }
         .overlay(alignment: .topLeading) {
-            if let badge = model.looks.preview?.badge {
+            if let look = model.looks.preview, look.clipID == model.renderedActiveClipID, let badge = look.badge {
                 MediaChip(text: badge)
                     .columnLayoutEvidence("viewer.look.badge", text: badge)
                     .accessibilityIdentifier("voxclip.viewer.look")

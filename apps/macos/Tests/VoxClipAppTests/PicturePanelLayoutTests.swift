@@ -13,6 +13,9 @@ import Testing
 /// the column; and the disabled reasons show. With `VOXCLIP_REVIEW_CAPTURES` set, each state is also written as a PNG.
 @Suite("Picture panel layout", .serialized, .offlineFixtures)
 @MainActor struct PicturePanelLayoutTests {
+    /// The editor holds its undo manager weakly: the suite keeps it.
+    private let undo = UndoManager()
+
     private func openShell() async throws -> (WorkspaceShell, EditorModel) {
         _ = NSApplication.shared
         let shared = try SharedResources.locate()
@@ -28,7 +31,8 @@ import Testing
         let editor = try #require(shell.editor)
         editor.mediaResolved = true
         editor.refresh()
-        let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
+        undo.groupsByEvent = false
+        editor.undoManager = undo
         shell.choosePanelJob(.picture, for: editor)
         #expect(shell.panelJob(for: editor) == .picture && editor.renderedActiveClipID == "five-1")
         // The frame the looks preview on: a synthetic clip rendered at the project's 16:9.
@@ -125,6 +129,21 @@ import Testing
         #expect(found.texts["picture.reason"] == "Locate the video to change the look.")
         #expect(found.texts["picture.sample"] == "Previews need the source video. Looks still apply when it's back.")
         editor.mediaResolved = true
+    }
+
+    @Test func aTimedLookFromAskClaudeShowsWithRemove() async throws {
+        let (shell, editor) = try await openShell()
+        defer { editor.close() }
+        let span = try #require(ClipControlsProject.sourceSpan(of: "five-1", in: editor.project))
+        let effect = ClipEffect(id: "timed-bw", clipId: "five-1", kind: .colourLook, start: span.lowerBound + 1, end: span.lowerBound + 2, look: .bw)
+        let next = try ClipEffects.adding([effect], to: editor.project)
+        step(editor) { editor.replace(next, name: "Ask Claude"); return true }
+        let found = try await layout(shell, editor, size: CGSize(width: 404, height: 900), capture: "picture-timed-look")
+        #expect(found.texts["picture.timed"]?.hasPrefix("A timed B&W from Ask Claude replaces this look at ") == true, "\(found.texts["picture.timed"] ?? "none")")
+        let id = try #require(editor.project.clipEffects.first { $0.kind == .colourLook }?.id)
+        step(editor) { editor.removeTimedLook(id) }
+        #expect(editor.project.clipEffects.isEmpty, "\(editor.project.clipEffects.map(\.id))")
+        #expect(editor.undoManager?.undoActionName == "Remove timed look")
     }
 
     @Test func claudesPickHoverAndTheClipSectionAreCaptured() async throws {
