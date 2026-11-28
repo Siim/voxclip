@@ -5,6 +5,8 @@ import VoxClipCore
 struct CutEdgeOfferMemo {
     let edits: ProjectEdits
     let waveforms: [UUID?]
+    /// Whether the open Rewrite held paid work, which freezes its scope's edges.
+    let paidRewrite: Bool
     let offer: CutEdges.Offer
 }
 
@@ -57,10 +59,10 @@ extension EditorModel {
         return result
     }
 
-    /// The word ranges (positions in `project.transcript`, as `rewriteInputs` reads them) whose inputs paid or open work
-    /// is made from; nil is the full take. They are a clip with a whole-clip revoice or a lip sync, the open Rewrite
-    /// (paid or not: an edge moving at its scope's edge would set its proposal aside), and a Rewrite's paid takes saved
-    /// beside the project.
+    /// The word ranges (positions in `project.transcript`, as `rewriteInputs` reads them) whose inputs paid work is made
+    /// from; nil is the full take. They are a clip with a whole-clip revoice or a lip sync, the open Rewrite while it
+    /// holds paid takes (spec §3.2b; `hasPaidWork`, a paid whole-clip voice too), and a Rewrite's paid takes saved beside
+    /// the project.
     func paidCutEdgeScopes(_ project: Project) -> [ClosedRange<Int>?] {
         let words = project.transcript?.words ?? []
         guard !words.isEmpty else { return [] }
@@ -91,7 +93,7 @@ extension EditorModel {
             let holding = clipRanges.filter { $0.contains(position) }
             scopes += holding.isEmpty ? [nil] : holding
         }
-        if let session = openRewrite, session.isOpen {
+        if openRewritePaysCutEdgeScope, let session = openRewrite {
             let clip: String? = if case .clip(let id) = session.scope { id } else { nil }
             if let scope = bounds(session.rewriteScope, clip: clip) { scopes.append(scope) }
         }
@@ -110,6 +112,10 @@ extension EditorModel {
         }
         return scopes
     }
+
+    /// Whether the open Rewrite holds paid work, so its scope's edges are frozen: the memos are read again when it gets
+    /// or loses paid takes.
+    var openRewritePaysCutEdgeScope: Bool { openRewrite.map { $0.isOpen && $0.hasPaidWork } ?? false }
 
     /// The scopes of the Rewrite proposals saved beside this project with paid work in them (`RewriteSavedProposal`):
     /// read without changing anything, once per project change.
@@ -156,7 +162,8 @@ extension EditorModel {
         _ = transcriptRevision
         _ = openRewrite
         let waveforms = [waveform?.identity] + recordingWaveforms.keys.sorted().map { recordingWaveforms[$0]?.identity }
-        if let memo = cutEdgeOfferMemo, memo.edits == project.edits, memo.waveforms == waveforms { return memo.offer }
+        let paidRewrite = openRewritePaysCutEdgeScope
+        if let memo = cutEdgeOfferMemo, memo.edits == project.edits, memo.waveforms == waveforms, memo.paidRewrite == paidRewrite { return memo.offer }
         // With no kept/cut boundary left without a key there is nothing to count, and no levels to analyse.
         let cut = Set(project.edits.cutWordIds), edges = project.edits.cutEdges
         let open = !cut.isEmpty && CutEdges.recordings(project).contains { recording in
@@ -166,7 +173,7 @@ extension EditorModel {
         }
         let offer = open ? CutEdges.offer(project, envelopes: cutEdgeEnvelopes, freeze: cutEdgeFreeze(project))
             : CutEdges.offer(project, envelopes: [:])
-        cutEdgeOfferMemo = CutEdgeOfferMemo(edits: project.edits, waveforms: waveforms, offer: offer)
+        cutEdgeOfferMemo = CutEdgeOfferMemo(edits: project.edits, waveforms: waveforms, paidRewrite: paidRewrite, offer: offer)
         return offer
     }
 
@@ -215,11 +222,13 @@ extension EditorModel {
         _ = transcriptRevision
         _ = openRewrite
         let waveforms = [waveform?.identity] + recordingWaveforms.keys.sorted().map { recordingWaveforms[$0]?.identity }
-        if let memo = cutEdgeChoiceMemo, memo.selected == selected, memo.edits == project.edits, memo.waveforms == waveforms {
+        let paidRewrite = openRewritePaysCutEdgeScope
+        if let memo = cutEdgeChoiceMemo, memo.selected == selected, memo.edits == project.edits, memo.waveforms == waveforms,
+           memo.paidRewrite == paidRewrite {
             return memo.choice
         }
         let choice = cutEdgeChoice(selected: selected)
-        cutEdgeChoiceMemo = CutEdgeChoiceMemo(selected: selected, edits: project.edits, waveforms: waveforms, choice: choice)
+        cutEdgeChoiceMemo = CutEdgeChoiceMemo(selected: selected, edits: project.edits, waveforms: waveforms, paidRewrite: paidRewrite, choice: choice)
         return choice
     }
 
@@ -301,6 +310,7 @@ struct CutEdgeChoiceMemo {
     let selected: Set<String>
     let edits: ProjectEdits
     let waveforms: [UUID?]
+    let paidRewrite: Bool
     let choice: CutEdgeChoice?
 }
 

@@ -170,10 +170,17 @@ private actor CutEdgeTestSettings: SettingsStore {
         record.clipId = "c3"
         whole.voiceLab.wholeClipRevoices = [record]
         #expect(try cutW2(app, whole).isEmpty, "whole-clip revoice")
-        // An open Rewrite on that clip, paid or not.
-        #expect(try cutW2(app, Self.projectWithClip()) { model in
-            model.rewrite = RewriteSession(editor: model, scope: .clip("c3"), envelope: nil, connector: nil)
-        }.isEmpty, "open Rewrite")
+        // An open Rewrite on that clip with paid takes (spec §3.2b); one with nothing paid yet keeps nothing.
+        for takes in [true, false] {
+            var paid: Bool?
+            let edges = try cutW2(app, Self.projectWithClip()) { model in
+                let session = RewriteSession(editor: model, scope: .clip("c3"), envelope: nil, connector: nil)
+                model.rewrite = session
+                if takes { try DebugRewriteGeneration.install("ready", in: session) }
+                paid = session.hasPaidWork
+            }
+            #expect(paid == takes && edges == (takes ? [:] : ["w3": 1.205]), "open Rewrite, paid takes \(takes)")
+        }
         // Paid takes saved beside the project for that clip; a saved proposal with nothing paid keeps nothing.
         for takes in [1, 0] {
             let project = try Self.projectWithClip()
