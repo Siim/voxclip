@@ -193,18 +193,3 @@ public sealed class PipelineTests
         Assert.Equal(id == ConnectorId.Ollama ? 4 : 3, handler.Requests.Count);
     }
 }
-
-internal sealed class ScriptedConnector(ConnectorId id, Func<LlmRequest, string, CancellationToken, Task<RawCompletion>> respond) : ILlmConnector
-{
-    public ConnectorId Id => id;
-    internal ConnectorStatus Status { get; set; } = new ConnectorStatus.Ready();
-    internal int StatusCalls { get; private set; }
-    internal int ContextCalls { get; private set; }
-    internal int ContextTokens { get; set; } = 128000;
-    internal Func<string, CancellationToken, Task<int?>>? Context { get; init; }
-    internal List<LlmRequest> Requests { get; } = [];
-    public Task<ConnectorStatus> GetStatusAsync(CancellationToken ct) { ct.ThrowIfCancellationRequested(); StatusCalls++; return Task.FromResult(Status); }
-    public Task<IReadOnlyList<LlmModel>> GetModelsAsync(bool refresh, CancellationToken ct) => Task.FromResult<IReadOnlyList<LlmModel>>([]);
-    public Task<int?> GetContextTokensAsync(string model, CancellationToken ct) { ct.ThrowIfCancellationRequested(); ContextCalls++; return Context?.Invoke(model, ct) ?? Task.FromResult<int?>(ContextTokens); }
-    public Task<RawCompletion> SendAsync(LlmRequest request, string model, CancellationToken ct) { Requests.Add(request); return respond(request, model, ct); }
-}
