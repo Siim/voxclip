@@ -102,6 +102,28 @@ private actor CutEdgeTestSettings: SettingsStore {
         #expect(model.project.schemaVersion == 6)
     }
 
+    /// The editor reuses its planning segments when only cut words change, flipping their cut flags. A stored edge is on
+    /// the segment beside its boundary, so a step that keeps the keys and swaps the side that is cut plans as a fresh
+    /// editor does: here w2's two edges become w1's end and w3's start.
+    @Test func aSwapAroundStoredEdgesPlansAsAFreshEditorDoes() throws {
+        let app = try app()
+        let (model, undo) = editor(app, project: try Self.project())
+        defer { model.close(); try? FileManager.default.removeItem(at: app.locations.root) }
+        model.selectedWordIDs = ["w2"]
+        step(undo) { model.cutSelection() }
+        #expect(model.project.edits.cutEdges == ["w2": 0.705, "w3": 1.205])
+        // Without levels the swap seats nothing, and both keys stay at a kept/cut boundary.
+        model.waveform = nil
+        var swapped = model.project
+        swapped.edits.cutWordIds = ["w1", "w3"]
+        step(undo) { model.replace(swapped, name: "Swap cuts") }
+        #expect(model.project.edits.cutWordIds == ["w1", "w3"] && model.project.edits.cutEdges == ["w2": 0.705, "w3": 1.205])
+        #expect(model.plan?.cuts == [MediaInterval(startSample: 9_600, endSample: 33_840), MediaInterval(startSample: 57_840, endSample: 96_000)])
+        let (fresh, _) = editor(app, project: model.project, levels: nil)
+        defer { fresh.close() }
+        #expect(model.plan == fresh.plan)
+    }
+
     /// V1's levels: only the w2|w3 edge would move (to 1.205). Each kind of paid or open work keeps it where it is.
     static let lateBoundary = levels(dips: [79...81, 119...121])
 

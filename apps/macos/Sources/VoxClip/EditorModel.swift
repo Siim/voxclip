@@ -1093,7 +1093,9 @@ struct EditorRenderSnapshot {
                 var comparable = edits
                 comparable.cutWordIds = renderedEdits?.cutWordIds ?? []
                 let segments: [EditSegment]
-                if !transcriptChanged, activeClip == nil, comparable == renderedEdits, var cached = planningSegments {
+                // The cache only flips cut flags, so it holds only while no cut edge is stored: an edge sits on the
+                // segment beside its kept/cut boundary, which a flip can move (editing §5.10).
+                if !transcriptChanged, activeClip == nil, edits.cutEdges.isEmpty, comparable == renderedEdits, var cached = planningSegments {
                     let changed = state.cutWordIds.symmetricDifference(renderedEdits.map { Set($0.cutWordIds) } ?? [])
                     for id in changed {
                         if let position = planningWordIndex[id] { cached[position].cut = state.cutWordIds.contains(id) }
