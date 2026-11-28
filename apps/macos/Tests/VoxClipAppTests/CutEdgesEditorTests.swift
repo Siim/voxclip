@@ -3,6 +3,7 @@ import AppKit
 import Foundation
 import Testing
 @testable import VoxClipCore
+@testable import VoxClipMedia
 @testable import VoxClip
 
 /// Settings for an editor in a temporary data folder: nothing loads or saves.
@@ -318,6 +319,63 @@ private actor CutEdgeTestSettings: SettingsStore {
         let (none, _) = editor(app, project: try Self.project())
         defer { none.close() }
         #expect(none.fixCutEdgesReason == "All cut edges are in the quiet" && none.cutEdgeBarRow == nil)
+    }
+
+    /// A video that is there but can't be read (W3): its load ends without levels, so its cuts say Reconnect rather than
+    /// "Waveform still loading" for good, as the only recording or as a later one beside a recording that loads.
+    @Test func aRecordingThatCannotBeReadSaysReconnect() async throws {
+        let app = try app()
+        defer { try? FileManager.default.removeItem(at: app.locations.root) }
+        let unreadable = app.locations.root.appendingPathComponent("unreadable.mov"), readable = app.locations.root.appendingPathComponent("readable.wav")
+        try Data("not a video".utf8).write(to: unreadable)
+        let pcm = try PCMFile(url: readable, rate: 48_000, channels: 1, float: false)
+        try pcm.append(Data(count: 48_000 * 2 * 3))
+        try pcm.finish()
+        func opened(_ project: Project) -> EditorModel {
+            let model = EditorModel(document: VoxClipDocument(project: project, demo: false), app: app, preview: DemoPreviewEngine())
+            model.mediaResolved = true
+            model.refresh()
+            return model
+        }
+        var single = try Self.project(cut: ["w2"])
+        single.media.source.absolutePath = unreadable.path
+        let one = opened(single)
+        defer { one.close() }
+        one.selectedWordIDs = ["w2"]
+        #expect(one.cutEdgeBarRow?.reason == "Waveform still loading")
+        await one.waveformTask?.value
+        let reconnect = "Reconnect \(ProjectClock.label(single.media.source)) to fix its cut edges"
+        #expect(one.waveform == nil && one.cutEdgeBarRow?.reason == reconnect, "\(String(describing: one.cutEdgeBarRow))")
+        #expect(one.fixCutEdgesReason == reconnect)
+        // Two recordings: the first loads; the second is the file recorded but can't be decoded, or isn't the file recorded.
+        let shared = try SharedResources.locate()
+        for recorded in [true, false] {
+            var two = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/recordings/two-recordings.voxclip")))
+            var sources = try #require(two.media.spokenSources)
+            let companion = try #require(two.media.additionalSources.firstIndex { $0.contentKey == sources[0].sourceKey })
+            if recorded {
+                let key = try JSONProjectStore.contentKey(for: unreadable)
+                sources[0].sourceKey = key
+                two.media.additionalSources[companion].contentKey = key
+                two.media.additionalSources[companion].sizeBytes = Int64(try Data(contentsOf: unreadable).count)
+            }
+            sources[0].transcript.words = try #require(Self.project().transcript?.words)
+            two.media.spokenSources = sources
+            two.media.additionalSources[companion].durationSeconds = 3
+            two.media.additionalSources[companion].absolutePath = unreadable.path
+            two.media.source.absolutePath = readable.path
+            two.edits.cutWordIds = ["r2.w2"]; two.edits.cutPauseIds = []; two.edits.clips = []; two.edits.activeClipId = nil
+            let model = opened(two)
+            defer { model.close() }
+            await model.waveformTask?.value
+            let key = sources[0].sourceKey
+            #expect(model.waveform != nil && model.recordingWaveforms.keys.sorted() == [two.media.source.contentKey], "The first recording loads")
+            #expect(!model.recordingIsMissing(key))
+            model.selectedWordIDs = ["r2.w2"]
+            let later = "Reconnect \(model.recordingLabel(key)) to fix its cut edges"
+            #expect(model.recordingLabel(key) != ProjectClock.label(two.media.source))
+            #expect(model.cutEdgeBarRow?.reason == later && model.fixCutEdgesReason == later, "recorded \(recorded): \(String(describing: model.cutEdgeBarRow))")
+        }
     }
 
     // MARK: A selected cut

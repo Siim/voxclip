@@ -187,9 +187,10 @@ extension EditorModel {
         return unloadedLevelsReason(key)
     }
 
-    /// Why a recording's levels aren't there to seat on: its video is missing or unreadable, or they are still loading.
+    /// Why a recording's levels aren't there to seat on: its video is missing or unreadable (its load read no levels), or
+    /// they are still loading.
     func unloadedLevelsReason(_ key: String) -> String {
-        recordingIsMissing(key) || (key == project.media.source.contentKey && mediaUnreadable)
+        recordingIsMissing(key) || unreadableWaveformKeys.contains(key) || (key == project.media.source.contentKey && mediaUnreadable)
             ? "Reconnect \(recordingLabel(key)) to fix its cut edges" : "Waveform still loading"
     }
 
@@ -223,12 +224,14 @@ extension EditorModel {
         _ = openRewrite
         let waveforms = [waveform?.identity] + recordingWaveforms.keys.sorted().map { recordingWaveforms[$0]?.identity }
         let paidRewrite = openRewritePaysCutEdgeScope
+        let unreadable = unreadableWaveformKeys
         if let memo = cutEdgeChoiceMemo, memo.selected == selected, memo.edits == project.edits, memo.waveforms == waveforms,
-           memo.paidRewrite == paidRewrite {
+           memo.unreadable == unreadable, memo.paidRewrite == paidRewrite {
             return memo.choice
         }
         let choice = cutEdgeChoice(selected: selected)
-        cutEdgeChoiceMemo = CutEdgeChoiceMemo(selected: selected, edits: project.edits, waveforms: waveforms, paidRewrite: paidRewrite, choice: choice)
+        cutEdgeChoiceMemo = CutEdgeChoiceMemo(selected: selected, edits: project.edits, waveforms: waveforms, unreadable: unreadable,
+                                              paidRewrite: paidRewrite, choice: choice)
         return choice
     }
 
@@ -310,6 +313,8 @@ struct CutEdgeChoiceMemo {
     let selected: Set<String>
     let edits: ProjectEdits
     let waveforms: [UUID?]
+    /// The recordings that couldn't be read, whose reason is Reconnect.
+    let unreadable: Set<String>
     let paidRewrite: Bool
     let choice: CutEdgeChoice?
 }

@@ -667,28 +667,39 @@ struct EditorRenderSnapshot {
     #endif
     func loadWaveform() async {
         let key = waveformKey
+        // The key leaves out a recording whose file isn't there or isn't the one recorded: it has no levels to load.
+        var unreadable: Set<String> = []
+        if case .clock(_, _, let regions) = key {
+            unreadable = Set(ProjectClock.build(project).regions.map(\.key)).subtracting(regions.map(\.key.contentKey))
+        }
         #if DEBUG
         await beforeWaveformLoad()
         #endif
         let value = if let key { await WaveformCache.shared.load(key) } else { nil as WaveformData? }
         // Each recording's own levels too, in its local seconds, for the cut edge seat (editing §5.10); the clock load
-        // has just read them, so these come from the cache.
+        // has just read them, so these come from the cache. A recording whose load ends without levels can't be read.
         var recordings: [String: WaveformData] = [:]
         switch key {
-        case .single(let single): if let value { recordings[single.contentKey] = value }
+        case .single(let single): if let value { recordings[single.contentKey] = value } else { unreadable.insert(single.contentKey) }
         case .clock(_, _, let regions):
             for region in regions {
                 if let loaded = await WaveformCache.shared.load(region.key) { recordings[region.key.contentKey] = loaded }
+                else { unreadable.insert(region.key.contentKey) }
             }
         case nil: break
         }
         guard !Task.isCancelled, key == waveformKey else { return }
         waveform = value
         recordingWaveforms = recordings
+        unreadableWaveformKeys = unreadable
     }
     /// The loaded waveform of each recording by its key (the project's content key, a spoken recording's source key):
     /// what `CutEdges` seats a cut on. Empty until a load finishes.
     var recordingWaveforms: [String: WaveformData] = [:]
+    /// The recordings, by the same keys, that the last load read no levels for, because the file can't be read or isn't
+    /// the one recorded: their cut edges say Reconnect rather than "Waveform still loading". Empty while a load for a new
+    /// waveform key runs.
+    private(set) var unreadableWaveformKeys: Set<String> = []
     /// The inline offer as last counted, for the edits, waveforms and Rewrite it was counted over (EditorModel+CutEdges).
     @ObservationIgnored var cutEdgeOfferMemo: CutEdgeOfferMemo?
     /// The selected cut's edges as last read, for the selection, edits and waveforms they were read over.
@@ -704,6 +715,7 @@ struct EditorRenderSnapshot {
         let key = waveformKey
         guard key != requestedWaveformKey else { return }
         requestedWaveformKey = key
+        unreadableWaveformKeys = []
         waveformTask?.cancel()
         waveformTask = Task { [weak self] in await self?.loadWaveform() }
     }
