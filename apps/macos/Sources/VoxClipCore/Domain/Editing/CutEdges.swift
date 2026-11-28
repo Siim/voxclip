@@ -135,6 +135,16 @@ public enum CutEdges {
         fixing(project, envelopes: envelopes, freeze: freeze).offer
     }
 
+    /// §3.2 for the boundary between `words[index − 1]` and `words[index]` of one recording, read without levels: whether
+    /// a key there would move the inputs of the paid work beside it. The editors check it before a per-cut action pins a
+    /// key or moves one back.
+    public static func isFrozen(words: [TimedWord], at index: Int, cutWordIds: Set<String>, freeze: Freeze) -> Bool {
+        guard index >= 1, index < words.count else { return false }
+        let positions = Dictionary(words.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
+        let a = words[index - 1], b = words[index]
+        return frozen(a, b, cutWordIds: cutWordIds, window: window(a, b), freeze: freeze, positions: positions)
+    }
+
     /// §6 "Fix cut edges": seats every qualifying boundary without a key, as one step.
     public static func fix(_ project: Project, envelopes: [String: AudioEnvelope], freeze: [String: Freeze] = [:]) throws -> (project: Project, offer: Offer) {
         let (edges, offer) = fixing(project, envelopes: envelopes, freeze: freeze)
@@ -189,8 +199,8 @@ public enum CutEdges {
         let edgeLevel = Double(levels[edgeFrame])
         guard edgeLevel > max(analysis.threshold, 0.35 * analysis.speechLevel) else { return nil }
         let quiet = max(analysis.threshold, min(0.5 * edgeLevel, 0.35 * analysis.speechLevel))
-        let lowTime = max(edge - reach, a.start + max(0.04, 0.5 * (a.end - a.start)))
-        let highTime = min(edge + reach, b.end - max(0.04, 0.5 * (b.end - b.start)))
+        let search = window(a, b)
+        let lowTime = search.start, highTime = search.end
         let lowFrame = max(0, ceil(lowTime / frameLength))
         let highFrame = min(Double(levels.count - 1), floor(highTime / frameLength) - 1)
         guard lowFrame.isFinite, highFrame.isFinite, lowFrame <= highFrame else { return nil }
@@ -223,6 +233,14 @@ public enum CutEdges {
         let frames = Double(best.first + best.last + 1)
         let time = frames / 2 * frameLength
         return Point(value: EditingPrimitives.jsRound(time * sampleRate) / sampleRate, window: TimeRange(start: lowTime, end: highTime))
+    }
+
+    /// §3.1 step 5's window in seconds: within 0.15 s of the word edge, and never more than half of either word.
+    static func window(_ a: TimedWord, _ b: TimedWord) -> TimeRange {
+        let edge = (a.end + b.start) / 2
+        let lowTime = max(edge - reach, a.start + max(0.04, 0.5 * (a.end - a.start)))
+        let highTime = min(edge + reach, b.end - max(0.04, 0.5 * (b.end - b.start)))
+        return TimeRange(start: lowTime, end: highTime)
     }
 
     /// §3.2: a Voice Lab replace range overlaps the window, or the kept word lies inside a paid scope and the cut word

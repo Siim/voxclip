@@ -63,6 +63,19 @@ import Testing
         #expect(try CutEdges.fix(project, envelopes: [key: Self.v1Envelope()], freeze: inside).project.edits.cutEdges == ["w3": 1.205])
     }
 
+    /// The per-cut actions pin a key or move one back without levels to seat with: the same freeze decides.
+    @Test func aBoundaryBesidePaidWorkIsFrozenWithoutLevels() {
+        let words = Self.words()
+        let voice = CutEdges.Freeze(voiceRanges: [TimeRange(start: 1.30, end: 1.90)])
+        #expect(CutEdges.isFrozen(words: words, at: 2, cutWordIds: ["w2"], freeze: voice))
+        // w1|w2's window is 0.65–0.95 s, clear of the patch.
+        #expect(!CutEdges.isFrozen(words: words, at: 1, cutWordIds: ["w2"], freeze: voice))
+        #expect(CutEdges.isFrozen(words: words, at: 2, cutWordIds: ["w2"], freeze: CutEdges.Freeze(paidScopes: [ClipWordRange(startWordId: "w3", endWordId: "w3")])))
+        #expect(!CutEdges.isFrozen(words: words, at: 2, cutWordIds: ["w2"], freeze: CutEdges.Freeze(paidScopes: [ClipWordRange(startWordId: "w2", endWordId: "w3")])))
+        #expect(!CutEdges.isFrozen(words: words, at: 0, cutWordIds: ["w2"], freeze: voice))
+        #expect(!CutEdges.isFrozen(words: words, at: 3, cutWordIds: ["w2"], freeze: voice))
+    }
+
     @Test func anEdgeInALaterRecordingIsStoredInItsLocalSecondsAndPlannedOnTheClock() throws {
         var project = try ProjectJSON.decode(FixtureLoader.data("fixtures/recordings/two-recordings.voxclip"))
         var sources = try #require(project.media.spokenSources)
