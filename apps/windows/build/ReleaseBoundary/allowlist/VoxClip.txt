@@ -725,6 +725,7 @@ member VoxClip.App.Controls.PicturePanel :: field private hovered
 member VoxClip.App.Controls.PicturePanel :: field private lookValue
 member VoxClip.App.Controls.PicturePanel :: field private previewNote
 member VoxClip.App.Controls.PicturePanel :: field private removeToning
+member VoxClip.App.Controls.PicturePanel :: field private renderedClip
 member VoxClip.App.Controls.PicturePanel :: field private rest
 member VoxClip.App.Controls.PicturePanel :: field private scroller
 member VoxClip.App.Controls.PicturePanel :: field private shown
@@ -2431,6 +2432,7 @@ member VoxClip.App.Pages.EditorPage :: method private MakeItPlanAsync(VoxClip.Co
 member VoxClip.App.Pages.EditorPage :: method private MakeItVoiceAsync(VoxClip.App.ViewModels.MakeItRewriteRequest,System.Threading.CancellationToken)
 member VoxClip.App.Pages.EditorPage :: method private MakeItVoiceAvailable()
 member VoxClip.App.Pages.EditorPage :: method private Matches()
+member VoxClip.App.Pages.EditorPage :: method private MeasurePictureAsync(string,System.Threading.CancellationToken)
 member VoxClip.App.Pages.EditorPage :: method private MediaFromProject(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.Pages.EditorPage :: method private ModelChanged(object,System.EventArgs)
 member VoxClip.App.Pages.EditorPage :: method private MusicFolder()
