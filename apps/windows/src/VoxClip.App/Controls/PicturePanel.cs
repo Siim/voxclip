@@ -249,7 +249,15 @@ internal sealed class PicturePanel : Grid
         ScrollViewer.SetVerticalScrollMode(tiles, ScrollMode.Disabled);
         ScrollViewer.SetVerticalScrollBarVisibility(tiles, ScrollBarVisibility.Disabled);
         tiles.ItemClick += (_, args) => { if (args.ClickedItem is FrameworkElement { Tag: string id }) Apply(id); };
-        tiles.PointerExited += (_, _) => { hovered = null; hover.Stop(); Model.EndPreview(); };
+        // PointerExited bubbles from every tile and its parts; only leaving the grid itself ends the preview (looks spec §3.4), so moving
+        // between tiles keeps the last look on the viewer until the next tile's 120 ms replaces it.
+        tiles.PointerExited += (_, args) =>
+        {
+            var point = args.GetCurrentPoint(tiles).Position;
+            if (point.X >= 0 && point.Y >= 0 && point.X < tiles.ActualWidth && point.Y < tiles.ActualHeight) return;
+            hovered = null; hover.Stop(); Model.EndPreview();
+        };
+        tiles.PointerCanceled += (_, _) => { hovered = null; hover.Stop(); Model.EndPreview(); };
         tiles.LosingFocus += (_, args) => { if (args.NewFocusedElement is not DependencyObject next || !InputState.DescendsFrom(next, tiles)) Model.EndPreview(); };
         tiles.AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
         {

@@ -547,6 +547,8 @@ public sealed class PicturePanelTests
         Assert.Contains("Subscribe(false);", panel);
         Assert.Equal(1, panel.Split("Ui.EffectsChanged +=").Length - 1);
         Assert.Contains("Ui.EffectsChanged -= EffectsChanged", panel);
+        // The bubbled PointerExited of a tile doesn't end the hover preview; leaving the grid's bounds does.
+        Assert.Contains("args.GetCurrentPoint(tiles).Position", panel);
         Assert.DoesNotContain("Flyout", panel);
         Assert.DoesNotContain("ContentDialog", panel);
         Assert.DoesNotContain("App.Services", App("ViewModels/PicturePanelModel.cs"));
