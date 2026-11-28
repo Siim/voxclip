@@ -401,6 +401,14 @@ def chroma(c):
     return max(c) - min(c)
 
 
+def total(values):
+    """A plain left-to-right sum, as both Cores add (Python's sum() compensates since 3.12)."""
+    result = 0.0
+    for value in values:
+        result += value
+    return result
+
+
 def is_neutral(c, auto):
     l = luma(c)
     return chroma(c) < auto['neutralChroma'] and auto['neutralLumaMin'] <= l <= auto['neutralLumaMax']
@@ -455,11 +463,11 @@ def light_facts(frame, auto, light):
     face = face_pixels(frame)
     face_lumas = [luma(c) for c in face]
     facts = {'medianLuma': median(lumas), 'p95Luma': percentile95(lumas),
-             'faceMeanLuma': sum(face_lumas) / len(face_lumas) if face else None,
+             'faceMeanLuma': total(face_lumas) / len(face_lumas) if face else None,
              'faceMedianLuma': median(face_lumas) if face else None,
              'faceClippedShare': sum(1 for c in face if max(c) >= light['clippedChannel']) / len(face) if face else None,
              'neutralMeans': neutral_means(values, auto),
-             'meanChroma': sum(chroma(c) for c in values) / len(values)}
+             'meanChroma': total(chroma(c) for c in values) / len(values)}
     notes = []
     if facts['faceMedianLuma'] is not None and facts['faceMedianLuma'] < light['dimFaceLuma']:
         notes.append('face a little dark')

@@ -617,6 +617,19 @@ public struct ClipLookRecipe: Sendable, Equatable {
 
     public var isIdentity: Bool { self == ClipLookRecipe(.original) }
 
+    /// The matrix and bias, then the cubic after a clamp, without clamping the result: Core Image's arithmetic, which
+    /// `ClipGradeRecipe` chains from the base look into the adjustments (looks spec §5.2).
+    func transform(_ rgb: [Double]) -> [Double] {
+        (0..<3).map { row in
+            var value = bias[row]
+            for column in 0..<3 { value += matrix[row][column] * rgb[column] }
+            guard let curve else { return value }
+            value = min(1, max(0, value))
+            let squared = value * value
+            return curve[0] + curve[1] * value + curve[2] * squared + curve[3] * squared * value
+        }
+    }
+
     /// The recipe on one RGB value, clamped to 0…1 as an 8-bit frame stores it.
     public func apply(_ rgb: [Double]) -> [Double] {
         (0..<3).map { row in

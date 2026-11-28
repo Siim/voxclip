@@ -43,7 +43,20 @@ import Testing
                                                   splitTone: ClipSplitTone(shadowHue: 200, shadowSaturation: 10, highlightHue: 38,
                                                                            highlightSaturation: 30, balance: 0)))
         #expect(library.look("sepia")?.grade.splitTone == ClipSplitTone(shadowHue: 30, shadowSaturation: 60, highlightHue: 40, highlightSaturation: 40, balance: 0))
-        #expect(library.measure["auto"]?["balanceLimit"] == 40 && library.measure["light"]?["dimFaceLuma"] == 0.3)
+        #expect(library.measure.auto.balanceLimit == 40 && library.measure.auto.frames == 8 && library.measure.light.dimFaceLuma == 0.3)
+    }
+
+    /// The measure block holds exactly the numbers Auto and the light notes read.
+    @Test(arguments: [("auto", "faceTarget", nil), ("auto", "faceTargets", JSONValue.number(0.5)), ("light", "lowColour", .number(0.1)),
+                      ("auto", "frames", .number(2.5)), ("auto", "frames", .number(0)), ("light", "warmCool", .string("0.04"))])
+    func aBrokenMeasureBlockIsRefused(_ group: String, _ key: String, _ value: JSONValue?) throws {
+        guard case .object(var root) = try Self.document(), case .object(var groups) = root["measure"],
+              case .object(var numbers) = groups[group] else { Issue.record("no measure block"); return }
+        numbers[key] = value
+        groups[group] = .object(numbers)
+        root["measure"] = .object(groups)
+        let data = try JSONEncoder().encode(JSONValue.object(root))
+        #expect(throws: VoxClipError.sharedResourcesMissing) { try ClipLookLibrary.parse(data) }
     }
 
     /// Today's eight looks keep their IDs, labels and values, and are the file's classic looks; the four Mac presets that

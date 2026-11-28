@@ -52,8 +52,8 @@ public struct ClipLookLibrary: Sendable, Equatable {
     public let categories: [ClipLookCategory]
     /// Every look in display order, hidden ones included.
     public let looks: [ClipLookPreset]
-    /// The `measure` groups (`auto`, `light`): name to number.
-    public let measure: [String: [String: Double]]
+    /// The shared numbers for Auto and the planner's light notes.
+    public let measure: ClipColorMeasure
 
     /// The looks a picker offers.
     public var visible: [ClipLookPreset] { looks.filter { !$0.hidden } }
@@ -85,7 +85,7 @@ public struct ClipLookLibrary: Sendable, Equatable {
                   let label = fields["label"]?.aiString, !label.isEmpty, !categories.contains(where: { $0.id == id }) else { return nil }
             categories.append(ClipLookCategory(id: id, label: label))
         }
-        var measure: [String: [String: Double]] = [:]
+        var numbersByGroup: [String: [String: Double]] = [:]
         guard !categories.isEmpty, case .object(let groups) = root["measure"], Set(groups.keys) == ["auto", "light"] else { return nil }
         for (name, group) in groups {
             guard case .object(let values) = group, !values.isEmpty else { return nil }
@@ -94,8 +94,9 @@ public struct ClipLookLibrary: Sendable, Equatable {
                 guard case .number(let number) = value, number.isFinite else { return nil }
                 numbers[key] = number
             }
-            measure[name] = numbers
+            numbersByGroup[name] = numbers
         }
+        guard let measure = ClipColorMeasure(numbersByGroup) else { return nil }
         let required: Set<String> = ["id", "label", "category", "strength", "line", "planner", "classic", "base", "adjustments", "grade"]
         var looks: [ClipLookPreset] = []
         for item in root["looks"]?.aiArray ?? [] {

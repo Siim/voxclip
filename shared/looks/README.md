@@ -7,7 +7,14 @@ doc/design.md section 6.9.
 ## Shape
 
 - `categories`: `{id, label}` in display order (natural, bright, warm, film, cinematic, bw).
-- `measure`: the shared numbers for Auto (`auto`) and the planner's light notes (`light`).
+- `measure`: the shared numbers for Auto (`auto`) and the planner's light notes (`light`), exactly these keys:
+  - `auto`: `frames` and `frameSize` (how many analysed frames, at what long side); `neutralChroma`, `neutralLumaMin` and
+    `neutralLumaMax` (a neutral pixel); `balanceScale`, `balanceLimit` and `balanceDeadZone` (Temperature and Tint in
+    points: the full white balance times the scale, clamped, and 0 inside the dead zone); `faceTarget`, `frameTarget`,
+    `exposureStrength`, `exposureLimit` and `exposureDeadZone` (Exposure); `faceClipLuma` and `faceClipShare` (Exposure
+    never rises past that share of bright face pixels).
+  - `light`: `dimFaceLuma`, `clippedChannel`, `clippedShare`, `warmCool`, `greenMagenta`, `lowColor` and `highColor`, the
+    thresholds of the per-frame light line.
 - `looks`: the looks in display order. Each holds `id`, `label`, `category`, `strength` (`light`, `medium` or `strong`),
   `line` (one line for help, screen readers and the prompt), `planner` (`pickWhen` and the `amount` the planner starts at
   on a face), `classic` (one of the eight looks projects used before this file), an optional `hidden`, `base` (one of the
