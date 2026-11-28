@@ -95,6 +95,26 @@ struct HarnessProposalTests {
         }
     }
 
+    /// Looks spec §8.5: a timeline's look is any look of shared/looks/clip-looks.json at its amount, checked against the file;
+    /// one VoxClip doesn't have refuses the proposal with the reason.
+    @Test func aTimelinesLookIsALooksFileIDAtItsAmount() throws {
+        let shared = SharedResources(root: try FixtureLoader.sharedRoot())
+        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/clip-from-long-take.voxclip")))
+        func proposal(_ look: String) throws -> HarnessProposal {
+            let wire = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"clipId":"clip-2f1c","reason":"Warmer.","look":\#(look)}"#.utf8))
+            return try HarnessProposal(timeline: HarnessTimeline.read(wire), project: project)
+        }
+        let kept = try proposal(#"{"id":"warmPrint","amount":70,"reason":"A memory"}"#).review(project, shared: shared).project
+        let controls = try #require(ClipControlsProject.controls(for: "clip-2f1c", in: kept))
+        #expect(controls.colorGrade?.preset == "warmPrint" && controls.colorGrade?.amount == 70)
+        #expect(try ClipLookLibrary.load(shared: shared).match(controls)?.look.id == "warmPrint")
+        let classic = try proposal(#"{"id":"warm"}"#).review(project, shared: shared).project
+        #expect(ClipControlsProject.controls(for: "clip-2f1c", in: classic)?.look == .warm)
+        #expect(ClipControlsProject.controls(for: "clip-2f1c", in: classic)?.colorGrade == nil)
+        let refusal = #expect(throws: HarnessError.self) { try proposal(#"{"id":"neonDream"}"#).review(project, shared: shared) }
+        #expect(refusal?.errorDescription == "Choose one of VoxClip's looks.")
+    }
+
     @Test func newStoryPreservesPartOrderAndLeavesRewritesPending() throws {
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())
         let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/clip-from-long-take.voxclip")))
