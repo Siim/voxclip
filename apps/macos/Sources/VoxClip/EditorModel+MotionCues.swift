@@ -50,6 +50,28 @@ struct TimelineMotionCue: Equatable {
         selectedFrame = min(1, next.keyframes.count - 1)
     }
 
+    /// Undo, Redo, timeline edits and Ask Claude or Make it undo change the saved cue while the panel
+    /// stays open. The draft takes the new saved values and keeps the fields the user changed but did not apply.
+    func follow(_ model: EditorModel) {
+        guard let original = draft.original else { return }
+        let stored = model.project.motionCues.first { $0.id == original.id }
+        guard stored != original else { return }
+        guard let stored, stored.clipID == draft.clipID else {
+            selectCue("", model: model)
+            status = model.undoManager?.isUndoing == true
+                ? "This cue was removed. Redo restores it." : "This cue was removed. Undo restores it."
+            return
+        }
+        var next = MotionCueDraft(cue: stored, original: stored)
+        if draft.sourceStart != original.sourceStart { next.sourceStart = draft.sourceStart }
+        if draft.sourceEnd != original.sourceEnd { next.sourceEnd = draft.sourceEnd }
+        if draft.keyframes != original.keyframes { next.keyframes = draft.keyframes }
+        let kept = next.cue != stored
+        draft = next
+        selectedFrame = min(selectedFrame, next.keyframes.count - 1)
+        if kept { status = "The saved cue changed. Your unapplied edits are kept." }
+    }
+
     @discardableResult func apply(model: EditorModel) -> Bool {
         guard model.motionCueEditing === self else { return false }
         guard model.applyMotionCue(draft) else {

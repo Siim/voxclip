@@ -325,6 +325,56 @@ private actor MotionCueTestSettings: SettingsStore {
         #expect(model.project.motionCues == [changed])
     }
 
+    @Test func openDraftFollowsUndoAndTimelineChangesToItsCue() throws {
+        let model = try editor(); defer { model.close() }
+        let shell = WorkspaceShell(app: model.app)
+        let undo = UndoManager(); undo.groupsByEvent = false
+        model.undoManager = undo
+        let added = try draft(model)
+        grouped(undo) { #expect(model.applyMotionCue(added)) }
+        let stored = try #require(model.project.motionCues.first)
+        #expect(model.openMotionCueJob(id: stored.id, in: shell))
+        let editing = try #require(model.motionCueEditing)
+        editing.setFrameValue(.scale, to: 1.25)
+        grouped(undo) { #expect(editing.apply(model: model)) }
+        undo.undo()
+        // Undo restored the earlier cue: the open draft follows it instead of going stale.
+        #expect(model.project.motionCues == [stored])
+        #expect(model.motionCueValidation(editing.draft) == nil)
+        #expect(editing.draft.original == stored && editing.draft.cue == stored)
+
+        // An unapplied edit survives a timeline trim of the same cue, and the trim is kept too.
+        let frame = editing.selectedFrame
+        editing.setFrameValue(.scale, to: 1.3)
+        grouped(undo) { #expect(model.commitTimelineItemEdit(.trim(item: .motion(stored.id), edge: .end, toSource: 13.5))) }
+        let trimmed = try #require(model.project.motionCues.first)
+        #expect(trimmed.sourceEnd != stored.sourceEnd && trimmed.keyframes == stored.keyframes)
+        #expect(model.motionCueValidation(editing.draft) == nil)
+        #expect(editing.draft.original == trimmed && editing.draft.sourceEnd == trimmed.sourceEnd)
+        #expect(editing.selectedFrame == frame && editing.frameValue(.scale) == 1.3)
+        #expect(editing.status == "The saved cue changed. Your unapplied edits are kept.")
+        grouped(undo) { #expect(editing.apply(model: model)) }
+        let saved = try #require(model.project.motionCues.first)
+        #expect(saved.sourceEnd == trimmed.sourceEnd && saved.keyframes[frame].scale == 1.3)
+
+        // Undoing back past the Add removes the cue: the draft resets and says how to bring it back.
+        undo.undo(); undo.undo()
+        #expect(editing.draft.original == stored)
+        undo.undo()
+        #expect(model.project.motionCues.isEmpty && model.motionCueEditing === editing)
+        #expect(editing.draft.original == nil && editing.draft.id != stored.id)
+        #expect(editing.status == "This cue was removed. Redo restores it.")
+        undo.redo()
+        #expect(model.project.motionCues == [stored])
+
+        // A timeline Delete is undone with Undo.
+        #expect(model.openMotionCueJob(id: stored.id, in: shell))
+        let reopened = try #require(model.motionCueEditing)
+        grouped(undo) { #expect(model.commitTimelineItemEdit(.delete(items: [.motion(stored.id)]))) }
+        #expect(model.project.motionCues.isEmpty && reopened.draft.original == nil)
+        #expect(reopened.status == "This cue was removed. Undo restores it.")
+    }
+
     @Test(arguments: [false, true])
     func escapeFromTheInlineHostDiscardsTheDraftAndReturnsToThePreviousJob(fromField: Bool) async throws {
         let model = try editor(); defer { model.close() }
