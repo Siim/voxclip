@@ -1034,16 +1034,19 @@ public sealed partial class EditorPage : Page
             if (preview is not null && !ViewModel.IsReadOnly) await preview.PlayAsync(token);
         });
     }
-    /// <summary>The timeline edit bar's Play range: from In, stopping at Out (issue #41). Space playback is unchanged.</summary>
+    /// <summary>The timeline edit bar's Play range: from In, stopping at Out (issue #41), both on the edited clock of the one render
+    /// timeline it seeks on, so reordered story parts never run past Out. Space playback is unchanged.</summary>
     private async Task PlayTimelineRangeAsync(TimeRange range)
     {
         await playback.EndCorrectionAsync(ViewModel);
         if (preview is null || ViewModel.IsReadOnly) return;
         await SourceTransportAsync(async token =>
         {
-            await SeekSourceCoreAsync(range.Start, token);
-            previewStop = (range.End, false);
-            if (preview is not null && !ViewModel.IsReadOnly) await preview.PlayAsync(token);
+            var snapshot = await SnapshotAsync(token);
+            if (preview is null || ViewModel.IsReadOnly || EditorViewModel.TimelineRangePlayback(snapshot.Timeline, range) is not { } play) return;
+            await preview.SeekAsync(play.Start, true, token);
+            previewStop = (play.Stop, true);
+            await preview.PlayAsync(token);
         });
     }
     private void DisplayChanged(object sender, RoutedEventArgs args)

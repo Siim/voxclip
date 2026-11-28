@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
 
@@ -55,7 +56,8 @@ public sealed partial class EditorViewModel
     /// <summary>Why the last range action was refused, shown inline in the timeline's edit bar; any selection change clears it.</summary>
     internal string? TimelineRangeMessage { get; private set; }
 
-    /// <summary>Play range: the page seeks to In and plays, stopping at Out (source seconds).</summary>
+    /// <summary>Play range: the page seeks to In and plays, stopping at Out (project clock; the page maps both onto the preview's
+    /// timeline with <see cref="TimelineRangePlayback"/>).</summary>
     internal event EventHandler<TimeRange>? TimelineRangePlayRequested;
 
     /// <summary>The take's frame rate: the grid the item nudge uses (TimelineEdits frames), 30 when unknown.</summary>
@@ -318,6 +320,16 @@ public sealed partial class EditorViewModel
 
     /// <summary>Why Play range can't run, or null.</summary>
     internal string? TimelinePlayRangeReason => TimelineActionRange is null ? TimelineRangeHint : null;
+
+    /// <summary>Where Play range seeks and stops on the preview's render <paramref name="timeline"/>, both on its edited clock: In
+    /// mapped as a start and Out as an end, so a stop at a story part's end is that part's end even when the next part plays earlier
+    /// source. Null when nothing of <paramref name="range"/> (project clock) plays.</summary>
+    internal static (double Start, double Stop)? TimelineRangePlayback(RenderTimeline timeline, TimeRange range)
+    {
+        var start = timeline.MapTime(range.Start);
+        var stop = timeline.MapEndTime(range.End);
+        return stop > start ? (start, stop) : null;
+    }
 
     /// <summary>Play range: from In, stopping at Out.</summary>
     internal bool PlayTimelineRange()

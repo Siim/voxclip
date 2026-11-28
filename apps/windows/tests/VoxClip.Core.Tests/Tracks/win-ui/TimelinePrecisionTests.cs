@@ -4,6 +4,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Project;
 using VoxClip.Tests.Support;
 using Xunit;
@@ -333,6 +334,32 @@ public sealed class TimelinePrecisionTests
         Assert.Matches(@"Command\(""clip\.make"",[^\n]*ViewModel\.TimelineMakeClipReason is null", pages);
         Assert.DoesNotMatch(@"Command\(""clip\.make"",[^\n]*HasSelection", pages);
         Assert.Contains("model => model.TimelineMakeClipReason is null", EditBarSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PlayRangeStopsAtOutOnTheEditedClockOfTheTimelineItSeeksOn()
+    {
+        // A story that plays words 20–24, then words 10–12: after part 1 the source clock runs back before Out, so a stop on the
+        // source clock never comes.
+        var model = Model();
+        var story = model.Project.Edits.Clips[0] with { StartWordId = "t10", EndWordId = "t24", Parts = [new("p1", "t20", "t24"), new("p2", "t10", "t12")] };
+        model = new(model.Project with { Edits = model.Project.Edits with { Clips = [story], CutWordIds = [] } });
+        Assert.True(model.IsStoryClip);
+        model.SetExactRange(23, 40, 23);
+        var range = Assert.IsType<TimeRange>(model.TimelineActionRange);
+        var timeline = new RenderTimeline.Legacy(TimelineLayout.Plan(model));
+        var play = Assert.IsType<(double Start, double Stop)>(EditorViewModel.TimelineRangePlayback(timeline, range));
+        Assert.Equal(timeline.MapTime(range.Start), play.Start, 9);
+        Assert.Equal(timeline.MapEndTime(range.End), play.Stop, 9);
+        Assert.True(play.Stop > play.Start);
+        Assert.True(play.Stop <= timeline.MapTime(model.Words[model.Index("t10")].Start) + 1e-9);
+        // The page seeks and stops on that one render timeline, on the edited clock.
+        var page = File.ReadAllText(Path.Combine(AppRoot, "Pages", "EditorPage.xaml.cs"));
+        var start = page.IndexOf("private async Task PlayTimelineRangeAsync(", StringComparison.Ordinal);
+        var body = page[start..page.IndexOf("    private ", start + 1, StringComparison.Ordinal)];
+        Assert.Contains("EditorViewModel.TimelineRangePlayback(snapshot.Timeline, range)", body, StringComparison.Ordinal);
+        Assert.Contains("previewStop = (play.Stop, true);", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("range.End", body, StringComparison.Ordinal);
     }
 
     [Fact]
