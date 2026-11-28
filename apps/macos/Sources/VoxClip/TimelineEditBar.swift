@@ -82,6 +82,20 @@ extension EditorModel {
     }
 }
 
+/// One action of the shallow timeline's Edit menu: its title, whether it can run, why not, and what it runs.
+struct TimelineEditMenuAction {
+    let title: String
+    let enabled: Bool
+    let reason: String?
+    let run: @MainActor () -> Void
+}
+
+/// A row of the shallow timeline's Edit menu: an action by its index, or the reason line under disabled ones.
+enum TimelineEditMenuRow: Equatable {
+    case action(Int)
+    case reason(String)
+}
+
 /// Keep the edit actions above the scrollable tracks, including when E1 is off screen. The
 /// range actions (issue #41) act on the exact range, else on the selected words; each one is
 /// always shown, disabled with its reason when it can't run. They drop to icons when the bar is narrow.
@@ -94,19 +108,19 @@ extension EditorModel {
                 Menu("Edit") {
                     Button("Titles & effects…") { model.openTimelineEditor(.effects) }
                     Button("\(model.timelineTrimTitle)…") { model.openTimelineEditor(.trim) }.disabled(!model.timelineCanTrim)
-                    if model.timelineRange != nil { Button("Cut range") {}.disabled(true) }
-                    else { Button("Cut selection") { model.cutSelection() }.disabled(!model.timelineCanCut) }
-                    Divider()
-                    Button("Play range") { model.playTimelineRange() }.disabled(model.timelinePlayRangeReason != nil)
-                    Button("\u{2726} Ask Claude") { model.askClaudeOnTimelineRange() }.disabled(model.timelineAskClaudeReason != nil)
-                    Button("Add title") { model.addTimelineTitleOverRange() }.disabled(model.timelineAddTitleReason != nil)
-                    Button("Trim item to range") { model.trimTimelineItemToRange() }.disabled(model.timelineTrimToRangeReason != nil)
-                    Button("Make clip") { model.makeClip() }.disabled(model.timelineMakeClipReason != nil)
-                    Divider()
-                    if let choice = model.selectedCutEdge {
-                        Button(choice.action) { model.useSelectedCutEdge() }.disabled(choice.reason != nil || !model.capabilities.edit)
+                    let groups = Self.menuGroups(model)
+                    ForEach(groups.indices, id: \.self) { group in
+                        if group > 0 { Divider() }
+                        let actions = groups[group]
+                        ForEach(Array(Self.menuRows(actions).enumerated()), id: \.offset) { _, row in
+                            switch row {
+                            case .action(let index):
+                                Button(actions[index].title) { actions[index].run() }.disabled(!actions[index].enabled)
+                            case .reason(let text):
+                                Text(text)
+                            }
+                        }
                     }
-                    Button("Fix cut edges") { model.fixCutEdges() }.disabled(!model.canFixCutEdges)
                 }.fixedSize().controlSize(.small)
                 .accessibilityLabel("Timeline edits")
                 .columnLayoutEvidence("timeline.editMenu")
@@ -136,6 +150,46 @@ extension EditorModel {
                 .padding(.horizontal, 10).frame(height: TimelineMetrics.editBar)
             }
         }
+    }
+
+    /// The shallow timeline's Edit menu after Titles & effects and Trim: the cut, the range actions and the cut edge
+    /// actions, each disabled with its reason as the wide bar's are.
+    static func menuGroups(_ model: EditorModel) -> [[TimelineEditMenuAction]] {
+        func action(_ title: String, _ reason: String?, run: @escaping @MainActor () -> Void) -> TimelineEditMenuAction {
+            TimelineEditMenuAction(title: title, enabled: reason == nil, reason: reason, run: run)
+        }
+        let cut = model.timelineRange != nil
+            ? action("Cut range", EditorModel.timelineCutRangeReason) {}
+            : TimelineEditMenuAction(title: "Cut selection", enabled: model.timelineCanCut, reason: nil) { model.cutSelection() }
+        let range = [
+            action("Play range", model.timelinePlayRangeReason) { model.playTimelineRange() },
+            action("\u{2726} Ask Claude", model.timelineAskClaudeReason) { model.askClaudeOnTimelineRange() },
+            action("Add title", model.timelineAddTitleReason) { model.addTimelineTitleOverRange() },
+            action("Trim item to range", model.timelineTrimToRangeReason) { model.trimTimelineItemToRange() },
+            action("Make clip", model.timelineMakeClipReason) { model.makeClip() },
+        ]
+        var edges: [TimelineEditMenuAction] = []
+        if let choice = model.selectedCutEdge {
+            edges.append(TimelineEditMenuAction(title: choice.action, enabled: choice.reason == nil && model.capabilities.edit, reason: choice.reason) {
+                model.useSelectedCutEdge()
+            })
+        }
+        edges.append(TimelineEditMenuAction(title: "Fix cut edges", enabled: model.canFixCutEdges, reason: model.fixCutEdgesReason) { model.fixCutEdges() })
+        return [[cut], range, edges]
+    }
+
+    /// The menu's rows for `actions`: each action, and after a run of disabled ones that share a reason, the reason
+    /// once as a line of its own. A menu item has no tooltip VoiceOver reads, so the line is how the reason is seen
+    /// and heard.
+    static func menuRows(_ actions: [TimelineEditMenuAction]) -> [TimelineEditMenuRow] {
+        var rows: [TimelineEditMenuRow] = []
+        for (index, action) in actions.enumerated() {
+            rows.append(.action(index))
+            guard !action.enabled, let reason = action.reason else { continue }
+            let next = actions.indices.contains(index + 1) ? actions[index + 1] : nil
+            if next.map({ !$0.enabled && $0.reason == reason }) != true { rows.append(.reason(reason)) }
+        }
+        return rows
     }
 
     /// Cut selection, or Cut range while an exact range is set: shown, never run, until exact cuts ship.

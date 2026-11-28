@@ -452,6 +452,33 @@ private actor PrecisionTestSettings: SettingsStore {
         #expect(model.timelineRangeClipWords.map { [$0.start, $0.end] } == ["t21", "t22"], "Word 21's tail is in the range")
     }
 
+    /// A shallow timeline's Edit menu has no tooltips VoiceOver reads, so each disabled range or cut edge action's
+    /// reason is a line of its own under it, once for a run of actions that share it.
+    @Test func theShallowEditMenuShowsTheReasonsOfItsDisabledActions() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = true
+        func rows(_ group: Int) -> [String] {
+            let actions = TimelineEditBar.menuGroups(model)[group]
+            return TimelineEditBar.menuRows(actions).map { row in
+                switch row {
+                case .action(let index): actions[index].enabled ? actions[index].title : "(\(actions[index].title))"
+                case .reason(let text): "— " + text
+                }
+            }
+        }
+        let hint = "— " + EditorModel.timelineRangeHint
+        #expect(rows(0) == ["(Cut selection)"])
+        let connector = "— Choose an AI connector in Settings \u{203A} AI."
+        #expect(rows(1) == ["(Play range)", hint, "(\u{2726} Ask Claude)", connector, "(Add title)", "(Trim item to range)", "(Make clip)", hint])
+        #expect(rows(2) == ["(Fix cut edges)", "— Waveform still loading"], "No waveform is loaded in the test")
+        // A range wholly inside the cut words 14 and 15.
+        _ = model.setTimelineRange(from: 14.2, to: 15.5, on: .source)
+        #expect(rows(0) == ["(Cut range)", "— " + EditorModel.timelineCutRangeReason])
+        #expect(rows(1) == ["(Play range)", "— " + EditorModel.timelinePlayRangeAllCutReason, "(\u{2726} Ask Claude)", connector, "Add title", "(Trim item to range)",
+                            "— Put the range over a title, picture, sound or song to trim it.", "Make clip"])
+    }
+
     @Test func editMenuCutAndRestoreSelectionAreOffWhileARangeIsSet() async throws {
         let app = try app()
         await app.shell.attachForTesting(VoxClipDocument(project: try project(), demo: true), preview: DemoPreviewEngine())
