@@ -163,6 +163,8 @@ internal static class CliAutopilot
         var service = new ClipAutopilotService(runner, catalog, root);
         var fonts = ClipAutopilotFonts.Load(root);
         var stickers = AskClaudePrompt.Load(root).Stickers;
+        // A plan picks any look of the looks file at its amount, as on the Mac (looks spec §9.6).
+        var looks = ClipLookLibrary.Load(root);
         var ready = Channel.CreateUnbounded<(int Clip, ClipAutopilotPlan Plan)>();
         void Progress(ClipAutopilotProgress progress)
         {
@@ -191,7 +193,7 @@ internal static class CliAutopilot
                 if (sent.Of(index) is { } scanning) await scanning.Opening.ConfigureAwait(false);
                 var clipId = Guid.NewGuid().ToString("D");
                 var applyStart = clock.Elapsed;
-                var (applied, pending) = ClipAutopilotMapping.Apply(ClipAutopilotMapping.Operations(plan, clipId, project, fonts, stickers), project);
+                var (applied, pending) = ClipAutopilotMapping.Apply(ClipAutopilotMapping.Operations(plan, clipId, project, fonts, stickers), project, looks: looks);
                 project = applied;
                 var music = CliMusic.AutopilotTrack(plan, clipId, project, start.Music, dataRoot);
                 if (music is not null) project = MusicProject.Setting(music, clipId, project);
