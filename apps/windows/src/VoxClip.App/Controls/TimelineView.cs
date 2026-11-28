@@ -238,6 +238,7 @@ public sealed partial class TimelineView : UserControl
         var next = Command("⏭", "Go to Out", () => Seek(ClipBounds()?.End ?? SourceDuration));
         transport.Children.Add(previous); transport.Children.Add(play); transport.Children.Add(next); transport.Children.Add(time);
         transport.Children.Add(sourceClock); transport.Children.Add(selectionLength);
+        InitializeCutEdgeRow(transport);
         Grid.SetColumn(mode, 1); toolbar.Children.Add(mode);
         Grid.SetColumn(transport, 2); toolbar.Children.Add(transport);
         var tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
@@ -466,12 +467,12 @@ public sealed partial class TimelineView : UserControl
         if (model is not null) Detach();
         disposed = false;
         model = value; model.Changed += Changed; model.SelectionChanged += SelectionChanged;
-        model.PropertyChanged += PropertyChanged; model.AskClaudeChanged += AskClaudeChanged;
+        model.PropertyChanged += PropertyChanged; model.AskClaudeChanged += AskClaudeChanged; model.CutEdgesChanged += CutEdgesChanged;
         Rebuild(true);
     }
     public void Detach()
     {
-        if (model is not null) { model.Changed -= Changed; model.SelectionChanged -= SelectionChanged; model.PropertyChanged -= PropertyChanged; model.AskClaudeChanged -= AskClaudeChanged; }
+        if (model is not null) { model.Changed -= Changed; model.SelectionChanged -= SelectionChanged; model.PropertyChanged -= PropertyChanged; model.AskClaudeChanged -= AskClaudeChanged; model.CutEdgesChanged -= CutEdgesChanged; }
         disposed = true; CancelTrim(); EndTimelineCapture(); ResetItemAudio(); itemPeers.Children.Clear(); itemNodes.Clear(); ClearFilmstrip(); waveformRequest?.Cancel();
         model = null; plan = null; envelope = null; captionPages = []; captionCues = []; captionSnapshot = null; storyRendering = null; story = null;
         scene.Tiles.Clear(); geometryCache.Clear(); attachedSource = null;
@@ -813,6 +814,7 @@ public sealed partial class TimelineView : UserControl
         DrawHeaders(); DrawOverview(width); DrawRuler(width); DrawCaptions(width); DrawAskRange(width); DrawStory(width);
         selectionLength.Text = model.HasSelection ? string.Create(System.Globalization.CultureInfo.InvariantCulture,
             $"{Math.Max(0, ToDisplay(model.Words[model.SelectionEnd].End) - ToDisplay(model.Words[model.SelectionStart].Start)):0.0} s selected") : "";
+        RefreshCutEdgeRow();
         updatingControls = true;
         zoom.Value = AxisDuration > .1 ? Math.Clamp(Math.Log(Math.Max(1, AxisDuration / view.Duration)) / Math.Log(AxisDuration / .1) * 100, 0, 100) : 0;
         updatingControls = false;

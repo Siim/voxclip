@@ -68,6 +68,7 @@
                     <AppBarButton Label="Cut fillers" Click="FillersClicked" KeyboardAcceleratorTextOverride="Ctrl+Shift+U"/>
                     <AppBarButton Label="Tighten pauses" Click="PausesClicked" KeyboardAcceleratorTextOverride="Ctrl+Shift+P"/>
                     <AppBarButton Label="Restore cuts" Click="RestoreClicked" KeyboardAcceleratorTextOverride="Ctrl+Shift+R"/>
+                    <AppBarButton x:Name="FixCutEdgesCommand" Label="Fix cut edges" IsEnabled="False" Click="FixCutEdgesClicked"/>
                     <AppBarButton Label="Show or hide timeline" Click="TimelineClicked" KeyboardAcceleratorTextOverride="Ctrl+J"/>
                     <AppBarButton x:Name="MakeClipCommand" Label="Make clip" KeyboardAcceleratorTextOverride="Ctrl+Alt+K" IsEnabled="False" Click="MakeClipClicked"/>
                     <AppBarButton x:Name="RewriteCommand" Label="Rewrite…" KeyboardAcceleratorTextOverride="Ctrl+R" IsEnabled="False" Visibility="Collapsed" Click="RewriteClicked"/>

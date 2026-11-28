@@ -397,5 +397,25 @@ public sealed class CutEdgesEditorTests
         Assert.False(kept.RunCutEdgeBarAction());
         Assert.Equal(Sorted(Edges(("w3", 1.205))), Sorted(kept.Project.Edits.CutEdges));
     }
+
+    // MARK: The page
+
+    [Fact]
+    public void TheClipBarListsFixCutEdgesAndThePageFeedsTheLevels()
+    {
+        var page = File.ReadAllText(Path.Combine(AppRoot, "Pages", "EditorPage.xaml"));
+        var commands = page[page.IndexOf("<controls:ClipBar.SecondaryCommands>", StringComparison.Ordinal)..page.IndexOf("</controls:ClipBar.SecondaryCommands>", StringComparison.Ordinal)];
+        Assert.Matches(new Regex(@"<AppBarButton x:Name=""FixCutEdgesCommand"" Label=""Fix cut edges""[^>]*Click=""FixCutEdgesClicked""/>"), commands);
+        var code = string.Concat(Directory.EnumerateFiles(Path.Combine(AppRoot, "Pages"), "EditorPage*.cs").Select(File.ReadAllText));
+        Assert.Contains("ViewModel.SetCutEdgeLevels(", code, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.SetCutEdgePaidRoot(", code, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.FixCutEdges()", code, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.FixCutEdgesReason", code, StringComparison.Ordinal);
+        var timeline = string.Concat(Directory.EnumerateFiles(Path.Combine(AppRoot, "Controls"), "TimelineView*.cs").Select(File.ReadAllText));
+        Assert.Contains("model?.CutEdgeBarRow", timeline, StringComparison.Ordinal);
+        Assert.Contains("model?.RunCutEdgeBarAction()", timeline, StringComparison.Ordinal);
+        // View models never reach the WinUI App: the page hands the levels and the Voice Lab folder in.
+        Assert.DoesNotContain("App.Services", File.ReadAllText(Path.Combine(AppRoot, "ViewModels", "EditorViewModel.CutEdges.cs")), StringComparison.Ordinal);
+    }
 }
 #endif
