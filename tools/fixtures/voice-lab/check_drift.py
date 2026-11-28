@@ -62,6 +62,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/clip-effects/effects-project.voxclip', 'shared/fixtures/clip-effects/effects-wire-cases.json',
          'shared/fixtures/ask-claude/ask-claude-cases.json',
          'shared/fixtures/clip-controls/clip-controls-project.voxclip', 'shared/fixtures/clip-controls/clip-controls-wire-cases.json',
+         'shared/fixtures/clip-controls/clip-controls-color-grade-cases.json', 'shared/fixtures/looks/look-cases.json',
          'shared/fixtures/clip-frames/clip-frames-project.voxclip', 'shared/fixtures/clip-frames/clip-frames-wire-cases.json',
          'shared/fixtures/clip-frames/face-facing-cases.json', 'shared/fixtures/clip-frames/decision-cases.json',
          'shared/fixtures/clip-frames/frame-face-fields-cases.json',
@@ -130,6 +131,8 @@ def main():
     # The clip-controls schema field and its shared vectors (doc/design.md section 6.9).
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_controls_schema.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-controls/generate_clip_controls.py")], check=True)
+    # The look rules both Cores replay on shared/looks/clip-looks.json (looks spec 2026-11-28, sections 8.3 and 9.6).
+    subprocess.run([sys.executable, str(root / "tools/fixtures/looks/generate_look_cases.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_frames_schema.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-frames/generate_clip_frames.py")], check=True)
     # Facing the camera from Vision's continuous yaw and pitch against the recording's typical pitch (ai.md section 19.2).
