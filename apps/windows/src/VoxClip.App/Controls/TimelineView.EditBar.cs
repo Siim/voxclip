@@ -47,8 +47,8 @@ public sealed partial class TimelineView
         editBar.Children.Add(editBarActions);
         Grid.SetColumn(editBarStatus, 1); editBar.Children.Add(editBarStatus);
         EditBarItem("CutSelection", new SymbolIcon(Symbol.Cut), model => model.CutSelection(),
-            model => model.TimelineCanCut, model => model.ExactRange is null ? "Cut selection" : "Cut range",
-            model => model.ExactRange is null ? CutHelp : EditorViewModel.TimelineCutRangeReason);
+            model => model.TimelineCutReason is null, model => model.ExactRange is null ? "Cut selection" : "Cut range",
+            model => model.TimelineCutReason ?? CutHelp);
         editBarActions.Children.Add(new AppBarSeparator { Padding = new(0), Height = 24, VerticalAlignment = VerticalAlignment.Center });
         EditBarItem("PlayRange", new SymbolIcon(Symbol.Play), model => model.PlayTimelineRange(),
             model => model.TimelinePlayRangeReason is null, _ => "Play range", model => model.TimelinePlayRangeReason ?? "Play the range and stop at its end");

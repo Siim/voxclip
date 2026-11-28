@@ -42,6 +42,7 @@ public sealed partial class EditorViewModel
     internal const string TimelineRangeHint = "Ctrl+drag across the waveform to select words. Turn Snapping off for an exact range.";
     internal const string TimelineCutRangeReason = "Exact cuts are coming. Turn Snapping on to cut words.";
     internal const string TimelineMakeClipHelp = "Clip edges follow words";
+    internal const string TimelineAlreadyCutReason = "Everything selected is already cut.";
     private const string TimelineNotReady = "The timeline is not ready to edit.";
 
     private TimelineExactRange? exactRange;
@@ -298,13 +299,20 @@ public sealed partial class EditorViewModel
     // MARK: Range actions (the edit bar)
 
     /// <summary>Whether Cut selection can run: words or pauses are selected that aren't all cut, and no exact range is set.</summary>
-    internal bool TimelineCanCut
+    internal bool TimelineCanCut => TimelineCutReason is null;
+
+    /// <summary>Why Cut selection (Cut range while a range is set) can't run, or null: the edit bar's tooltip and help on the disabled
+    /// button.</summary>
+    internal string? TimelineCutReason
     {
         get
         {
-            if (!CanEditTimeline || exactRange is not null || !HasSelection || state is not { } current) return false;
-            for (var index = SelectionStart; index <= SelectionEnd; index++) if (!current.CutWordIds.Contains(Words[index].Id)) return true;
-            return current.Pauses.Any(pause => pause.AfterIndex >= SelectionStart && pause.AfterIndex < SelectionEnd && !current.CutPauseIds.Contains(pause.Id));
+            if (exactRange is not null) return TimelineCutRangeReason;
+            if (!CanEditTimeline || state is not { } current) return TimelineNotReady;
+            if (!HasSelection) return TimelineRangeHint;
+            for (var index = SelectionStart; index <= SelectionEnd; index++) if (!current.CutWordIds.Contains(Words[index].Id)) return null;
+            return current.Pauses.Any(pause => pause.AfterIndex >= SelectionStart && pause.AfterIndex < SelectionEnd && !current.CutPauseIds.Contains(pause.Id))
+                ? null : TimelineAlreadyCutReason;
         }
     }
 

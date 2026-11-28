@@ -335,6 +335,31 @@ public sealed class TimelinePrecisionTests
         Assert.Contains("model => model.TimelineMakeClipReason is null", EditBarSource, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ADisabledCutSelectionSaysWhy()
+    {
+        var model = Model();
+        Assert.Equal(EditorViewModel.TimelineRangeHint, model.TimelineCutReason);
+        // Word 14 is already cut.
+        model.Select(model.Index("t14"));
+        Assert.Equal(EditorViewModel.TimelineAlreadyCutReason, model.TimelineCutReason);
+        Assert.False(model.TimelineCanCut);
+        model.Select(model.Index("t16"));
+        Assert.Null(model.TimelineCutReason);
+        Assert.True(model.TimelineCanCut);
+        model.SetExactRange(12.4, 17.06, 12.4);
+        Assert.Equal(EditorViewModel.TimelineCutRangeReason, model.TimelineCutReason);
+        Assert.False(model.TimelineCanCut);
+        var readOnly = Model();
+        readOnly.Select(readOnly.Index("t16"));
+        readOnly.Busy = true;
+        Assert.NotNull(readOnly.TimelineCutReason);
+        Assert.False(readOnly.TimelineCanCut);
+        // The edit bar's disabled Cut selection shows that reason as its tooltip and accessibility help.
+        Assert.Contains("model => model.TimelineCutReason is null", EditBarSource, StringComparison.Ordinal);
+        Assert.Contains("model => model.TimelineCutReason ?? CutHelp", EditBarSource, StringComparison.Ordinal);
+    }
+
     // MARK: Word ticks
 
     [Fact]
