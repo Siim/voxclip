@@ -149,9 +149,9 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 image = effects.picture(image, source: sourceExtent, crop: crop, output: size, time: effects.input.pictureTime(sourceTime),
                                         controls: controls)
             }
+            // Pan and zoom is part of the video, so the preview shows it under Reduce Motion too (decision 2026-11-28).
             let motion = MotionCue.transform(atSourceTime: sourceTime,
-                clipID: instruction.request.motionClipID, cues: instruction.request.motionCues,
-                reduceMotion: instruction.request.forPreview && instruction.request.reduceMotion)
+                clipID: instruction.request.motionClipID, cues: instruction.request.motionCues)
             if motion != .identity {
                 let motionCrop = CompositionFrameGeometry.crop(in: CGRect(origin: .zero, size: size),
                     scale: motion.scale, anchorX: motion.anchorX, anchorY: motion.anchorY)

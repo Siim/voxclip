@@ -32,9 +32,6 @@ import VoxClipCore
                     cueControls
                     keyframeControls
                     note(Self.guidance).columnLayoutEvidence("motion.note", text: Self.guidance)
-                    if reduceMotion {
-                        note(Self.reduceMotionNote).columnLayoutEvidence("motion.reduceMotion", text: Self.reduceMotionNote)
-                    }
                     note("Original audio and source word timings stay unchanged.")
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
@@ -51,9 +48,8 @@ import VoxClipCore
         .transaction { if reduceMotion { $0.animation = nil } }
     }
 
-    /// The how-to shows under Reduce Motion too; the extra line says why the preview then shows no zoom.
+    /// What the panel says about pan and zoom; the preview shows it under Reduce Motion too.
     static let guidance = "Raise Zoom, then Horizontal and Vertical choose what stays in view. Apply, then play the cue to see it."
-    static let reduceMotionNote = "Reduce Motion is on, so the preview shows no pan or zoom. Export includes it."
 
     private var cueControls: some View {
         VStack(alignment: .leading, spacing: 4) {

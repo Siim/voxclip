@@ -484,18 +484,13 @@ private actor MotionCueTestSettings: SettingsStore {
 
         let host = NSHostingView(rootView: PanelHost(model: model, shell: shell, width: 404, height: 522).environment(model.app))
         host.frame = CGRect(x: 0, y: 0, width: 404, height: 522)
-        // The how-to shows either way; under Reduce Motion a second line says the preview draws no pan or zoom.
+        // The how-to is the only note; the preview shows pan and zoom under Reduce Motion too.
         #expect(MotionCuePanel.guidance
             == "Raise Zoom, then Horizontal and Vertical choose what stays in view. Apply, then play the cue to see it.")
-        #expect(MotionCuePanel.reduceMotionNote == "Reduce Motion is on, so the preview shows no pan or zoom. Export includes it.")
-        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         #expect(await settle(host) {
             let texts = DebugRightColumn.texts(in: host)
-            return texts["motion.note"] == MotionCuePanel.guidance
-                && texts["motion.reduceMotion"] == (reduceMotion ? MotionCuePanel.reduceMotionNote : nil)
+            return texts["motion.note"] == MotionCuePanel.guidance && texts["motion.reduceMotion"] == nil
         })
-        // Under Reduce Motion the preview applies no cue, so the seek above shows the unzoomed frame.
-        #expect(MotionCue.transform(atSourceTime: model.sourceTime, clipID: saved.clipID, cues: [saved], reduceMotion: true) == .identity)
     }
 
     @Test(arguments: [false, true])

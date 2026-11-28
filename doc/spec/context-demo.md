@@ -46,7 +46,7 @@ Motion cues belong to a clip and half-open original source interval. Canonical w
 
 The Context demo job's code-project folder chooser remains a system folder picker. Its separately approved browser window remains the exact window/process capture target, rather than an editor: review, setup, trim and placement stay inline. Both presentations are recorded with these reasons in the Mac pop-up inventory.
 
-The renderer evaluates source time from the output timeline, then the authored cue's source-relative progress. Retained cuts can produce a jump at a seam; retimed output keeps the original source progress. Defensive evaluation uses the earliest source start, then ID, and applies the first cue without compounding transforms. Full Take has no active clip and applies no clip motion. Preview respects Reduce Motion by returning identity; export applies authored motion.
+The renderer evaluates source time from the output timeline, then the authored cue's source-relative progress. Retained cuts can produce a jump at a seam; retimed output keeps the original source progress. Defensive evaluation uses the earliest source start, then ID, and applies the first cue without compounding transforms. Full Take has no active clip and applies no clip motion. Preview and export both apply authored motion, under Reduce Motion too: pan and zoom is part of the video, not interface animation (decision, 28 November 2026).
 
 ## Shared composition and export
 
