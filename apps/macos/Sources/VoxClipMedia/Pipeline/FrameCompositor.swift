@@ -34,7 +34,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
     private let context: CIContext
     private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
     private let videoColorSpace = CGColorSpace(name: CGColorSpace.itur_709)!
-    private var pending: [UUID: (AVAsynchronousVideoCompositionRequest, Task<Void, Never>, CVPixelBuffer)] = [:]
+    private var pending: [UUID: (any CompositorFrame, Task<Void, Never>, CVPixelBuffer)] = [:]
 
     public var sourcePixelBufferAttributes: [String: any Sendable]? {
         [kCVPixelBufferPixelFormatTypeKey as String: [kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_32BGRA],
@@ -75,109 +75,29 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
         }
     }
 
-    private func render(_ request: AVAsynchronousVideoCompositionRequest, instruction: RenderInstruction,
-                        generation current: UInt64) {
+    /// Renders a still (`ClipStillFrame`) through the same path as preview and export.
+    func renderStill(_ request: StillFrameRequest, instruction: RenderInstruction) {
+        let current = generation.withLock { $0 }
+        renderQueue.async { self.render(request, instruction: instruction, generation: current) }
+    }
+
+    private func render(_ request: any CompositorFrame, instruction: RenderInstruction, generation current: UInt64) {
         autoreleasepool {
             guard generation.withLock({ $0 }) == current else { request.finishCancelledRequest(); return }
-            guard let output = request.renderContext.newPixelBuffer() else {
+            if let capture = instruction.stillCapture {
+                // A still's capture keeps the decoded frames and draws nothing (`ClipStillFrame.capture`).
+                capture.keep(request, instruction: instruction)
+                guard let output = request.newPixelBuffer() else { request.finish(with: VoxClipError.decodeFailed("Cannot allocate video frame")); return }
+                request.finish(withComposedVideoFrame: output); return
+            }
+            guard let output = request.newPixelBuffer() else {
                 fail(request, instruction, .frameBuffer, VoxClipError.decodeFailed("Cannot allocate video frame")); return
             }
-            let size = request.renderContext.size
-            guard let source = request.sourceFrame(byTrackID: instruction.sourceTrackID) else {
-                fail(request, instruction, .sourceFrame, VoxClipError.decodeFailed("Missing source video frame")); return
-            }
-            let controls = instruction.request.clipControls
-            // Captions, motion, effects and Voice Lab layers keep edited times; a clip's speed scales the rendered clock.
-            let editedTime = instruction.request.speedTiming.edited(request.compositionTime.seconds)
-            var image = ClipPicture.orient(CIImage(cvPixelBuffer: source).oriented(instruction.orientation), controls: controls)
-            let sourceExtent = image.extent
-            let aspectCrop = Self.aspectCrop(source: image.extent, output: size, controls: controls, part: instruction.partReframe)
-            var crop = aspectCrop
-            if instruction.videoZoom > 1 {
-                let anchor = controls?.mapAnchor(x: instruction.videoAnchorX, y: instruction.videoAnchorY)
-                    ?? (x: instruction.videoAnchorX, y: instruction.videoAnchorY)
-                crop = CompositionFrameGeometry.faceCrop(in: image.extent, aspectCrop: crop, scale: instruction.videoZoom,
-                    faceX: anchor.x, faceY: anchor.y)
-            }
-            image = CompositionFrameGeometry.fill(image, crop: crop, output: size)
-            if let correction = instruction.colorCorrection {
-                image = image.applyingFilter("CIColorMatrix", parameters: [
-                    "inputRVector": CIVector(x: correction.scale, y: 0, z: 0, w: 0),
-                    "inputGVector": CIVector(x: 0, y: correction.scale, z: 0, w: 0),
-                    "inputBVector": CIVector(x: 0, y: 0, z: correction.scale, w: 0),
-                    "inputBiasVector": CIVector(x: correction.bias, y: correction.bias, z: correction.bias, w: 0)])
-            }
-            for layers in Dictionary(grouping: instruction.lipsyncLayers, by: \.trackID).values {
-                let time = editedTime
-                let weighted = layers.map { layer in
-                    (layer, LipsyncFrameBlend.weight(time: time, start: layer.output.start.seconds,
-                        end: layer.output.end.seconds, fps: instruction.request.output.fps))
-                }
-                guard let (layer, weight) = weighted.max(by: { $0.1 < $1.1 }), weight > 0 else { continue }
-                guard let frame = request.sourceFrame(byTrackID: layer.trackID) else {
-                    fail(request, instruction, .lipsyncFrame, LipsyncError.invalidMedia); return
-                }
-                let captured = ClipPicture.orient(CIImage(cvPixelBuffer: frame).oriented(layer.orientation), controls: controls)
-                let replacement = CompositionFrameGeometry.fill(captured,
-                    crop: Self.aspectCrop(source: captured.extent, output: size, controls: controls, part: instruction.partReframe), output: size)
-                image = replacement.applyingFilter("CIDissolveTransition", parameters: [
-                    kCIInputTargetImageKey: image, kCIInputTimeKey: 1 - weight])
-            }
-            if let layer = instruction.demoLayer {
-                // A context demo (a screen recording) keeps its own orientation: the clip's flip and quarter turns correct
-                // the camera's picture, and a mirrored or sideways screen would be unreadable (design.md §6.9). It fills the
-                // clip's frame, turned or not, like any other shape.
-                guard let demo = request.sourceFrame(byTrackID: layer.trackID) else {
-                    fail(request, instruction, .demoFrame, VoxClipError.decodeFailed("Missing context-demo video frame")); return
-                }
-                let captured = CIImage(cvPixelBuffer: demo).oriented(layer.orientation)
-                image = CompositionFrameGeometry.fill(captured,
-                    crop: Self.centerCrop(source: captured.extent, output: size), output: size)
-            }
-            let sourceTime = instruction.request.timeline.sourceTime(editedTime)
-            if let illustration = instruction.effects?.illustration(at: sourceTime, output: size, over: image) { image = illustration }
-            // The look grades the picture before any Ask Claude effect: censors cover graded pixels, and pointers, titles
-            // and stickers keep their own colours. A colour transform per pixel, so it commutes with the motion crop.
-            let lookEffect = instruction.request.effects?.lookEffect(at: sourceTime)
-            let timedLook = lookEffect?.look
-            let opacity = lookEffect?.explicitFadeOpacity(at: sourceTime) ?? 1
-            if let controls {
-                do {
-                    let graded = try ClipPicture.grade(image, controls: controls, override: timedLook)
-                    image = opacity == 1 ? graded : Self.dissolve(graded, over: try ClipPicture.grade(image, controls: controls), opacity: opacity)
-                } catch { fail(request, instruction, .frameBuffer, error); return }
-            } else if let timedLook { image = Self.dissolve(ClipPicture.look(image, timedLook), over: image, opacity: opacity) }
-            if let effects = instruction.effects {
-                image = effects.picture(image, source: sourceExtent, crop: crop, output: size, time: effects.input.pictureTime(sourceTime),
-                                        controls: controls)
-            }
-            // Pan and zoom is part of the video, so the preview shows it under Reduce Motion too (decision 2026-11-28).
-            let motion = MotionCue.transform(atSourceTime: sourceTime,
-                clipID: instruction.request.motionClipID, cues: instruction.request.motionCues)
-            if motion != .identity {
-                let motionCrop = CompositionFrameGeometry.crop(in: CGRect(origin: .zero, size: size),
-                    scale: motion.scale, anchorX: motion.anchorX, anchorY: motion.anchorY)
-                image = CompositionFrameGeometry.fill(image, crop: motionCrop, output: size)
-            }
-            if let layer = instruction.footage {
-                let companion = layer.still.map { CIImage(cgImage: $0) } ?? layer.trackID.flatMap { id in
-                    request.sourceFrame(byTrackID: id).map { CIImage(cvPixelBuffer: $0).oriented(layer.orientation) }
-                }
-                guard let companion else {
-                    fail(request, instruction, .sourceFrame, VoxClipError.decodeFailed("Missing companion video frame")); return
-                }
-                let cutaway = Self.withFootage(companion, camera: image, kind: layer.kind, output: size)
-                let opacity = MusicMix.fadeFactor(at: editedTime - layer.output.start.seconds, duration: layer.output.duration.seconds,
-                                                  fadeIn: layer.fadeIn, fadeOut: layer.fadeOut)
-                image = Self.dissolve(cutaway, over: image, opacity: opacity)
-            }
-            if let effects = instruction.effects {
-                let timeline = instruction.request.timeline
-                // A title, lower third or sticker that can't be drawn is left out of the frame; preview says so.
-                image = effects.frame(image, output: size, time: sourceTime, outputTime: editedTime, mapTime: timeline.mapTime,
-                                      mapEndTime: timeline.mapEndTime,
-                                      overlayFailed: { instruction.previewFailures?.report(.title) })
-            }
+            let image: CIImage
+            do { image = try Self.compose(request, instruction: instruction) }
+            catch let failure as FrameFailure { fail(request, instruction, failure.reason, failure.error); return }
+            catch { fail(request, instruction, .frameBuffer, error); return }
+            let size = request.renderSize
             context.render(image, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: nil)
             CVBufferSetAttachment(output, kCVImageBufferCGColorSpaceKey, videoColorSpace, .shouldPropagate)
             CVBufferSetAttachment(output, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
@@ -185,6 +105,144 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
             CVBufferSetAttachment(output, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
             drawCaptions(request, instruction: instruction, into: output, generation: current)
         }
+    }
+
+    /// A frame that can't be drawn, with the reason a preview reports.
+    struct FrameFailure: Error {
+        let reason: PreviewFailureReason
+        let error: any Error
+    }
+
+    /// The framed picture `o`, just before the grade (looks spec 2026-11-28, section 7): the source oriented, cropped and
+    /// filled to the output, with any lip-sync layer, context demo and illustration.
+    struct FramedPicture {
+        let image: CIImage
+        let sourceExtent: CGRect
+        let crop: CGRect
+        let editedTime: Double
+        let sourceTime: Double
+    }
+
+    static func framedPicture(_ request: any CompositorFrame, instruction: RenderInstruction) throws -> FramedPicture {
+        let size = request.renderSize
+        guard let source = request.sourceFrame(byTrackID: instruction.sourceTrackID) else {
+            throw FrameFailure(reason: .sourceFrame, error: VoxClipError.decodeFailed("Missing source video frame"))
+        }
+        let controls = instruction.request.clipControls
+        // Captions, motion, effects and Voice Lab layers keep edited times; a clip's speed scales the rendered clock.
+        let editedTime = instruction.request.speedTiming.edited(request.compositionTime.seconds)
+        var image = ClipPicture.orient(CIImage(cvPixelBuffer: source).oriented(instruction.orientation), controls: controls)
+        let sourceExtent = image.extent
+        let aspectCrop = Self.aspectCrop(source: image.extent, output: size, controls: controls, part: instruction.partReframe)
+        var crop = aspectCrop
+        if instruction.videoZoom > 1 {
+            let anchor = controls?.mapAnchor(x: instruction.videoAnchorX, y: instruction.videoAnchorY)
+                ?? (x: instruction.videoAnchorX, y: instruction.videoAnchorY)
+            crop = CompositionFrameGeometry.faceCrop(in: image.extent, aspectCrop: crop, scale: instruction.videoZoom,
+                faceX: anchor.x, faceY: anchor.y)
+        }
+        image = CompositionFrameGeometry.fill(image, crop: crop, output: size)
+        if let correction = instruction.colorCorrection {
+            image = image.applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": CIVector(x: correction.scale, y: 0, z: 0, w: 0),
+                "inputGVector": CIVector(x: 0, y: correction.scale, z: 0, w: 0),
+                "inputBVector": CIVector(x: 0, y: 0, z: correction.scale, w: 0),
+                "inputBiasVector": CIVector(x: correction.bias, y: correction.bias, z: correction.bias, w: 0)])
+        }
+        for layers in Dictionary(grouping: instruction.lipsyncLayers, by: \.trackID).values {
+            let time = editedTime
+            let weighted = layers.map { layer in
+                (layer, LipsyncFrameBlend.weight(time: time, start: layer.output.start.seconds,
+                    end: layer.output.end.seconds, fps: instruction.request.output.fps))
+            }
+            guard let (layer, weight) = weighted.max(by: { $0.1 < $1.1 }), weight > 0 else { continue }
+            guard let frame = request.sourceFrame(byTrackID: layer.trackID) else {
+                throw FrameFailure(reason: .lipsyncFrame, error: LipsyncError.invalidMedia)
+            }
+            let captured = ClipPicture.orient(CIImage(cvPixelBuffer: frame).oriented(layer.orientation), controls: controls)
+            let replacement = CompositionFrameGeometry.fill(captured,
+                crop: Self.aspectCrop(source: captured.extent, output: size, controls: controls, part: instruction.partReframe), output: size)
+            image = replacement.applyingFilter("CIDissolveTransition", parameters: [
+                kCIInputTargetImageKey: image, kCIInputTimeKey: 1 - weight])
+        }
+        if let layer = instruction.demoLayer {
+            // A context demo (a screen recording) keeps its own orientation: the clip's flip and quarter turns correct
+            // the camera's picture, and a mirrored or sideways screen would be unreadable (design.md §6.9). It fills the
+            // clip's frame, turned or not, like any other shape.
+            guard let demo = request.sourceFrame(byTrackID: layer.trackID) else {
+                throw FrameFailure(reason: .demoFrame, error: VoxClipError.decodeFailed("Missing context-demo video frame"))
+            }
+            let captured = CIImage(cvPixelBuffer: demo).oriented(layer.orientation)
+            image = CompositionFrameGeometry.fill(captured,
+                crop: Self.centerCrop(source: captured.extent, output: size), output: size)
+        }
+        let sourceTime = instruction.request.timeline.sourceTime(editedTime)
+        if let illustration = instruction.effects?.illustration(at: sourceTime, output: size, over: image) { image = illustration }
+        return FramedPicture(image: image, sourceExtent: sourceExtent, crop: crop, editedTime: editedTime, sourceTime: sourceTime)
+    }
+
+    /// The whole picture before captions and the disclosure: the framed picture, the grade, Ask Claude's picture effects,
+    /// the motion crop, companion footage, the finish (vignette and grain) and the frame effects (titles and stickers).
+    static func compose(_ request: any CompositorFrame, instruction: RenderInstruction) throws -> CIImage {
+        let size = request.renderSize
+        let framed = try framedPicture(request, instruction: instruction)
+        var image = framed.image
+        let (editedTime, sourceTime, crop) = (framed.editedTime, framed.sourceTime, framed.crop)
+        let controls = instruction.request.clipControls
+        // The look grades the picture before any Ask Claude effect: censors cover graded pixels, and pointers, titles
+        // and stickers keep their own colours. A colour transform per pixel, so it commutes with the motion crop.
+        let lookEffect = instruction.request.effects?.lookEffect(at: sourceTime)
+        let timedLook = lookEffect?.look
+        let opacity = lookEffect?.explicitFadeOpacity(at: sourceTime) ?? 1
+        if let controls {
+            let graded = try ClipPicture.grade(image, controls: controls, override: timedLook)
+            image = opacity == 1 ? graded : Self.dissolve(graded, over: try ClipPicture.grade(image, controls: controls), opacity: opacity)
+        } else if let timedLook { image = Self.dissolve(ClipPicture.look(image, timedLook), over: image, opacity: opacity) }
+        if let effects = instruction.effects {
+            image = effects.picture(image, source: framed.sourceExtent, crop: crop, output: size, time: effects.input.pictureTime(sourceTime),
+                                    controls: controls)
+        }
+        // Pan and zoom is part of the video, so the preview shows it under Reduce Motion too (decision 2026-11-28).
+        let motion = MotionCue.transform(atSourceTime: sourceTime,
+            clipID: instruction.request.motionClipID, cues: instruction.request.motionCues)
+        if motion != .identity {
+            let motionCrop = CompositionFrameGeometry.crop(in: CGRect(origin: .zero, size: size),
+                scale: motion.scale, anchorX: motion.anchorX, anchorY: motion.anchorY)
+            image = CompositionFrameGeometry.fill(image, crop: motionCrop, output: size)
+        }
+        if let layer = instruction.footage {
+            let companion = layer.still.map { CIImage(cgImage: $0) } ?? layer.trackID.flatMap { id in
+                request.sourceFrame(byTrackID: id).map { CIImage(cvPixelBuffer: $0).oriented(layer.orientation) }
+            }
+            guard let companion else {
+                throw FrameFailure(reason: .sourceFrame, error: VoxClipError.decodeFailed("Missing companion video frame"))
+            }
+            let cutaway = Self.withFootage(companion, camera: image, kind: layer.kind, output: size)
+            let opacity = MusicMix.fadeFactor(at: editedTime - layer.output.start.seconds, duration: layer.output.duration.seconds,
+                                              fadeIn: layer.fadeIn, fadeOut: layer.fadeOut)
+            image = Self.dissolve(cutaway, over: image, opacity: opacity)
+        }
+        if let controls {
+            // The finish acts on the output frame by pixel and rendered frame index, so a motion cue doesn't zoom it and it
+            // runs on across a cutaway; grain skips the context demo's rectangle, mapped through the motion crop.
+            let recipe = ClipGradeRecipe(controls: controls)
+            if recipe.hasFinish {
+                let width = Int(size.width.rounded()), height = Int(size.height.rounded())
+                let index = ClipGrain.frameIndex(renderedSeconds: request.compositionTime.seconds, fps: instruction.request.output.fps)
+                let hole = instruction.demoLayer.map { _ in
+                    ClipGrain.demoHole(width: width, height: height, motion: motion, placement: ClipEffect.Rect(x: 0, y: 0, width: 1, height: 1))
+                }
+                image = try ClipPicture.finish(image, recipe: recipe, width: width, height: height, frameIndex: index, hole: hole)
+            }
+        }
+        if let effects = instruction.effects {
+            let timeline = instruction.request.timeline
+            // A title, lower third or sticker that can't be drawn is left out of the frame; preview says so.
+            image = effects.frame(image, output: size, time: sourceTime, outputTime: editedTime, mapTime: timeline.mapTime,
+                                  mapEndTime: timeline.mapEndTime,
+                                  overlayFailed: { instruction.previewFailures?.report(.title) })
+        }
+        return image
     }
 
     static func dissolve(_ foreground: CIImage, over background: CIImage, opacity: Double) -> CIImage {
@@ -205,7 +263,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
         return upper.composited(over: lower).cropped(to: .init(origin: .zero, size: output))
     }
 
-    private func drawCaptions(_ request: AVAsynchronousVideoCompositionRequest, instruction: RenderInstruction,
+    private func drawCaptions(_ request: any CompositorFrame, instruction: RenderInstruction,
                               into output: CVPixelBuffer, generation current: UInt64) {
         let time = instruction.request.speedTiming.edited(request.compositionTime.seconds)
         // The disclosure is never left out: a frame that can't carry it fails, in preview with a message.
@@ -285,7 +343,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
     }
 
     /// Fails the frame; a preview frame also reports `reason` to its item (design.md §5.4.4 g). Exports only fail.
-    private func fail(_ request: AVAsynchronousVideoCompositionRequest, _ instruction: RenderInstruction,
+    private func fail(_ request: any CompositorFrame, _ instruction: RenderInstruction,
                       _ reason: PreviewFailureReason, _ error: any Error) {
         if instruction.request.forPreview { instruction.previewFailures?.report(reason) }
         request.finish(with: error)
@@ -358,6 +416,8 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
     /// Tests only: replaces the caption layout's draw, to force a failure.
     let captionDrawHook: CaptionLayoutDraw?
     let footage: FootageLayer?
+    /// A still's capture (`ClipStillFrame.capture`): the compositor keeps the decoded frames and draws nothing.
+    let stillCapture: ClipStillCapture?
 
     public convenience init(timeRange: CMTimeRange, sourceTrackID: CMPersistentTrackID, request: RenderRequest) {
         self.init(timeRange: timeRange, sourceTrackID: sourceTrackID, request: request, orientation: .up, rasterizer: nil)
@@ -368,7 +428,8 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
          demoLayer: CompositionDemoLayer? = nil, contextDemoLease: ContextDemoCompositionLease? = nil,
          videoZoom: Double = 1, videoAnchorX: Double = 0.5, videoAnchorY: Double = 0.5, partReframe: ReframeSettings? = nil,
          lipsyncLayers: [LipsyncVideoLayer] = [], colorCorrection: (scale: Double, bias: Double)? = nil, effects: EffectFrames? = nil,
-         previewFailures: PreviewFrameFailures? = nil, captionDrawHook: CaptionLayoutDraw? = nil, footage: FootageLayer? = nil) {
+         previewFailures: PreviewFrameFailures? = nil, captionDrawHook: CaptionLayoutDraw? = nil, footage: FootageLayer? = nil,
+         stillCapture: ClipStillCapture? = nil) {
         self.timeRange = timeRange; self.sourceTrackID = sourceTrackID; self.request = request
         self.orientation = orientation; self.rasterizer = rasterizer; self.legacyRasterizer = legacyRasterizer
         self.disclosure = disclosure; self.demoLayer = demoLayer; self.contextDemoLease = contextDemoLease
@@ -380,7 +441,18 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
         self.previewFailures = previewFailures
         self.captionDrawHook = captionDrawHook
         self.footage = footage
+        self.stillCapture = stillCapture
         super.init()
+    }
+
+    /// This instruction for a still: another request (a still's controls in place of the clip's) or a capture, and no
+    /// preview failure reports, so a still never marks the player's item as failed.
+    func forStill(request: RenderRequest? = nil, capture: ClipStillCapture? = nil) -> RenderInstruction {
+        RenderInstruction(timeRange: timeRange, sourceTrackID: sourceTrackID, request: request ?? self.request, orientation: orientation,
+            rasterizer: rasterizer, legacyRasterizer: legacyRasterizer, disclosure: disclosure, demoLayer: demoLayer,
+            contextDemoLease: contextDemoLease, videoZoom: videoZoom, videoAnchorX: videoAnchorX, videoAnchorY: videoAnchorY,
+            partReframe: partReframe, lipsyncLayers: lipsyncLayers, colorCorrection: colorCorrection, effects: effects,
+            previewFailures: nil, captionDrawHook: captionDrawHook, footage: footage, stillCapture: capture)
     }
 
     func page(at time: Double) -> CaptionPage? {

@@ -338,6 +338,8 @@ public actor AVExporter: Exporter {
         let sidecarLimit = preflight.sidecarLimit
         let outputNeeds = preflight.outputNeeds
         progress(ExportProgress(phase: .preparing, fraction: 0))
+        // A grade that needs the clip grade's kernels fails here with its one message, not as a failed frame (looks spec §10).
+        if let controls = job.render.clipControls, ClipPicture.needsKernels(ClipGradeRecipe(controls: controls)) { _ = try ClipGradeKernels.require() }
         let graph = try await builder.build(job.render)
         defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease, graph.musicLease, graph.effectsLease, graph.clipVoiceLease)) {} }
         guard Self.canUseSourceOnlyVideo(job.render) || graph.videoComposition.customVideoCompositorClass != nil else {

@@ -156,8 +156,12 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
     public var isDefault: Bool { self == ProjectClipControls(clipId: clipId) }
     /// Speed, volume, fades or mute change the clip's audio.
     public var changesAudio: Bool { speed != 1 || gainDb != 0 || fadeInSeconds > 0 || fadeOutSeconds > 0 || muteSource }
-    /// Look, flip or rotation change each frame.
-    public var changesPicture: Bool { look != .original || colorAdjustments != nil || flipHorizontal || rotationDegrees != 0 }
+    /// Flip, rotation, a Fix, or above amount 0 a look, adjustments or any other grade control change each frame (looks spec
+    /// 2026-11-28, section 5.8). At amount 0 with no Fix the picture is as filmed.
+    public var changesPicture: Bool {
+        guard !flipHorizontal, rotationDegrees == 0, colorGrade?.fix ?? .neutral == .neutral else { return true }
+        return (colorGrade?.amount ?? 100) > 0 && (look != .original || colorAdjustments != nil || colorGrade?.lookValues.isNeutral == false)
+    }
     /// A quarter turn swaps the picture's width and height.
     public var isQuarterTurn: Bool { rotationDegrees == 90 || rotationDegrees == 270 }
 

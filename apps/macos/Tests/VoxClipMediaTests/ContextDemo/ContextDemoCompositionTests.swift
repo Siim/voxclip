@@ -269,6 +269,30 @@ struct ContextDemoCompositionNativeTests {
         }
     }
 
+    /// Grain skips the screen recording's rectangle so its text stays legible; the vignette still applies (looks spec
+    /// 2026-11-28, section 5.2). The demo fills the frame here, so with it on screen grain changes nothing, and on the
+    /// camera's frames it does.
+    @Test @MainActor func grainSkipsTheScreenRecordingButNotTheCamera() async throws {
+        let root = try compositionTestDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = try await NativeMediaFixtures.shared.file()
+        let record = try await capturedVideo(root: root)
+        let plan = compositionPlan()
+        let input = try compositionInput(record: record, source: source, plan: plan)
+        func graph(grain: Int) async throws -> RenderGraph {
+            var render = try request(source: source, plan: plan, input: input, root: root)
+            var controls = ProjectClipControls(clipId: "c")
+            controls.colorGrade = ClipColorGrade(vignette: 40, grain: grain)
+            render.clipControls = controls
+            return try await CompositionBuilder(scratchRoot: root).build(render)
+        }
+        let grainy = try await graph(grain: 100), smooth = try await graph(grain: 0)
+        let demo = try await frame(asset: grainy.composition, composition: grainy.videoComposition, at: 0.5)
+        #expect(demo == (try await frame(asset: smooth.composition, composition: smooth.videoComposition, at: 0.5)))
+        let camera = try await frame(asset: grainy.composition, composition: grainy.videoComposition, at: 0.1)
+        #expect(camera != (try await frame(asset: smooth.composition, composition: smooth.videoComposition, at: 0.1)))
+    }
+
     @Test @MainActor func previewUpdatesRetainFullDemoInstructionsAndLeases() async throws {
         let root = try compositionTestDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

@@ -255,6 +255,23 @@ import Testing
         #expect(ProjectClipControls(clipId: "a", flipHorizontal: true).changesPicture && !ProjectClipControls(clipId: "a", gainDb: 3).changesPicture)
     }
 
+    /// The picture changes with a Fix at any amount, and with a look, adjustments or another grade control above amount 0;
+    /// at amount 0 with no Fix it is as filmed and the export can skip the compositor (looks spec 2026-11-28, section 5.8).
+    @Test func theGradeChangesThePictureAboveAmountZeroOrWithAFix() {
+        func controls(look: ClipLook = .original, adjustments: ClipColorAdjustments? = nil, _ grade: ClipColorGrade?) -> ProjectClipControls {
+            var controls = ProjectClipControls(clipId: "a", look: look, colorAdjustments: adjustments)
+            controls.colorGrade = grade
+            return controls
+        }
+        #expect(controls(ClipColorGrade(vibrance: 20)).changesPicture && controls(ClipColorGrade(grain: 10)).changesPicture)
+        #expect(controls(ClipColorGrade(splitTone: ClipSplitTone(shadowHue: 200, shadowSaturation: 10, highlightHue: 38, highlightSaturation: 30, balance: 0))).changesPicture)
+        #expect(!controls(look: .bw, adjustments: ClipColorAdjustments(contrast: 30), ClipColorGrade(amount: 0, fade: 20, grain: 40)).changesPicture)
+        #expect(controls(ClipColorGrade(amount: 0, temperature: 15)).changesPicture)
+        #expect(!controls(ClipColorGrade(preset: "warmPrint", amount: 60)).changesPicture, "an amount alone changes nothing")
+        #expect(controls(look: .warm, ClipColorGrade(amount: 60)).changesPicture)
+        #expect(!controls(nil).changesPicture && controls(look: .muted, nil).changesPicture)
+    }
+
     /// Words, caption pages, cuts and motion keep 1× edited times; the rendered clock divides them by the speed.
     @Test func speedMapsEditedTimesOntoTheRenderedTimeline() throws {
         let timing = ClipSpeedTiming(speed: 1.25)
