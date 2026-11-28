@@ -107,7 +107,15 @@ import Testing
             let warm = try ClipPicture.grade(picture, controls: ProjectClipControls(clipId: "c", look: .warm), kernels: kernels)
             #expect(Self.bytes(warm, picture.extent) == Self.bytes(ClipPicture.look(picture, .warm), picture.extent))
             #expect(Self.bytes(warm, picture.extent) != Self.bytes(picture, picture.extent))
+            // An amount with nothing to blend, or amount 0 with no Fix, is the picture as filmed and needs no kernel.
+            for grade in [ClipColorGrade(preset: "softLight", amount: 60), ClipColorGrade(amount: 0, vibrance: 40, grain: 30)] {
+                var controls = ProjectClipControls(clipId: "c")
+                controls.colorGrade = grade
+                #expect(!ClipPicture.needsKernels(ClipGradeRecipe(controls: controls)))
+                #expect(Self.bytes(try ClipPicture.grade(picture, controls: controls, kernels: kernels), picture.extent) == Self.bytes(picture, picture.extent))
+            }
         }
+        #expect(ClipPicture.needsKernels(ClipGradeRecipe(controls: fixed)) && !ClipPicture.needsKernels(ClipGradeRecipe(controls: .init(clipId: "c", look: .bw))))
         #expect(VoxClipError.exportFailed(VoxClipError.looksNeedMetal).errorDescription == "Looks need a Metal GPU on this Mac.")
     }
 

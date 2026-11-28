@@ -209,8 +209,9 @@ import Testing
         }
         reader.cancelReading()
         let frame = try #require(decoded)
-        let mean = zip(frame.bytes, expected.bytes).enumerated().reduce(0.0) { $1.offset % 4 == 3 ? $0 : $0 + abs(Double($1.element.0) - Double($1.element.1)) }
-            / Double(3 * Self.width * Self.height)
+        var total = 0
+        for index in frame.bytes.indices where index % 4 != 3 { total += abs(Int(frame.bytes[index]) - Int(expected.bytes[index])) }
+        let mean = Double(total) / Double(3 * Self.width * Self.height)
         #expect(mean < 3, "mean difference \(mean)")
     }
 
@@ -237,7 +238,8 @@ import Testing
         for y in 0..<(plain.height / 3) {
             for x in 0..<plain.width {
                 let expected = recipe.apply(plain.rgb(x, y).map { Double($0) / 255 }).map(ClipGradeRecipe.byte)
-                total += zip(graded.rgb(x, y), expected).reduce(0.0) { $0 + abs(Double($1.0 - $1.1)) }
+                let found = graded.rgb(x, y)
+                for channel in 0..<3 { total += Double(abs(found[channel] - expected[channel])) }
                 count += 3
             }
         }
@@ -317,6 +319,8 @@ import Testing
         let compare = try Self.frame(try await gradedStill.still(controls: nil))
         #expect(compare == (try #require(try Self.exportFrames(plain, [15])[15])))
         #expect(compare != hover)
+        let past = try await ClipStillFrame.capture(plain, renderedSeconds: 9)
+        #expect(past.renderedTime == CMTime(value: 59, timescale: 30), "a time past the end takes the last frame")
     }
 
     /// A look's tile is the export's frame for that look, cropped to the face-anchor square: the same pixels before the

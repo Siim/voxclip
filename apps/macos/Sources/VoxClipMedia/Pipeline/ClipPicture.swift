@@ -35,9 +35,8 @@ enum ClipPicture {
     }
 
     static func grade(_ image: CIImage, recipe: ClipGradeRecipe, kernels: Kernels = ClipGradeKernels.shared) throws -> CIImage {
-        guard recipe.primary != nil || recipe.tone != nil || recipe.amount != 1 else { return classic(image, recipe) }
-        // Amount 0 with no Fix: f, the clamped picture as filmed.
-        if recipe.primary == nil, recipe.amount <= 0 { return image.applyingFilter("CIColorClamp") }
+        // The classic chain; at amount 0 with no Fix, f: the clamped picture as filmed.
+        guard gradeNeedsKernels(recipe) else { return recipe.amount > 0 ? classic(image, recipe) : image.applyingFilter("CIColorClamp") }
         let loaded = try ClipGradeKernels.require(kernels)
         let fixed = try recipe.primary.map { try fix(image, $0, loaded) } ?? image.applyingFilter("CIColorClamp")
         guard recipe.amount > 0 else { return fixed }
@@ -46,9 +45,12 @@ enum ClipPicture {
         return try tone(graded, fixed: fixed, recipe: recipe, loaded)
     }
 
-    /// Whether `recipe` renders through the custom kernels; the classic looks and an amount of 0 with no Fix don't.
-    static func needsKernels(_ recipe: ClipGradeRecipe) -> Bool {
-        recipe.primary != nil || (recipe.amount > 0 && (recipe.tone != nil || recipe.amount < 1)) || recipe.hasFinish
+    /// Whether `recipe` renders through the custom kernels: a Fix, the tone steps, a partial amount of a look that changes
+    /// colour, or the finish. The classic looks and amount 0 with no Fix use built-in filters only.
+    static func needsKernels(_ recipe: ClipGradeRecipe) -> Bool { gradeNeedsKernels(recipe) || recipe.hasFinish }
+
+    private static func gradeNeedsKernels(_ recipe: ClipGradeRecipe) -> Bool {
+        recipe.primary != nil || (recipe.amount > 0 && recipe.changesColor && (recipe.tone != nil || recipe.amount < 1))
     }
 
     /// Stage F on the output frame after the motion crop and companion footage: the vignette, then grain at the rendered
@@ -92,11 +94,13 @@ enum ClipPicture {
         let params = CIVector(x: tone?.vibrance ?? 0, y: tone?.fade ?? 0, z: recipe.amount, w: 0)
         let flags = CIVector(x: tone?.shadowsHighlights == nil ? 0 : 1, y: tone?.vibrance == nil ? 0 : 1, z: tone?.fade == nil ? 0 : 1,
                              w: split == nil ? 0 : 1)
-        var arguments: [Any] = [graded, fixed] + vectors(tone?.shadowsHighlights) + [params, flags]
+        var arguments: [Any] = [graded, fixed]
+        arguments.append(contentsOf: vectors(tone?.shadowsHighlights))
+        arguments.append(contentsOf: [params, flags])
         guard let tone, tone.master != nil || tone.red != nil || tone.green != nil || tone.blue != nil || split != nil else {
             return try applied(kernels.tone, graded.extent, arguments)
         }
-        arguments += vectors(tone.master) + vectors(tone.red) + vectors(tone.green) + vectors(tone.blue)
+        for curve in [tone.master, tone.red, tone.green, tone.blue] { arguments.append(contentsOf: vectors(curve)) }
         arguments.append(CIVector(x: tone.master == nil ? 0 : 1, y: tone.red == nil ? 0 : 1, z: tone.green == nil ? 0 : 1, w: tone.blue == nil ? 0 : 1))
         arguments.append(CIVector(x: split?.shadow[0] ?? 0, y: split?.shadow[1] ?? 0, z: split?.shadow[2] ?? 0, w: split?.balance ?? 0))
         arguments.append(CIVector(x: split?.highlight[0] ?? 0, y: split?.highlight[1] ?? 0, z: split?.highlight[2] ?? 0, w: 0))

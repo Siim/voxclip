@@ -43,7 +43,7 @@ public final class ClipStillFrame: @unchecked Sendable {
         let options: [CIContextOption: Any] = [.cacheIntermediates: false, .workingColorSpace: NSNull()]
         return MTLCreateSystemDefaultDevice().map { CIContext(mtlDevice: $0, options: options) } ?? CIContext(options: options)
     }()
-    static let colorSpace = CGColorSpace(name: CGColorSpace.itur_709)!
+    static var colorSpace: CGColorSpace { CGColorSpace(name: CGColorSpace.itur_709)! }
 
     init(instruction: RenderInstruction, frames: [CMPersistentTrackID: CVPixelBuffer], renderedTime: CMTime, size: CGSize) {
         self.instruction = instruction; self.frames = frames; self.renderedTime = renderedTime; self.size = size
@@ -66,7 +66,7 @@ public final class ClipStillFrame: @unchecked Sendable {
         guard let fps = instructions.first?.request.output.fps, fps > 0 else { throw VoxClipError.decodeFailed("A still needs a frame rate") }
         let frameDuration = videoComposition.frameDuration
         let duration = try await asset.load(.duration)
-        let last = max(0, Int64((duration.seconds / frameDuration.seconds).rounded(.up)) - 1)
+        let last = max(0, Int64((duration.seconds / frameDuration.seconds - 1e-6).rounded(.up)) - 1)
         let index = min(last, Int64(ClipGrain.frameIndex(renderedSeconds: max(0, renderedSeconds), fps: fps)))
         let config = AVVideoComposition.Configuration(colorPrimaries: AVVideoColorPrimaries_ITU_R_709_2,
             colorTransferFunction: AVVideoTransferFunction_ITU_R_709_2, colorYCbCrMatrix: AVVideoYCbCrMatrix_ITU_R_709_2,
