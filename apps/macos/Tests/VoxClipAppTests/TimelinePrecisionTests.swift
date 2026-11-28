@@ -347,6 +347,27 @@ private actor PrecisionTestSettings: SettingsStore {
         #expect(clip.startWordId == "t12" && clip.endWordId == "t16" && undo.undoActionName == "Make clip")
     }
 
+    @Test func aRangeInAGapMakesAClipOnlyFromAWordItReachesAndCannotTrimWithoutAnItem() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        _ = model.setTimelineRange(from: 12.84, to: 13.02, on: .source)
+        #expect(model.selectedIDs.isEmpty)
+        // The range reaches into word 13. In snaps to word 13's start and Out to word 12's end; crossed, the clip is the word
+        // nearest the middle.
+        #expect(model.timelineRangeClipWords.map { [$0.start, $0.end] } == ["t13", "t13"])
+        #expect(model.timelineMakeClipReason == nil)
+        #expect(model.timelineTrimToRangeReason == "Put the range over a title, picture, sound or song to trim it.")
+        #expect(model.timelinePlayRangeReason == nil && model.timelineAddTitleReason == nil)
+        // A range wholly inside the pause covers no word, so Make clip says why instead of reaching for a neighbour.
+        _ = model.setTimelineRange(from: 12.82, to: 12.98, on: .source)
+        #expect(model.timelineRangeClipWords == nil)
+        #expect(model.timelineMakeClipReason == "There are no words in this range to make a clip from.")
+        let clips = model.project.edits.clips
+        model.makeClip()
+        #expect(model.project.edits.clips == clips && model.undoSteps == 0)
+        #expect(model.timelinePlayRangeReason == nil)
+    }
+
     @Test func editMenuCutAndRestoreSelectionAreOffWhileARangeIsSet() async throws {
         let app = try app()
         await app.shell.attachForTesting(VoxClipDocument(project: try project(), demo: true), preview: DemoPreviewEngine())

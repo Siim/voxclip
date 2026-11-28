@@ -261,17 +261,26 @@ public sealed class TimelinePrecisionTests
     }
 
     [Fact]
-    public void ARangeInAGapMakesAClipOfTheNearestWordAndCannotTrimWithoutAnItem()
+    public void ARangeInAGapMakesAClipOnlyFromAWordItReachesAndCannotTrimWithoutAnItem()
     {
         var model = Model();
         model.SetExactRange(12.84, 13.02, 12.84);
         Assert.False(model.HasSelection);
-        // In snaps to word 13's start and Out to word 12's end; crossed, the clip is the word nearest the middle.
+        // The range reaches into word 13. In snaps to word 13's start and Out to word 12's end; crossed, the clip is the word
+        // nearest the middle.
         Assert.Equal((model.Index("t13"), model.Index("t13")), model.TimelineRangeClipWords);
         Assert.Null(model.TimelineMakeClipReason);
         Assert.Equal("Put the range over a title, picture, sound or song to trim it.", model.TimelineTrimToRangeReason);
         Assert.Null(model.TimelinePlayRangeReason);
         Assert.Null(model.TimelineAddTitleReason);
+        // A range wholly inside the pause covers no word, so Make clip says why instead of reaching for a neighbour.
+        model.SetExactRange(12.82, 12.98, 12.82);
+        Assert.Null(model.TimelineRangeClipWords);
+        Assert.Equal("There are no words in this range to make a clip from.", model.TimelineMakeClipReason);
+        var clips = model.Project.Edits.Clips.Count;
+        Assert.Null(model.MakeClip());
+        Assert.Equal(clips, model.Project.Edits.Clips.Count);
+        Assert.Null(model.TimelinePlayRangeReason);
     }
 
     // MARK: Word ticks

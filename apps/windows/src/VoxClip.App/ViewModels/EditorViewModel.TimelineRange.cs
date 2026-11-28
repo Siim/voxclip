@@ -445,8 +445,11 @@ public sealed partial class EditorViewModel
         }
     }
 
-    /// <summary>The words a clip from the exact range runs between: each edge snaps to the nearest word start or end.</summary>
-    internal (int First, int Last)? TimelineRangeClipWords => ExactRangeSource is { } range ? SnapToScopeWords(range) : null;
+    /// <summary>The words a clip from the exact range runs between: each edge snaps to the nearest word start or end. Null when no
+    /// word in the scope reaches into the range (a pause or music only).</summary>
+    internal (int First, int Last)? TimelineRangeClipWords =>
+        ExactRangeSource is { } range && TimelineScopeSpans().Any(span => Enumerable.Range(span.Start, span.End - span.Start + 1)
+            .Any(index => Words[index].Start < range.End && Words[index].End > range.Start)) ? SnapToScopeWords(range) : null;
 
     /// <summary>A1's word ticks between <paramref name="visibleStart"/> and <paramref name="visibleEnd"/> on the axis
     /// <paramref name="toAxis"/> maps to (issue #41): each word's start and end, the open scope's words only, and with
